@@ -29,20 +29,35 @@ type AgentCredentials struct {
 }
 
 type TunnelClient struct {
-	credsPath string
+	credsPath          string
+	insecureSkipVerify bool
 }
 
-func NewTunnelClient(credsPath string) *TunnelClient {
+func NewTunnelClient(credsPath string, insecureSkipVerify bool) *TunnelClient {
 	if credsPath == "" {
 		credsPath = "/etc/barahn/agent.pem"
 	}
-	return &TunnelClient{credsPath: credsPath}
+	if !insecureSkipVerify && os.Getenv("BARAHN_INSECURE_SKIP_VERIFY") == "true" {
+		insecureSkipVerify = true
+	}
+	return &TunnelClient{
+		credsPath:          credsPath,
+		insecureSkipVerify: insecureSkipVerify,
+	}
 }
 
 // Enroll performs single-use pairing exchange with the server and writes credentials to credsPath (/etc/barahn/agent.pem).
-func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath string) (*AgentCredentials, error) {
+func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath string, insecureSkipVerify bool) (*AgentCredentials, error) {
 	if savePath == "" {
 		savePath = "/etc/barahn/agent.pem"
+	}
+
+	if !insecureSkipVerify && os.Getenv("BARAHN_INSECURE_SKIP_VERIFY") == "true" {
+		insecureSkipVerify = true
+	}
+
+	if insecureSkipVerify {
+		fmt.Fprintln(os.Stderr, "[WARNING] TLS certificate verification is DISABLED (--insecure-skip-verify). Connection is insecure!")
 	}
 
 	payload := map[string]string{
@@ -56,9 +71,8 @@ func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath st
 	bodyBytes, _ := json.Marshal(payload)
 	url := fmt.Sprintf("%s/tunnel/pair", strings.TrimRight(serverAddr, "/"))
 
-	// Create custom client allowing self-signed TLS in dev/test if needed
 	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecureSkipVerify},
 	}
 	httpClient := &http.Client{Transport: tr, Timeout: 10 * time.Second}
 
@@ -88,8 +102,9 @@ func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath st
 }
 
 func saveCredentials(path string, creds *AgentCredentials) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	cleanPath := filepath.Clean(path)
+	dir := filepath.Dir(cleanPath)
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return err
 	}
 
@@ -98,11 +113,16 @@ func saveCredentials(path string, creds *AgentCredentials) error {
 		return err
 	}
 
-	return os.WriteFile(path, data, 0600)
+	return os.WriteFile(cleanPath, data, 0600)
 }
 
 func LoadCredentials(path string) (*AgentCredentials, error) {
-	data, err := os.ReadFile(path)
+	cleanPath := filepath.Clean(path)
+	if strings.Contains(cleanPath, "..") {
+		return nil, fmt.Errorf("invalid credential path: path traversal detected")
+	}
+
+	data, err := os.ReadFile(cleanPath)
 	if err != nil {
 		return nil, err
 	}
@@ -125,22 +145,26 @@ func (tc *TunnelClient) Connect(ctx context.Context, creds *AgentCredentials) er
 	header.Set("X-Barahn-Agent-ID", creds.AgentID)
 	header.Set("X-Barahn-Agent-Token", creds.AgentToken)
 
+	if tc.insecureSkipVerify {
+		fmt.Fprintln(os.Stderr, "[WARNING] TLS certificate verification is DISABLED (--insecure-skip-verify). Connection is insecure!")
+	}
+
 	dialer := websocket.Dialer{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: tc.insecureSkipVerify},
 	}
 
 	ws, _, err := dialer.DialContext(ctx, wsURL, header)
 	if err != nil {
 		return fmt.Errorf("failed to dial websocket tunnel: %w", err)
 	}
-	defer ws.Close()
+	defer func() { _ = ws.Close() }()
 
 	conn := &wsConnAdapter{Conn: ws}
 	session, err := yamux.Client(conn, DefaultYamuxConfig())
 	if err != nil {
 		return fmt.Errorf("failed to establish yamux client session: %w", err)
 	}
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 
 	// Start heartbeat ticker over control stream
 	chirpTicker := heartbeat.NewChirpTicker(10*time.Second, func(ctx context.Context) error {
@@ -148,7 +172,7 @@ func (tc *TunnelClient) Connect(ctx context.Context, creds *AgentCredentials) er
 		if err != nil {
 			return err
 		}
-		defer stream.Close()
+		defer func() { _ = stream.Close() }()
 
 		msg := heartbeat.ChirpMessage{
 			AgentID:   creds.AgentID,
@@ -179,7 +203,7 @@ func (tc *TunnelClient) Connect(ctx context.Context, creds *AgentCredentials) er
 }
 
 func (tc *TunnelClient) handleReverseStream(stream *yamux.Stream) {
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	reader := bufio.NewReader(stream)
 	line, err := reader.ReadString('\n')
@@ -199,7 +223,7 @@ func (tc *TunnelClient) handleReverseStream(stream *yamux.Stream) {
 	if err != nil {
 		return
 	}
-	defer localConn.Close()
+	defer func() { _ = localConn.Close() }()
 
 	// Proxy data bidirectionally
 	done := make(chan struct{}, 2)
