@@ -134,7 +134,7 @@ func (c *x11Capturer) initShm() error {
 
 	// Helper to detach SHM on setup failure
 	cleanupShm := func() {
-		syscall.Syscall(syscall.SYS_SHMDT, addr, 0, 0)
+		_, _, _ = syscall.Syscall(syscall.SYS_SHMDT, addr, 0, 0)
 	}
 
 	// Allocate X11 SHM segment ID
@@ -171,7 +171,7 @@ func (c *x11Capturer) Displays() ([]Display, error) {
 
 	d := Display{
 		Index: 0,
-		Name:  fmt.Sprintf("X11 Screen (default)"),
+		Name:  "X11 Screen (default)",
 		Bounds: image.Rect(
 			0, 0,
 			int(c.width),
@@ -369,7 +369,7 @@ func (c *x11Capturer) Close() {
 
 	if c.shmAvailable {
 		shm.Detach(c.conn, c.shmSeg)
-		syscall.Syscall(syscall.SYS_SHMDT, c.shmAddr, 0, 0)
+		_, _, _ = syscall.Syscall(syscall.SYS_SHMDT, c.shmAddr, 0, 0)
 		c.shmAvailable = false
 	}
 

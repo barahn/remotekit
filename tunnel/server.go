@@ -27,11 +27,10 @@ var upgrader = websocket.Upgrader{
 }
 
 type TunnelServer struct {
-	store          storage.Store
-	sessions       map[string]*yamux.Session
-	sessionsMu     sync.RWMutex
-	chirpMon       *heartbeat.ServerMonitor
-	onChirp        func(agentID string)
+	store      storage.Store
+	sessions   map[string]*yamux.Session
+	sessionsMu sync.RWMutex
+	chirpMon   *heartbeat.ServerMonitor
 }
 
 func NewTunnelServer(store storage.Store) *TunnelServer {
