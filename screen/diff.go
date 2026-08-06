@@ -190,7 +190,7 @@ func (d *FrameDiffer) hashTile(pix []byte, stride int, rect image.Rectangle) uin
 
 	for y := rect.Min.Y; y < rect.Max.Y; y++ {
 		offset := y*stride + rect.Min.X*bytesPerPixel
-		h.Write(pix[offset : offset+rowBytes])
+		_, _ = h.Write(pix[offset : offset+rowBytes])
 	}
 
 	return h.Sum32()

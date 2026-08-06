@@ -127,7 +127,7 @@ func (c *x11Capturer) initShm() error {
 	}
 
 	// Create a byte slice view of the shared memory segment.
-	shmBuf := unsafe.Slice((*byte)(uintptrToPointer(addr)), imgSize)
+	shmBuf := unsafe.Slice((*byte)(uintptrToPointer(addr)), imgSize) // #nosec G103 -- required for X11 SHM slice mapping
 
 	// Mark segment for auto-removal when last process detaches
 	_, _, _ = syscall.Syscall(syscall.SYS_SHMCTL, shmID, 0 /* IPC_RMID */, 0)
@@ -145,7 +145,7 @@ func (c *x11Capturer) initShm() error {
 	}
 
 	// Attach SHM segment to X server
-	shmAttachCookie := shm.AttachChecked(c.conn, seg, uint32(shmID), false)
+	shmAttachCookie := shm.AttachChecked(c.conn, seg, uint32(shmID), false) // #nosec G115 -- shmID fits in uint32
 	if err := shmAttachCookie.Check(); err != nil {
 		cleanupShm()
 		return fmt.Errorf("failed to attach SHM to X server: %w", err)
@@ -381,7 +381,7 @@ func (c *x11Capturer) Close() {
 
 // uintptrToPointer converts a uintptr address to unsafe.Pointer.
 func uintptrToPointer(ptr uintptr) unsafe.Pointer {
-	return *(*unsafe.Pointer)(unsafe.Pointer(&ptr))
+	return *(*unsafe.Pointer)(unsafe.Pointer(&ptr)) // #nosec G103 -- required for X11 SHM pointer conversion
 }
 
 
