@@ -35,7 +35,7 @@ type TunnelClient struct {
 
 func NewTunnelClient(credsPath string, insecureSkipVerify bool) *TunnelClient {
 	if credsPath == "" {
-		credsPath = "/etc/barahn/agent.pem"
+		credsPath = "/etc/barahn/agent.pem" // #nosec G101 -- default path, not secret
 	}
 	if !insecureSkipVerify && os.Getenv("BARAHN_INSECURE_SKIP_VERIFY") == "true" {
 		insecureSkipVerify = true
@@ -72,7 +72,7 @@ func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath st
 	url := fmt.Sprintf("%s/tunnel/pair", strings.TrimRight(serverAddr, "/"))
 
 	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecureSkipVerify},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecureSkipVerify}, // #nosec G402 -- CLI opt-in flag for dev/test
 	}
 	httpClient := &http.Client{Transport: tr, Timeout: 10 * time.Second}
 
@@ -150,7 +150,7 @@ func (tc *TunnelClient) Connect(ctx context.Context, creds *AgentCredentials) er
 	}
 
 	dialer := websocket.Dialer{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: tc.insecureSkipVerify},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: tc.insecureSkipVerify}, // #nosec G402 -- CLI opt-in flag for dev/test
 	}
 
 	ws, _, err := dialer.DialContext(ctx, wsURL, header)

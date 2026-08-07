@@ -1,0 +1,202 @@
+//go:build linux
+
+package screen
+
+import (
+	"context"
+	"os"
+	"testing"
+	"time"
+)
+
+func hasDisplay() bool {
+	return os.Getenv("DISPLAY") != ""
+}
+
+func TestNewCapturer(t *testing.T) {
+	if !hasDisplay() {
+		t.Skip("DISPLAY not set — skipping X11 capture test")
+	}
+
+	config := DefaultConfig()
+	cap, err := NewCapturer(config)
+	if err != nil {
+		t.Fatalf("NewCapturer failed: %v", err)
+	}
+	defer cap.(*x11Capturer).Close()
+
+	displays, err := cap.Displays()
+	if err != nil {
+		t.Fatalf("Displays() failed: %v", err)
+	}
+
+	if len(displays) == 0 {
+		t.Fatal("expected at least one display")
+	}
+
+	t.Logf("Found %d display(s):", len(displays))
+	for _, d := range displays {
+		t.Logf("  [%d] %s: %dx%d primary=%v",
+			d.Index, d.Name, d.Bounds.Dx(), d.Bounds.Dy(), d.Primary)
+	}
+}
+
+func TestCaptureFrames(t *testing.T) {
+	if !hasDisplay() {
+		t.Skip("DISPLAY not set — skipping X11 capture test")
+	}
+
+	config := DefaultConfig()
+	config.TargetFPS = 10 // Low FPS for testing
+	cap, err := NewCapturer(config)
+	if err != nil {
+		t.Fatalf("NewCapturer failed: %v", err)
+	}
+	defer cap.(*x11Capturer).Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if err := cap.Start(ctx); err != nil {
+		t.Fatalf("Start() failed: %v", err)
+	}
+
+	var frameCount int
+	for frame := range cap.Frames() {
+		frameCount++
+		if frame.Image == nil {
+			t.Error("received nil Image in frame")
+			continue
+		}
+		if frame.Bounds.Empty() {
+			t.Error("received empty Bounds in frame")
+		}
+		if frame.SequenceNum == 0 {
+			t.Error("SequenceNum should be > 0")
+		}
+
+		// Verify the image has actual pixel data (not all zeros)
+		if len(frame.Image.Pix) == 0 {
+			t.Error("frame has no pixel data")
+		}
+
+		t.Logf("Frame #%d: %dx%d captured at %s",
+			frame.SequenceNum,
+			frame.Bounds.Dx(), frame.Bounds.Dy(),
+			frame.CapturedAt.Format(time.RFC3339Nano))
+
+		// Stop after a few frames
+		if frameCount >= 5 {
+			cap.Stop()
+			break
+		}
+	}
+
+	if frameCount == 0 {
+		t.Error("received no frames")
+	}
+
+	t.Logf("Captured %d frames total", frameCount)
+}
+
+func TestDoubleStart(t *testing.T) {
+	if !hasDisplay() {
+		t.Skip("DISPLAY not set — skipping X11 capture test")
+	}
+
+	config := DefaultConfig()
+	cap, err := NewCapturer(config)
+	if err != nil {
+		t.Fatalf("NewCapturer failed: %v", err)
+	}
+	defer cap.(*x11Capturer).Close()
+
+	ctx := context.Background()
+	if err := cap.Start(ctx); err != nil {
+		t.Fatalf("first Start() failed: %v", err)
+	}
+
+	err = cap.Start(ctx)
+	if err != ErrAlreadyStarted {
+		t.Errorf("second Start() expected ErrAlreadyStarted, got: %v", err)
+	}
+
+	cap.Stop()
+}
+
+func TestSetDisplayInvalid(t *testing.T) {
+	if !hasDisplay() {
+		t.Skip("DISPLAY not set — skipping X11 capture test")
+	}
+
+	config := DefaultConfig()
+	cap, err := NewCapturer(config)
+	if err != nil {
+		t.Fatalf("NewCapturer failed: %v", err)
+	}
+	defer cap.(*x11Capturer).Close()
+
+	err = cap.SetDisplay(99)
+	if err != ErrDisplayNotFound {
+		t.Errorf("SetDisplay(99) expected ErrDisplayNotFound, got: %v", err)
+	}
+}
+
+func BenchmarkCaptureFrame(b *testing.B) {
+	if !hasDisplay() {
+		b.Skip("DISPLAY not set — skipping X11 capture benchmark")
+	}
+
+	config := DefaultConfig()
+	config.TargetFPS = 0 // Maximum rate
+	config.FrameBufferSize = 1
+
+	cap, err := NewCapturer(config)
+	if err != nil {
+		b.Fatalf("NewCapturer failed: %v", err)
+	}
+	defer cap.(*x11Capturer).Close()
+
+	x11cap := cap.(*x11Capturer)
+
+	w := int(x11cap.width)
+	h := int(x11cap.height)
+	buf := make([]byte, w*h*4)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		var err error
+		if x11cap.shmAvailable {
+			err = x11cap.captureSHM(buf, w, h)
+		} else {
+			err = x11cap.captureFallback(buf, w, h)
+		}
+		if err != nil {
+			b.Fatalf("capture failed: %v", err)
+		}
+	}
+
+	b.Logf("Resolution: %dx%d, SHM: %v", w, h, x11cap.shmAvailable)
+}
+
+func BenchmarkBGRAtoRGBA(b *testing.B) {
+	// Benchmark the color conversion for a 1080p frame
+	w, h := 1920, 1080
+	src := make([]byte, w*h*4)
+	dst := make([]byte, w*h*4)
+
+	// Fill with test pattern
+	for i := range src {
+		src[i] = byte(i % 256)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.SetBytes(int64(w * h * 4))
+
+	for i := 0; i < b.N; i++ {
+		bgraToRGBA(src, dst, w, h)
+	}
+}

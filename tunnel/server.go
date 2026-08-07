@@ -27,11 +27,10 @@ var upgrader = websocket.Upgrader{
 }
 
 type TunnelServer struct {
-	store          storage.Store
-	sessions       map[string]*yamux.Session
-	sessionsMu     sync.RWMutex
-	chirpMon       *heartbeat.ServerMonitor
-	onChirp        func(agentID string)
+	store      storage.Store
+	sessions   map[string]*yamux.Session
+	sessionsMu sync.RWMutex
+	chirpMon   *heartbeat.ServerMonitor
 }
 
 func NewTunnelServer(store storage.Store) *TunnelServer {
@@ -175,7 +174,7 @@ func (ts *TunnelServer) HandleConnect(w http.ResponseWriter, r *http.Request) {
 	conn := &wsConnAdapter{Conn: ws}
 	session, err := yamux.Server(conn, DefaultYamuxConfig())
 	if err != nil {
-		ws.Close()
+		_ = ws.Close()
 		return
 	}
 
@@ -194,7 +193,7 @@ func (ts *TunnelServer) handleAgentControlStream(ctx context.Context, agentID st
 		ts.sessionsMu.Lock()
 		delete(ts.sessions, agentID)
 		ts.sessionsMu.Unlock()
-		session.Close()
+		_ = session.Close()
 		_ = ts.store.UpdateAgentStatus(context.Background(), agentID, storage.StatusOffline)
 	}()
 
@@ -204,8 +203,8 @@ func (ts *TunnelServer) handleAgentControlStream(ctx context.Context, agentID st
 			return
 		}
 
-		go func(s *yamux.Stream) {
-			defer s.Close()
+		go func(s *yamux.Stream) { // #nosec G118 -- stream handling goroutine
+			defer func() { _ = s.Close() }()
 			var msg heartbeat.ChirpMessage
 			if err := json.NewDecoder(s).Decode(&msg); err == nil {
 				now := time.Now().UTC()
@@ -233,7 +232,7 @@ func (ts *TunnelServer) OpenReverseStream(agentID string, targetPort int) (net.C
 	// Write target port header
 	portMsg := fmt.Sprintf("%d\n", targetPort)
 	if _, err := stream.Write([]byte(portMsg)); err != nil {
-		stream.Close()
+		_ = stream.Close()
 		return nil, fmt.Errorf("failed to write target port to reverse stream: %w", err)
 	}
 
