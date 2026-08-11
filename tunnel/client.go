@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -60,6 +61,16 @@ func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath st
 		fmt.Fprintln(os.Stderr, "[WARNING] TLS certificate verification is DISABLED (--insecure-skip-verify). Connection is insecure!")
 	}
 
+	parsedURL, err := url.ParseRequestURI(serverAddr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid server address: %w", err)
+	}
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		return nil, fmt.Errorf("invalid server address scheme: must be http or https")
+	}
+
+	pairURL := parsedURL.JoinPath("tunnel", "pair").String()
+
 	payload := map[string]string{
 		"pairing_code": pairingCode,
 		"hostname":     hostname,
@@ -69,14 +80,14 @@ func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath st
 	}
 
 	bodyBytes, _ := json.Marshal(payload)
-	url := fmt.Sprintf("%s/tunnel/pair", strings.TrimRight(serverAddr, "/"))
 
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecureSkipVerify}, // #nosec G402 -- CLI opt-in flag for dev/test
 	}
 	httpClient := &http.Client{Transport: tr, Timeout: 10 * time.Second}
 
-	resp, err := httpClient.Post(url, "application/json", bytes.NewBuffer(bodyBytes))
+	// #nosec G107 -- serverAddr is provided by the agent administrator during enrollment, not an untrusted user
+	resp, err := httpClient.Post(pairURL, "application/json", bytes.NewBuffer(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send pairing request: %w", err)
 	}
