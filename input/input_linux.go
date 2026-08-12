@@ -200,9 +200,48 @@ func mapMouseButton(button MouseButton) byte {
 	}
 }
 
-// mapKeycode maps key identifiers to X11 keycodes.
+var domCodeToX11Keycode = map[string]byte{
+	// Letter keys (QWERTY / ABNT2 physical layout evdev keycodes + 8)
+	"KeyA": 38, "KeyB": 56, "KeyC": 54, "KeyD": 40, "KeyE": 26, "KeyF": 41,
+	"KeyG": 42, "KeyH": 43, "KeyI": 31, "KeyJ": 44, "KeyK": 45, "KeyL": 46,
+	"KeyM": 58, "KeyN": 57, "KeyO": 32, "KeyP": 33, "KeyQ": 24, "KeyR": 27,
+	"KeyS": 39, "KeyT": 28, "KeyU": 30, "KeyV": 55, "KeyW": 25, "KeyX": 53,
+	"KeyY": 29, "KeyZ": 52,
+
+	// Number row keys
+	"Digit1": 10, "Digit2": 11, "Digit3": 12, "Digit4": 13, "Digit5": 14,
+	"Digit6": 15, "Digit7": 16, "Digit8": 17, "Digit9": 18, "Digit0": 19,
+
+	// Action & Control keys
+	"Enter": 36, "NumpadEnter": 104, "Escape": 9, "Backspace": 22, "Tab": 23, "Space": 65,
+	"Minus": 20, "Equal": 21, "BracketLeft": 34, "BracketRight": 35, "Backslash": 51,
+	"Semicolon": 47, "Quote": 48, "Backquote": 49, "Comma": 59, "Period": 60, "Slash": 61,
+	"CapsLock": 66, "Capslock": 66,
+
+	// Modifiers
+	"ShiftLeft": 50, "ShiftRight": 62,
+	"ControlLeft": 37, "ControlRight": 105,
+	"AltLeft": 64, "AltRight": 108,
+	"MetaLeft": 133, "MetaRight": 134,
+
+	// Navigation & Arrow keys
+	"ArrowUp": 111, "ArrowDown": 116, "ArrowLeft": 113, "ArrowRight": 114,
+	"Home": 110, "End": 115, "PageUp": 112, "PageDown": 117,
+	"Insert": 118, "Delete": 119,
+
+	// Function keys
+	"F1": 67, "F2": 68, "F3": 69, "F4": 70, "F5": 71, "F6": 72,
+	"F7": 73, "F8": 74, "F9": 75, "F10": 76, "F11": 95, "F12": 96,
+
+	// International / ABNT2 keys
+	"IntlRo": 97, "IntlBackslash": 94, "SemicolonABNT2": 47,
+}
+
+// mapKeycode maps key identifiers and DOM code strings to X11 keycodes.
 func mapKeycode(key, code string) byte {
-	// Standard X11 keycodes offset (8 + keysym)
+	if kc, ok := domCodeToX11Keycode[code]; ok && kc > 0 {
+		return kc
+	}
 	switch key {
 	case "Enter", "Return":
 		return 36
@@ -223,7 +262,6 @@ func mapKeycode(key, code string) byte {
 	case "Meta", "Super", "MetaLeft":
 		return 133
 	default:
-		// Fallback for alphanumeric keys
 		if len(key) == 1 {
 			ch := key[0]
 			if ch >= 'a' && ch <= 'z' {
