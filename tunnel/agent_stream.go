@@ -13,6 +13,7 @@ import (
 	"image/jpeg"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -68,6 +69,13 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 	var currentPeer *webrtc.PeerSession
 	var capturer screen.Capturer
 	var activeCapCancel context.CancelFunc
+	var writeMu sync.Mutex
+
+	safeWrite := func(data []byte) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		return ws.WriteMessage(websocket.TextMessage, data)
+	}
 
 	defer func() {
 		if activeCapCancel != nil {
@@ -125,7 +133,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 					"candidate":  candJSON,
 				}
 				data, _ := json.Marshal(candMsg)
-				_ = ws.WriteMessage(websocket.TextMessage, data)
+				_ = safeWrite(data)
 			})
 
 			_ = peer.CreateVideoTrack("screen", "video")
@@ -141,7 +149,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				"sdp":        answerSDP,
 			}
 			ansBytes, _ := json.Marshal(ansMsg)
-			_ = ws.WriteMessage(websocket.TextMessage, ansBytes)
+			_ = safeWrite(ansBytes)
 
 			// Start screen capturer and feed samples to WebRTC & WebSocket
 			cap, err := screen.NewCapturer(screen.DefaultConfig())
@@ -171,7 +179,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 										"data":       b64,
 									}
 									data, _ := json.Marshal(frameMsg)
-									_ = ws.WriteMessage(websocket.TextMessage, data)
+									_ = safeWrite(data)
 
 									if frameCount%30 == 1 {
 										fmt.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
