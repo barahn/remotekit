@@ -202,6 +202,13 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				r.handleInputPayload(payload)
 			}
 
+		case "resize":
+			w, _ := signal["width"].(float64)
+			h, _ := signal["height"].(float64)
+			if w > 0 && h > 0 && r.injector != nil {
+				r.injector.SetScreenBounds(image.Rect(0, 0, int(w), int(h)))
+			}
+
 		case "close":
 			if currentPeer != nil {
 				_ = currentPeer.Close()
