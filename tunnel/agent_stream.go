@@ -123,13 +123,13 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				activeCapCancel()
 				activeCapCancel = nil
 			}
-			if currentPeer != nil {
-				_ = currentPeer.Close()
-				currentPeer = nil
-			}
 			if capturer != nil {
 				capturer.Stop()
 				capturer = nil
+			}
+			if currentPeer != nil {
+				_ = currentPeer.Close()
+				currentPeer = nil
 			}
 
 			peer, err := webrtc.NewPeerSession(webrtc.DefaultPeerConfig())
