@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -148,6 +149,21 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 							}
 							vp8Sample := BuildVP8Sample(frame)
 							_ = currentPeer.WriteVideoSample(vp8Sample, 33*time.Millisecond)
+
+							// Send direct JPEG frame fallback over WebSocket for Podman/Docker networks
+							if frame != nil && frame.Image != nil {
+								var buf bytes.Buffer
+								if err := jpeg.Encode(&buf, frame.Image, &jpeg.Options{Quality: 60}); err == nil {
+									b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
+									frameMsg := map[string]interface{}{
+										"type":       "frame",
+										"session_id": r.creds.AgentID,
+										"data":       b64,
+									}
+									data, _ := json.Marshal(frameMsg)
+									_ = ws.WriteMessage(websocket.TextMessage, data)
+								}
+							}
 						}
 					}()
 				}
