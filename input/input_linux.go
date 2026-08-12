@@ -95,8 +95,10 @@ func (inj *linuxInjector) MouseDown(button MouseButton, x, y float64) error {
 	inj.mu.Lock()
 	defer inj.mu.Unlock()
 
+	px := int16(x * float64(inj.bounds.Dx()))
+	py := int16(y * float64(inj.bounds.Dy()))
 	xButton := mapMouseButton(button)
-	return xtest.FakeInputChecked(inj.conn, xButtonPress, xButton, 0, inj.root, 0, 0, 0).Check()
+	return xtest.FakeInputChecked(inj.conn, xButtonPress, xButton, 0, inj.root, px, py, 0).Check()
 }
 
 func (inj *linuxInjector) MouseUp(button MouseButton, x, y float64) error {
@@ -107,8 +109,10 @@ func (inj *linuxInjector) MouseUp(button MouseButton, x, y float64) error {
 	inj.mu.Lock()
 	defer inj.mu.Unlock()
 
+	px := int16(x * float64(inj.bounds.Dx()))
+	py := int16(y * float64(inj.bounds.Dy()))
 	xButton := mapMouseButton(button)
-	return xtest.FakeInputChecked(inj.conn, xButtonRelease, xButton, 0, inj.root, 0, 0, 0).Check()
+	return xtest.FakeInputChecked(inj.conn, xButtonRelease, xButton, 0, inj.root, px, py, 0).Check()
 }
 
 func (inj *linuxInjector) Scroll(deltaX, deltaY float64, x, y float64) error {
@@ -118,6 +122,9 @@ func (inj *linuxInjector) Scroll(deltaX, deltaY float64, x, y float64) error {
 
 	inj.mu.Lock()
 	defer inj.mu.Unlock()
+
+	px := int16(x * float64(inj.bounds.Dx()))
+	py := int16(y * float64(inj.bounds.Dy()))
 
 	// X11 mouse wheel buttons: 4 (scroll up), 5 (scroll down), 6 (scroll left), 7 (scroll right)
 	var btn byte
@@ -133,8 +140,8 @@ func (inj *linuxInjector) Scroll(deltaX, deltaY float64, x, y float64) error {
 		return nil
 	}
 
-	_ = xtest.FakeInputChecked(inj.conn, xButtonPress, btn, 0, inj.root, 0, 0, 0).Check()
-	return xtest.FakeInputChecked(inj.conn, xButtonRelease, btn, 0, inj.root, 0, 0, 0).Check()
+	_ = xtest.FakeInputChecked(inj.conn, xButtonPress, btn, 0, inj.root, px, py, 0).Check()
+	return xtest.FakeInputChecked(inj.conn, xButtonRelease, btn, 0, inj.root, px, py, 0).Check()
 }
 
 func (inj *linuxInjector) KeyDown(event KeyboardEvent) error {
