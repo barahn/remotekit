@@ -43,7 +43,7 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 	signalURL := fmt.Sprintf("%s/api/v1/sessions/%s/signal", strings.TrimRight(wsURL, "/"), r.creds.AgentID)
 
 	dialer := websocket.Dialer{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: r.insecureSkipVerify},
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: r.insecureSkipVerify}, // #nosec G402 -- CLI opt-in flag for dev/test
 	}
 
 	for {
@@ -304,9 +304,9 @@ func BuildVP8Sample(frame *screen.Frame) []byte {
 
 	if frame != nil && frame.Image != nil {
 		bounds := frame.Image.Bounds()
-		if bounds.Dx() > 0 && bounds.Dy() > 0 {
-			width = uint16(bounds.Dx())
-			height = uint16(bounds.Dy())
+		if bounds.Dx() > 0 && bounds.Dx() <= 65535 && bounds.Dy() > 0 && bounds.Dy() <= 65535 {
+			width = uint16(bounds.Dx())  // #nosec G115 -- bounds checked
+			height = uint16(bounds.Dy()) // #nosec G115 -- bounds checked
 		}
 	}
 
