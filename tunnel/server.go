@@ -41,6 +41,16 @@ func NewTunnelServer(store storage.Store) *TunnelServer {
 	ts.chirpMon = heartbeat.NewServerMonitor(3, func(ctx context.Context, agentID string) error {
 		return store.UpdateAgentStatus(ctx, agentID, storage.StatusOffline)
 	})
+
+	// Background ticker to automatically mark stale agents offline every 10 seconds
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		for range ticker.C {
+			cutoff := time.Now().UTC().Add(-30 * time.Second)
+			_ = store.CleanStaleAgentStatuses(context.Background(), cutoff)
+		}
+	}()
+
 	return ts
 }
 
