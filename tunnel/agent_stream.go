@@ -66,6 +66,7 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 }
 
 func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.Conn) {
+	var stateMu sync.RWMutex
 	var currentPeer *webrtc.PeerSession
 	var capturer screen.Capturer
 	var activeCapCancel context.CancelFunc
@@ -78,15 +79,23 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 	}
 
 	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("[AgentStream] Recovered panic in signaling loop: %v\n", r)
+		}
+		stateMu.Lock()
 		if activeCapCancel != nil {
 			activeCapCancel()
+			activeCapCancel = nil
 		}
 		if currentPeer != nil {
 			_ = currentPeer.Close()
+			currentPeer = nil
 		}
 		if capturer != nil {
 			capturer.Stop()
+			capturer = nil
 		}
+		stateMu.Unlock()
 	}()
 
 	for {
@@ -109,22 +118,27 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				continue
 			}
 
+			stateMu.Lock()
 			if activeCapCancel != nil {
 				activeCapCancel()
 				activeCapCancel = nil
 			}
 			if currentPeer != nil {
 				_ = currentPeer.Close()
+				currentPeer = nil
 			}
 			if capturer != nil {
 				capturer.Stop()
+				capturer = nil
 			}
 
 			peer, err := webrtc.NewPeerSession(webrtc.DefaultPeerConfig())
 			if err != nil {
+				stateMu.Unlock()
 				continue
 			}
 			currentPeer = peer
+			stateMu.Unlock()
 
 			peer.OnICECandidate(func(candJSON string) {
 				candMsg := map[string]interface{}{
@@ -154,19 +168,32 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			// Start screen capturer and feed samples to WebRTC & WebSocket
 			cap, err := screen.NewCapturer(screen.DefaultConfig())
 			if err == nil {
+				stateMu.Lock()
 				capturer = cap
 				capCtx, cancelCap := context.WithCancel(ctx)
 				activeCapCancel = cancelCap
+				stateMu.Unlock()
+
 				if err := cap.Start(capCtx); err == nil {
 					go func() {
+						defer func() {
+							if r := recover(); r != nil {
+								fmt.Printf("[AgentStream] Recovered panic in frame sender: %v\n", r)
+							}
+						}()
 						frameCount := 0
 						for frame := range cap.Frames() {
 							frameCount++
-							if currentPeer == nil || currentPeer.ConnectionState() == 4 /* Closed */ {
+
+							stateMu.RLock()
+							peer := currentPeer
+							stateMu.RUnlock()
+
+							if peer == nil || peer.ConnectionState() == 4 /* Closed */ {
 								return
 							}
 							vp8Sample := BuildVP8Sample(frame)
-							_ = currentPeer.WriteVideoSample(vp8Sample, 33*time.Millisecond)
+							_ = peer.WriteVideoSample(vp8Sample, 33*time.Millisecond)
 
 							// Send direct JPEG frame fallback over WebSocket for Podman/Docker networks
 							if frame != nil && frame.Image != nil {
@@ -193,8 +220,11 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 
 		case "candidate":
 			cand, _ := signal["candidate"].(string)
-			if cand != "" && currentPeer != nil {
-				_ = currentPeer.AddICECandidate(cand)
+			stateMu.RLock()
+			peer := currentPeer
+			stateMu.RUnlock()
+			if cand != "" && peer != nil {
+				_ = peer.AddICECandidate(cand)
 			}
 
 		case "input":
@@ -210,6 +240,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			}
 
 		case "close":
+			stateMu.Lock()
 			if currentPeer != nil {
 				_ = currentPeer.Close()
 				currentPeer = nil
@@ -218,6 +249,11 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				capturer.Stop()
 				capturer = nil
 			}
+			if activeCapCancel != nil {
+				activeCapCancel()
+				activeCapCancel = nil
+			}
+			stateMu.Unlock()
 		}
 	}
 }
