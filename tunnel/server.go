@@ -224,6 +224,13 @@ func (ts *TunnelServer) handleAgentControlStream(ctx context.Context, agentID st
 	}
 }
 
+func (ts *TunnelServer) IsSessionConnected(agentID string) bool {
+	ts.sessionsMu.RLock()
+	defer ts.sessionsMu.RUnlock()
+	sess, ok := ts.sessions[agentID]
+	return ok && sess != nil && !sess.IsClosed()
+}
+
 // OpenReverseStream opens a reverse stream over Yamux session to an agent's target port (e.g. 22).
 func (ts *TunnelServer) OpenReverseStream(agentID string, targetPort int) (net.Conn, error) {
 	ts.sessionsMu.RLock()
