@@ -33,7 +33,7 @@ func DefaultTURNConfig() TURNConfig {
 		Port:     3478,
 		Realm:    "barahn",
 		Username: "barahn",
-		Password: "turnpassword",
+		Password: "turnpassword", // #nosec G101 -- default fallback for local dev
 	}
 }
 
