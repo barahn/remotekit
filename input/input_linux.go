@@ -237,6 +237,18 @@ var domCodeToX11Keycode = map[string]byte{
 	"IntlRo": 97, "IntlBackslash": 94, "SemicolonABNT2": 47,
 }
 
+var charToX11Keycode = map[rune]byte{
+	'a': 38, 'b': 56, 'c': 54, 'd': 40, 'e': 26, 'f': 41, 'g': 42, 'h': 43,
+	'i': 31, 'j': 44, 'k': 45, 'l': 46, 'm': 58, 'n': 57, 'o': 32, 'p': 33,
+	'q': 24, 'r': 27, 's': 39, 't': 28, 'u': 30, 'v': 55, 'w': 25, 'x': 53,
+	'y': 29, 'z': 52,
+	'A': 38, 'B': 56, 'C': 54, 'D': 40, 'E': 26, 'F': 41, 'G': 42, 'H': 43,
+	'I': 31, 'J': 44, 'K': 45, 'L': 46, 'M': 58, 'N': 57, 'O': 32, 'P': 33,
+	'Q': 24, 'R': 27, 'S': 39, 'T': 28, 'U': 30, 'V': 55, 'W': 25, 'X': 53,
+	'Y': 29, 'Z': 52,
+	'1': 10, '2': 11, '3': 12, '4': 13, '5': 14, '6': 15, '7': 16, '8': 17, '9': 18, '0': 19,
+}
+
 // mapKeycode maps key identifiers and DOM code strings to X11 keycodes.
 func mapKeycode(key, code string) byte {
 	if kc, ok := domCodeToX11Keycode[code]; ok && kc > 0 {
@@ -263,18 +275,9 @@ func mapKeycode(key, code string) byte {
 		return 133
 	default:
 		if len(key) == 1 {
-			ch := key[0]
-			if ch >= 'a' && ch <= 'z' {
-				return byte(38 + (ch - 'a'))
-			}
-			if ch >= 'A' && ch <= 'Z' {
-				return byte(38 + (ch - 'A'))
-			}
-			if ch >= '1' && ch <= '9' {
-				return byte(10 + (ch - '1'))
-			}
-			if ch == '0' {
-				return 19
+			r := rune(key[0])
+			if kc, ok := charToX11Keycode[r]; ok {
+				return kc
 			}
 		}
 		return 0
