@@ -151,7 +151,9 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				activeCapCancel = cancelCap
 				if err := cap.Start(capCtx); err == nil {
 					go func() {
+						frameCount := 0
 						for frame := range cap.Frames() {
+							frameCount++
 							if currentPeer == nil || currentPeer.ConnectionState() == 4 /* Closed */ {
 								return
 							}
@@ -170,6 +172,10 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 									}
 									data, _ := json.Marshal(frameMsg)
 									_ = ws.WriteMessage(websocket.TextMessage, data)
+
+									if frameCount%30 == 1 {
+										fmt.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
+									}
 								}
 							}
 						}
