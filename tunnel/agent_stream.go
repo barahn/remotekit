@@ -67,8 +67,12 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.Conn) {
 	var currentPeer *webrtc.PeerSession
 	var capturer screen.Capturer
+	var activeCapCancel context.CancelFunc
 
 	defer func() {
+		if activeCapCancel != nil {
+			activeCapCancel()
+		}
 		if currentPeer != nil {
 			_ = currentPeer.Close()
 		}
@@ -97,6 +101,10 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				continue
 			}
 
+			if activeCapCancel != nil {
+				activeCapCancel()
+				activeCapCancel = nil
+			}
 			if currentPeer != nil {
 				_ = currentPeer.Close()
 			}
@@ -135,12 +143,12 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			ansBytes, _ := json.Marshal(ansMsg)
 			_ = ws.WriteMessage(websocket.TextMessage, ansBytes)
 
-			// Start screen capturer and feed samples to WebRTC
+			// Start screen capturer and feed samples to WebRTC & WebSocket
 			cap, err := screen.NewCapturer(screen.DefaultConfig())
 			if err == nil {
 				capturer = cap
 				capCtx, cancelCap := context.WithCancel(ctx)
-				defer cancelCap()
+				activeCapCancel = cancelCap
 				if err := cap.Start(capCtx); err == nil {
 					go func() {
 						for frame := range cap.Frames() {
