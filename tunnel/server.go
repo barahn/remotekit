@@ -41,6 +41,16 @@ func NewTunnelServer(store storage.Store) *TunnelServer {
 	ts.chirpMon = heartbeat.NewServerMonitor(3, func(ctx context.Context, agentID string) error {
 		return store.UpdateAgentStatus(ctx, agentID, storage.StatusOffline)
 	})
+
+	// Background ticker to automatically mark stale agents offline every 10 seconds
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		for range ticker.C {
+			cutoff := time.Now().UTC().Add(-30 * time.Second)
+			_ = store.CleanStaleAgentStatuses(context.Background(), cutoff)
+		}
+	}()
+
 	return ts
 }
 
@@ -212,6 +222,13 @@ func (ts *TunnelServer) handleAgentControlStream(ctx context.Context, agentID st
 			}
 		}(stream)
 	}
+}
+
+func (ts *TunnelServer) IsSessionConnected(agentID string) bool {
+	ts.sessionsMu.RLock()
+	defer ts.sessionsMu.RUnlock()
+	sess, ok := ts.sessions[agentID]
+	return ok && sess != nil && !sess.IsClosed()
 }
 
 // OpenReverseStream opens a reverse stream over Yamux session to an agent's target port (e.g. 22).

@@ -148,6 +148,9 @@ func (ps *PeerSession) CreateVideoTrack(streamID, trackID string) error {
 
 // WriteVideoSample pushes an encoded frame sample (e.g., VP8 frame) to the video track.
 func (ps *PeerSession) WriteVideoSample(sampleData []byte, duration time.Duration) error {
+	if ps == nil {
+		return errors.New("webrtc: peer session is nil")
+	}
 	ps.mu.RLock()
 	track := ps.videoTrack
 	closed := ps.closed

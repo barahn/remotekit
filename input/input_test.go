@@ -71,7 +71,7 @@ func TestMapKeycode(t *testing.T) {
 		{"Backspace", "Backspace", 22},
 		{"Tab", "Tab", 23},
 		{"a", "KeyA", 38},
-		{"b", "KeyB", 39},
+		{"b", "KeyB", 56},
 		{"1", "Digit1", 10},
 		{"0", "Digit0", 19},
 	}

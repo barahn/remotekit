@@ -68,6 +68,9 @@ func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath st
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		return nil, fmt.Errorf("invalid server address scheme: must be http or https")
 	}
+	if parsedURL.Host == "" {
+		return nil, fmt.Errorf("invalid server address host: host cannot be empty")
+	}
 
 	pairURL := parsedURL.JoinPath("tunnel", "pair").String()
 
@@ -87,6 +90,7 @@ func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath st
 	httpClient := &http.Client{Transport: tr, Timeout: 10 * time.Second}
 
 	// #nosec G107 -- serverAddr is provided by the agent administrator during enrollment, not an untrusted user
+	// nosemgrep: go.lang.security.audit.ssrf.ssrf
 	resp, err := httpClient.Post(pairURL, "application/json", bytes.NewBuffer(bodyBytes))
 	if err != nil {
 		return nil, fmt.Errorf("failed to send pairing request: %w", err)
@@ -133,7 +137,7 @@ func LoadCredentials(path string) (*AgentCredentials, error) {
 		return nil, fmt.Errorf("invalid credential path: path traversal detected")
 	}
 
-	data, err := os.ReadFile(cleanPath)
+	data, err := os.ReadFile(cleanPath) // #nosec G304 -- cleanPath is sanitized via filepath.Clean and checked for traversal
 	if err != nil {
 		return nil, err
 	}
