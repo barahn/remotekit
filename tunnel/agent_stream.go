@@ -17,8 +17,10 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/mendsec/barahn/pkg/clipboard"
 	"github.com/mendsec/barahn/pkg/input"
 	"github.com/mendsec/barahn/pkg/screen"
+	"github.com/mendsec/barahn/pkg/transfer"
 	"github.com/mendsec/barahn/pkg/webrtc"
 )
 
@@ -46,13 +48,21 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: r.insecureSkipVerify}, // #nosec G402 -- CLI opt-in flag for dev/test
 	}
 
+	headers := http.Header{}
+	if r.creds.AgentToken != "" {
+		headers.Set("X-Barahn-Agent-Token", r.creds.AgentToken)
+	} else {
+		headers.Set("X-Barahn-Agent-Token", r.creds.AgentID)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			ws, _, err := dialer.DialContext(ctx, signalURL, http.Header{})
+			ws, _, err := dialer.DialContext(ctx, signalURL, headers)
 			if err != nil {
+				fmt.Printf("[AgentStream Error] Failed to connect to signaling WebSocket (%s): %v\n", signalURL, err)
 				time.Sleep(2 * time.Second)
 				continue
 			}
@@ -71,6 +81,9 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 	var capturer screen.Capturer
 	var activeCapCancel context.CancelFunc
 	var writeMu sync.Mutex
+
+	clipMgr := clipboard.NewManager()
+	transferMgr, _ := transfer.NewManager("")
 
 	safeWrite := func(data []byte) error {
 		writeMu.Lock()
@@ -237,6 +250,67 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			h, _ := signal["height"].(float64)
 			if w > 0 && h > 0 && r.injector != nil {
 				r.injector.SetScreenBounds(image.Rect(0, 0, int(w), int(h)))
+			}
+
+		case "chat":
+			text, _ := signal["text"].(string)
+			sender, _ := signal["sender"].(string)
+			fmt.Printf("[AgentStream] Chat message from %s: %s\n", sender, text)
+
+		case "clipboard":
+			text, _ := signal["text"].(string)
+			if text != "" {
+				_ = clipMgr.SetText(ctx, text)
+				fmt.Printf("[AgentStream] Received clipboard sync (%d bytes)\n", len(text))
+			}
+
+		case "file_start":
+			id, _ := signal["transfer_id"].(string)
+			name, _ := signal["name"].(string)
+			size, _ := signal["size"].(float64)
+			sha, _ := signal["sha256"].(string)
+			if id != "" && name != "" {
+				transferMgr.StartSession(id, name, int64(size), sha)
+				fmt.Printf("[AgentStream] Started file transfer session %s (%s, %.0f bytes)\n", id, name, size)
+			}
+
+		case "file_chunk":
+			id, _ := signal["transfer_id"].(string)
+			idx, _ := signal["index"].(float64)
+			b64Data, _ := signal["data"].(string)
+			if id != "" {
+				prog, done, err := transferMgr.AddChunkBase64(id, int(idx), b64Data)
+				if err != nil {
+					fmt.Printf("[AgentStream] File chunk error: %v\n", err)
+				}
+				progMsg, _ := json.Marshal(map[string]interface{}{
+					"type":        "file_progress",
+					"transfer_id": id,
+					"progress":    prog,
+					"done":        done,
+				})
+				_ = safeWrite(progMsg)
+			}
+
+		case "file_complete":
+			id, _ := signal["transfer_id"].(string)
+			if id != "" {
+				destPath, sha, err := transferMgr.AssembleFile(id)
+				errStr := ""
+				if err != nil {
+					errStr = err.Error()
+					fmt.Printf("[AgentStream] File assembly error for %s: %v\n", id, err)
+				} else {
+					fmt.Printf("[AgentStream] File transfer %s completed! Saved to: %s (SHA: %s)\n", id, destPath, sha)
+				}
+				resMsg, _ := json.Marshal(map[string]interface{}{
+					"type":        "file_saved",
+					"transfer_id": id,
+					"path":        destPath,
+					"sha256":      sha,
+					"error":       errStr,
+				})
+				_ = safeWrite(resMsg)
 			}
 
 		case "close":
