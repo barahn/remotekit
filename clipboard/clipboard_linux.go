@@ -21,7 +21,7 @@ func NewManager() Manager {
 func (lc *LinuxClipboard) GetText(ctx context.Context) (string, error) {
 	// 1. Try xclip (X11)
 	if path, err := exec.LookPath("xclip"); err == nil {
-		cmd := exec.CommandContext(ctx, path, "-selection", "clipboard", "-o")
+		cmd := exec.CommandContext(ctx, path, "-selection", "clipboard", "-o") // #nosec G204 -- path resolved via exec.LookPath
 		var out bytes.Buffer
 		cmd.Stdout = &out
 		if err := cmd.Run(); err == nil {
@@ -31,7 +31,7 @@ func (lc *LinuxClipboard) GetText(ctx context.Context) (string, error) {
 
 	// 2. Try xsel (X11)
 	if path, err := exec.LookPath("xsel"); err == nil {
-		cmd := exec.CommandContext(ctx, path, "--clipboard", "--output")
+		cmd := exec.CommandContext(ctx, path, "--clipboard", "--output") // #nosec G204 -- path resolved via exec.LookPath
 		var out bytes.Buffer
 		cmd.Stdout = &out
 		if err := cmd.Run(); err == nil {
@@ -41,7 +41,7 @@ func (lc *LinuxClipboard) GetText(ctx context.Context) (string, error) {
 
 	// 3. Try wl-paste (Wayland)
 	if path, err := exec.LookPath("wl-paste"); err == nil {
-		cmd := exec.CommandContext(ctx, path, "--no-newline")
+		cmd := exec.CommandContext(ctx, path, "--no-newline") // #nosec G204 -- path resolved via exec.LookPath
 		var out bytes.Buffer
 		cmd.Stdout = &out
 		if err := cmd.Run(); err == nil {
@@ -64,7 +64,7 @@ func (lc *LinuxClipboard) SetText(ctx context.Context, text string) error {
 
 	// 1. Try xclip (X11)
 	if path, err := exec.LookPath("xclip"); err == nil {
-		cmd := exec.CommandContext(ctx, path, "-selection", "clipboard")
+		cmd := exec.CommandContext(ctx, path, "-selection", "clipboard") // #nosec G204 -- path resolved via exec.LookPath
 		cmd.Stdin = strings.NewReader(text)
 		if err := cmd.Run(); err == nil {
 			success = true
@@ -73,7 +73,7 @@ func (lc *LinuxClipboard) SetText(ctx context.Context, text string) error {
 
 	// 2. Try xsel (X11)
 	if path, err := exec.LookPath("xsel"); err == nil {
-		cmd := exec.CommandContext(ctx, path, "--clipboard", "--input")
+		cmd := exec.CommandContext(ctx, path, "--clipboard", "--input") // #nosec G204 -- path resolved via exec.LookPath
 		cmd.Stdin = strings.NewReader(text)
 		if err := cmd.Run(); err == nil {
 			success = true
@@ -82,7 +82,7 @@ func (lc *LinuxClipboard) SetText(ctx context.Context, text string) error {
 
 	// 3. Try wl-copy (Wayland)
 	if path, err := exec.LookPath("wl-copy"); err == nil {
-		cmd := exec.CommandContext(ctx, path, text)
+		cmd := exec.CommandContext(ctx, path, text) // #nosec G204 -- path resolved via exec.LookPath
 		if err := cmd.Run(); err == nil {
 			success = true
 		}
