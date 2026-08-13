@@ -46,13 +46,21 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: r.insecureSkipVerify}, // #nosec G402 -- CLI opt-in flag for dev/test
 	}
 
+	headers := http.Header{}
+	if r.creds.AgentToken != "" {
+		headers.Set("X-Barahn-Agent-Token", r.creds.AgentToken)
+	} else {
+		headers.Set("X-Barahn-Agent-Token", r.creds.AgentID)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			ws, _, err := dialer.DialContext(ctx, signalURL, http.Header{})
+			ws, _, err := dialer.DialContext(ctx, signalURL, headers)
 			if err != nil {
+				fmt.Printf("[AgentStream Error] Failed to connect to signaling WebSocket (%s): %v\n", signalURL, err)
 				time.Sleep(2 * time.Second)
 				continue
 			}
