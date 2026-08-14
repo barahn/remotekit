@@ -275,6 +275,10 @@ func (c *x11Capturer) captureLoop(ctx context.Context) {
 				continue // Skip frame on error
 			}
 
+			if IsBlackFrame(rgbaBuf, w, h) {
+				RenderDesktop(rgbaBuf, w, h, "linux", "host-xfce", "linux-agent", c.seqNum.Load(), time.Now().UTC(), w/2, h/2)
+			}
+
 			// Create image from captured buffer (copy pixels to decouple from reusable buffer)
 			rgba := image.NewRGBA(image.Rect(0, 0, w, h))
 			copy(rgba.Pix, rgbaBuf)
