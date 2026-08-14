@@ -240,10 +240,6 @@ func (c *windowsCapturer) captureLoop(ctx context.Context) {
 
 			bgraToRGBA(bgraBuf, rgbaBuf, w, h)
 
-			if IsBlackFrame(rgbaBuf, w, h) {
-				RenderDesktop(rgbaBuf, w, h, "windows", "win11-endpoint", "win-agent", c.seqNum.Load(), time.Now().UTC(), w/2, h/2)
-			}
-
 			rgba := image.NewRGBA(image.Rect(0, 0, w, h))
 			copy(rgba.Pix, rgbaBuf)
 

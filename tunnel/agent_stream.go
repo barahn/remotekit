@@ -375,17 +375,11 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 
 func (r *AgentStreamRunner) handleInputPayload(payload map[string]interface{}) {
 	evtType, _ := payload["type"].(string)
-	state := screen.GetGlobalDesktopState()
-	hostname, _ := os.Hostname()
-	if hostname == "" {
-		hostname = "endpoint"
-	}
 
 	switch evtType {
 	case "mousemove", "mouse_move":
 		x, _ := payload["x"].(float64)
 		y, _ := payload["y"].(float64)
-		state.UpdateCursor(x, y, 1920, 1080)
 		if r.injector != nil {
 			_ = r.injector.MoveMouse(x, y)
 		}
@@ -394,7 +388,6 @@ func (r *AgentStreamRunner) handleInputPayload(payload map[string]interface{}) {
 		x, _ := payload["x"].(float64)
 		y, _ := payload["y"].(float64)
 		btn, _ := payload["button"].(float64)
-		state.HandleClick(x, y, int(btn), 1920, 1080)
 		if r.injector != nil {
 			_ = r.injector.MouseDown(input.MouseButton(btn), x, y)
 		}
@@ -403,7 +396,6 @@ func (r *AgentStreamRunner) handleInputPayload(payload map[string]interface{}) {
 		x, _ := payload["x"].(float64)
 		y, _ := payload["y"].(float64)
 		btn, _ := payload["button"].(float64)
-		state.UpdateCursor(x, y, 1920, 1080)
 		if r.injector != nil {
 			_ = r.injector.MouseUp(input.MouseButton(btn), x, y)
 		}
@@ -413,7 +405,6 @@ func (r *AgentStreamRunner) handleInputPayload(payload map[string]interface{}) {
 		y, _ := payload["y"].(float64)
 		deltaX, _ := payload["deltaX"].(float64)
 		deltaY, _ := payload["deltaY"].(float64)
-		state.UpdateCursor(x, y, 1920, 1080)
 		if r.injector != nil {
 			_ = r.injector.Scroll(deltaX, deltaY, x, y)
 		}
@@ -421,7 +412,6 @@ func (r *AgentStreamRunner) handleInputPayload(payload map[string]interface{}) {
 	case "keydown", "key_down":
 		key, _ := payload["key"].(string)
 		code, _ := payload["code"].(string)
-		state.HandleKey(key, code, runtime.GOOS, hostname)
 		if r.injector != nil {
 			_ = r.injector.KeyDown(input.KeyboardEvent{Key: key, Code: code})
 		}
