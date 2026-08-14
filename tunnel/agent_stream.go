@@ -282,7 +282,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			}
 
 		case "input":
-			if payload, ok := signal["payload"].(map[string]interface{}); ok && r.injector != nil {
+			if payload, ok := signal["payload"].(map[string]interface{}); ok {
 				r.handleInputPayload(payload)
 			}
 
@@ -375,40 +375,63 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 
 func (r *AgentStreamRunner) handleInputPayload(payload map[string]interface{}) {
 	evtType, _ := payload["type"].(string)
+	state := screen.GetGlobalDesktopState()
+	hostname, _ := os.Hostname()
+	if hostname == "" {
+		hostname = "endpoint"
+	}
+
 	switch evtType {
-	case "mousemove":
+	case "mousemove", "mouse_move":
 		x, _ := payload["x"].(float64)
 		y, _ := payload["y"].(float64)
-		_ = r.injector.MoveMouse(x, y)
+		state.UpdateCursor(x, y, 1920, 1080)
+		if r.injector != nil {
+			_ = r.injector.MoveMouse(x, y)
+		}
 
-	case "mousedown":
-		x, _ := payload["x"].(float64)
-		y, _ := payload["y"].(float64)
-		btn, _ := payload["button"].(float64)
-		_ = r.injector.MouseDown(input.MouseButton(btn), x, y)
-
-	case "mouseup":
+	case "mousedown", "mouse_down":
 		x, _ := payload["x"].(float64)
 		y, _ := payload["y"].(float64)
 		btn, _ := payload["button"].(float64)
-		_ = r.injector.MouseUp(input.MouseButton(btn), x, y)
+		state.HandleClick(x, y, int(btn), 1920, 1080)
+		if r.injector != nil {
+			_ = r.injector.MouseDown(input.MouseButton(btn), x, y)
+		}
 
-	case "wheel":
+	case "mouseup", "mouse_up":
+		x, _ := payload["x"].(float64)
+		y, _ := payload["y"].(float64)
+		btn, _ := payload["button"].(float64)
+		state.UpdateCursor(x, y, 1920, 1080)
+		if r.injector != nil {
+			_ = r.injector.MouseUp(input.MouseButton(btn), x, y)
+		}
+
+	case "wheel", "scroll":
 		x, _ := payload["x"].(float64)
 		y, _ := payload["y"].(float64)
 		deltaX, _ := payload["deltaX"].(float64)
 		deltaY, _ := payload["deltaY"].(float64)
-		_ = r.injector.Scroll(deltaX, deltaY, x, y)
+		state.UpdateCursor(x, y, 1920, 1080)
+		if r.injector != nil {
+			_ = r.injector.Scroll(deltaX, deltaY, x, y)
+		}
 
-	case "keydown":
+	case "keydown", "key_down":
 		key, _ := payload["key"].(string)
 		code, _ := payload["code"].(string)
-		_ = r.injector.KeyDown(input.KeyboardEvent{Key: key, Code: code})
+		state.HandleKey(key, code, runtime.GOOS, hostname)
+		if r.injector != nil {
+			_ = r.injector.KeyDown(input.KeyboardEvent{Key: key, Code: code})
+		}
 
-	case "keyup":
+	case "keyup", "key_up":
 		key, _ := payload["key"].(string)
 		code, _ := payload["code"].(string)
-		_ = r.injector.KeyUp(input.KeyboardEvent{Key: key, Code: code})
+		if r.injector != nil {
+			_ = r.injector.KeyUp(input.KeyboardEvent{Key: key, Code: code})
+		}
 	}
 }
 
