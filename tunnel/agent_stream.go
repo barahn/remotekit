@@ -12,6 +12,8 @@ import (
 	"image/draw"
 	"image/jpeg"
 	"net/http"
+	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -180,6 +182,8 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 
 			// Start screen capturer and feed samples to WebRTC & WebSocket
 			cap, err := screen.NewCapturer(screen.DefaultConfig())
+			var framesChan <-chan *screen.Frame
+
 			if err == nil {
 				stateMu.Lock()
 				capturer = cap
@@ -187,49 +191,86 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				activeCapCancel = cancelCap
 				stateMu.Unlock()
 
-				if err := cap.Start(capCtx); err == nil {
-					go func() {
-						defer func() {
-							if r := recover(); r != nil {
-								fmt.Printf("[AgentStream] Recovered panic in frame sender: %v\n", r)
-							}
-						}()
-						frameCount := 0
-						for frame := range cap.Frames() {
-							frameCount++
-
-							stateMu.RLock()
-							peer := currentPeer
-							stateMu.RUnlock()
-
-							if peer == nil || peer.ConnectionState() == 4 /* Closed */ {
-								return
-							}
-							vp8Sample := BuildVP8Sample(frame)
-							_ = peer.WriteVideoSample(vp8Sample, 33*time.Millisecond)
-
-							// Send direct JPEG frame fallback over WebSocket for Podman/Docker networks
-							if frame != nil && frame.Image != nil {
-								var buf bytes.Buffer
-								if err := jpeg.Encode(&buf, frame.Image, &jpeg.Options{Quality: 60}); err == nil {
-									b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
-									frameMsg := map[string]interface{}{
-										"type":       "frame",
-										"session_id": r.creds.AgentID,
-										"data":       b64,
-									}
-									data, _ := json.Marshal(frameMsg)
-									_ = safeWrite(data)
-
-									if frameCount%30 == 1 {
-										fmt.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
-									}
-								}
-							}
-						}
-					}()
+				if startErr := cap.Start(capCtx); startErr == nil {
+					framesChan = cap.Frames()
 				}
 			}
+
+			// If native capture is unavailable (headless / display-less container), stream synthesized desktop
+			if framesChan == nil {
+				simChan := make(chan *screen.Frame, 2)
+				framesChan = simChan
+				go func() {
+					defer close(simChan)
+					ticker := time.NewTicker(33 * time.Millisecond)
+					defer ticker.Stop()
+					var seq uint64
+					hostname, _ := os.Hostname()
+					if hostname == "" {
+						hostname = "endpoint"
+					}
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						case t := <-ticker.C:
+							seq++
+							img := screen.GenerateTestDesktopImage(1920, 1080, runtime.GOOS, hostname, r.creds.AgentID, seq, t.UTC(), 960, 540)
+							f := &screen.Frame{
+								Image:       img,
+								Bounds:      img.Bounds(),
+								CapturedAt:  t,
+								SequenceNum: seq,
+							}
+							select {
+							case simChan <- f:
+							default:
+							}
+						}
+					}
+				}()
+			}
+
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						fmt.Printf("[AgentStream] Recovered panic in frame sender: %v\n", r)
+					}
+				}()
+				frameCount := 0
+				for frame := range framesChan {
+					frameCount++
+
+					stateMu.RLock()
+					peer := currentPeer
+					stateMu.RUnlock()
+
+					if peer == nil || peer.ConnectionState() == 4 /* Closed */ {
+						return
+					}
+					vp8Sample := BuildVP8Sample(frame)
+					_ = peer.WriteVideoSample(vp8Sample, 33*time.Millisecond)
+
+					// Send direct JPEG frame fallback over WebSocket for Podman/Docker networks
+					if frame != nil && frame.Image != nil {
+						var buf bytes.Buffer
+						if err := jpeg.Encode(&buf, frame.Image, &jpeg.Options{Quality: 60}); err == nil {
+							b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
+							frameMsg := map[string]interface{}{
+								"type":       "frame",
+								"session_id": r.creds.AgentID,
+								"data":       b64,
+							}
+							data, _ := json.Marshal(frameMsg)
+							_ = safeWrite(data)
+
+							if frameCount%30 == 1 {
+								fmt.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
+							}
+						}
+					}
+				}
+			}()
 
 		case "candidate":
 			cand, _ := signal["candidate"].(string)

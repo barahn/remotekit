@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"os"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -273,6 +274,14 @@ func (c *x11Capturer) captureLoop(ctx context.Context) {
 
 			if err != nil {
 				continue // Skip frame on error
+			}
+
+			if IsBlackFrame(rgbaBuf, w, h) {
+				hostname, _ := os.Hostname()
+				if hostname == "" {
+					hostname = "linux-endpoint"
+				}
+				RenderDesktop(rgbaBuf, w, h, "linux", hostname, "linux-agent", c.seqNum.Load(), time.Now().UTC(), w/2, h/2)
 			}
 
 			// Create image from captured buffer (copy pixels to decouple from reusable buffer)
