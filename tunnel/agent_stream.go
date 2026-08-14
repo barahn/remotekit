@@ -93,6 +93,9 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 		return ws.WriteMessage(websocket.TextMessage, data)
 	}
 
+	// Send agent_ready ping so any waiting browser viewer immediately initiates the WebRTC offer
+	_ = safeWrite([]byte(fmt.Sprintf(`{"type":"agent_ready","session_id":"%s"}`, r.creds.AgentID)))
+
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Printf("[AgentStream] Recovered panic in signaling loop: %v\n", r)
