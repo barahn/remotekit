@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"image"
-	"os"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -240,14 +239,6 @@ func (c *windowsCapturer) captureLoop(ctx context.Context) {
 			}
 
 			bgraToRGBA(bgraBuf, rgbaBuf, w, h)
-
-			if IsBlackFrame(rgbaBuf, w, h) {
-				hostname, _ := os.Hostname()
-				if hostname == "" {
-					hostname = "windows-endpoint"
-				}
-				RenderDesktop(rgbaBuf, w, h, "windows", hostname, "win-agent", c.seqNum.Load(), time.Now().UTC(), w/2, h/2)
-			}
 
 			rgba := image.NewRGBA(image.Rect(0, 0, w, h))
 			copy(rgba.Pix, rgbaBuf)
