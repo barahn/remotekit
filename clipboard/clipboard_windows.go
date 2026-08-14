@@ -5,6 +5,7 @@ package clipboard
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -12,8 +13,12 @@ import (
 )
 
 const (
+	cfText        = 1
+	cfOemText     = 7
 	cfUnicodeText = 13
 	gmemMoveable  = 0x0002
+	gmemZeroInit  = 0x0040
+	ghnd          = gmemMoveable | gmemZeroInit
 )
 
 var (
@@ -44,20 +49,23 @@ func NewManager() Manager {
 	return &WindowsClipboard{}
 }
 
-// openClipboardWithRetry attempts to open the clipboard, retrying up to 5 times.
+// openClipboardWithRetry attempts to open the clipboard, retrying up to 8 times with backoff.
 func openClipboardWithRetry() error {
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 8; i++ {
 		r, _, _ := procOpenClipboard.Call(0)
 		if r != 0 {
 			return nil
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(15 * time.Millisecond)
 	}
 	return fmt.Errorf("failed to open clipboard (locked by another process)")
 }
 
 // GetText retrieves text from the Windows clipboard.
 func (wc *WindowsClipboard) GetText(ctx context.Context) (string, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	if err := openClipboardWithRetry(); err != nil {
 		wc.mu.RLock()
 		defer wc.mu.RUnlock()
@@ -65,47 +73,67 @@ func (wc *WindowsClipboard) GetText(ctx context.Context) (string, error) {
 	}
 	defer procCloseClipboard.Call()
 
+	// 1. Try CF_UNICODETEXT (UTF-16)
 	r, _, _ := procIsClipboardFormatAvailable.Call(uintptr(cfUnicodeText))
-	if r == 0 {
-		wc.mu.RLock()
-		defer wc.mu.RUnlock()
-		return wc.memoryFallback, nil
-	}
+	if r != 0 {
+		hData, _, _ := procGetClipboardData.Call(uintptr(cfUnicodeText))
+		if hData != 0 {
+			ptr, _, _ := procGlobalLock.Call(hData)
+			if ptr != 0 {
+				defer procGlobalUnlock.Call(hData)
 
-	hData, _, _ := procGetClipboardData.Call(uintptr(cfUnicodeText))
-	if hData == 0 {
-		wc.mu.RLock()
-		defer wc.mu.RUnlock()
-		return wc.memoryFallback, nil
-	}
+				var utf16Slice []uint16
+				p := (*uint16)(unsafe.Pointer(ptr)) // #nosec G103 -- required for Win32 clipboard memory access
+				for {
+					val := *p
+					if val == 0 {
+						break
+					}
+					utf16Slice = append(utf16Slice, val)
+					p = (*uint16)(unsafe.Pointer(uintptr(unsafe.Pointer(p)) + 2)) // #nosec G103 -- stride 2 bytes for UTF-16
+				}
 
-	ptr, _, _ := procGlobalLock.Call(hData)
-	if ptr == 0 {
-		wc.mu.RLock()
-		defer wc.mu.RUnlock()
-		return wc.memoryFallback, nil
-	}
-	defer procGlobalUnlock.Call(hData)
-
-	// Read UTF-16 characters until null terminator
-	var utf16Slice []uint16
-	p := (*uint16)(unsafe.Pointer(ptr)) // #nosec G103 -- required for Win32 clipboard memory access
-	for {
-		val := *p
-		if val == 0 {
-			break
+				text := syscall.UTF16ToString(utf16Slice)
+				wc.mu.Lock()
+				wc.memoryFallback = text
+				wc.mu.Unlock()
+				return text, nil
+			}
 		}
-		utf16Slice = append(utf16Slice, val)
-		p = (*uint16)(unsafe.Pointer(uintptr(unsafe.Pointer(p)) + 2)) // #nosec G103 -- stride 2 bytes for UTF-16
 	}
 
-	text := syscall.UTF16ToString(utf16Slice)
+	// 2. Try CF_TEXT (ANSI fallback)
+	rText, _, _ := procIsClipboardFormatAvailable.Call(uintptr(cfText))
+	if rText != 0 {
+		hData, _, _ := procGetClipboardData.Call(uintptr(cfText))
+		if hData != 0 {
+			ptr, _, _ := procGlobalLock.Call(hData)
+			if ptr != 0 {
+				defer procGlobalUnlock.Call(hData)
 
-	wc.mu.Lock()
-	wc.memoryFallback = text
-	wc.mu.Unlock()
+				var byteSlice []byte
+				p := (*byte)(unsafe.Pointer(ptr)) // #nosec G103 -- required for Win32 clipboard memory access
+				for {
+					val := *p
+					if val == 0 {
+						break
+					}
+					byteSlice = append(byteSlice, val)
+					p = (*byte)(unsafe.Pointer(uintptr(unsafe.Pointer(p)) + 1)) // #nosec G103 -- stride 1 byte
+				}
 
-	return text, nil
+				text := string(byteSlice)
+				wc.mu.Lock()
+				wc.memoryFallback = text
+				wc.mu.Unlock()
+				return text, nil
+			}
+		}
+	}
+
+	wc.mu.RLock()
+	defer wc.mu.RUnlock()
+	return wc.memoryFallback, nil
 }
 
 // SetText sets text on the Windows clipboard.
@@ -114,6 +142,9 @@ func (wc *WindowsClipboard) SetText(ctx context.Context, text string) error {
 	wc.memoryFallback = text
 	wc.mu.Unlock()
 
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	utf16Chars, err := syscall.UTF16FromString(text)
 	if err != nil {
 		return err
@@ -121,7 +152,7 @@ func (wc *WindowsClipboard) SetText(ctx context.Context, text string) error {
 
 	byteLen := len(utf16Chars) * 2
 
-	hGlobal, _, _ := procGlobalAlloc.Call(uintptr(gmemMoveable), uintptr(byteLen))
+	hGlobal, _, _ := procGlobalAlloc.Call(uintptr(ghnd), uintptr(byteLen))
 	if hGlobal == 0 {
 		return fmt.Errorf("GlobalAlloc failed")
 	}

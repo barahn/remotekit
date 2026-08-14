@@ -85,6 +85,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 	var writeMu sync.Mutex
 
 	clipMgr := clipboard.NewManager()
+	clipWatcher := clipboard.NewWatcher(clipMgr, 500*time.Millisecond)
 	transferMgr, _ := transfer.NewManager("")
 
 	safeWrite := func(data []byte) error {
@@ -92,6 +93,22 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 		defer writeMu.Unlock()
 		return ws.WriteMessage(websocket.TextMessage, data)
 	}
+
+	// Start clipboard watcher for continuous sync from host to technician
+	clipCtx, clipCancel := context.WithCancel(ctx)
+	defer clipCancel()
+
+	go clipWatcher.Start(clipCtx, func(newText string) {
+		clipMsg, err := json.Marshal(map[string]interface{}{
+			"type":       "clipboard",
+			"session_id": r.creds.AgentID,
+			"text":       newText,
+		})
+		if err == nil {
+			_ = safeWrite(clipMsg)
+			fmt.Printf("[AgentStream] Dispatched host clipboard change to remote (%d bytes)\n", len(newText))
+		}
+	})
 
 	// Send agent_ready ping so any waiting browser viewer immediately initiates the WebRTC offer
 	_ = safeWrite([]byte(fmt.Sprintf(`{"type":"agent_ready","session_id":"%s"}`, r.creds.AgentID)))
@@ -304,8 +321,17 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 		case "clipboard":
 			text, _ := signal["text"].(string)
 			if text != "" {
+				clipWatcher.UpdateLastText(text)
 				_ = clipMgr.SetText(ctx, text)
-				fmt.Printf("[AgentStream] Received clipboard sync (%d bytes)\n", len(text))
+				fmt.Printf("[AgentStream] Received and applied clipboard sync (%d bytes)\n", len(text))
+				if autoPaste, _ := signal["auto_paste"].(bool); autoPaste && r.injector != nil {
+					time.Sleep(30 * time.Millisecond)
+					_ = r.injector.KeyDown(input.KeyboardEvent{Key: "Control", Code: "ControlLeft", Ctrl: true})
+					_ = r.injector.KeyDown(input.KeyboardEvent{Key: "v", Code: "KeyV", Ctrl: true})
+					time.Sleep(30 * time.Millisecond)
+					_ = r.injector.KeyUp(input.KeyboardEvent{Key: "v", Code: "KeyV", Ctrl: true})
+					_ = r.injector.KeyUp(input.KeyboardEvent{Key: "Control", Code: "ControlLeft", Ctrl: false})
+				}
 			}
 
 		case "file_start":
