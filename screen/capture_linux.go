@@ -129,9 +129,6 @@ func (c *x11Capturer) initShm() error {
 	// Create a byte slice view of the shared memory segment.
 	shmBuf := unsafe.Slice((*byte)(uintptrToPointer(addr)), imgSize) // #nosec G103 -- required for X11 SHM slice mapping
 
-	// Mark segment for auto-removal when last process detaches
-	_, _, _ = syscall.Syscall(syscall.SYS_SHMCTL, shmID, 0 /* IPC_RMID */, 0)
-
 	// Helper to detach SHM on setup failure
 	cleanupShm := func() {
 		_, _, _ = syscall.Syscall(syscall.SYS_SHMDT, addr, 0, 0)
@@ -150,6 +147,9 @@ func (c *x11Capturer) initShm() error {
 		cleanupShm()
 		return fmt.Errorf("failed to attach SHM to X server: %w", err)
 	}
+
+	// Mark segment for auto-removal when last process detaches
+	_, _, _ = syscall.Syscall(syscall.SYS_SHMCTL, shmID, 0 /* IPC_RMID */, 0)
 
 	c.shmSeg = seg
 	c.shmBuf = shmBuf
