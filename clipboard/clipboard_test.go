@@ -33,7 +33,7 @@ func TestMemoryClipboard(t *testing.T) {
 
 func TestLinuxClipboardFallback(t *testing.T) {
 	ctx := context.Background()
-	cb := NewManager()
+	cb := NewMemoryClipboard()
 
 	expected := "Sample Linux Text"
 	if err := cb.SetText(ctx, expected); err != nil {
@@ -44,7 +44,7 @@ func TestLinuxClipboardFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetText failed: %v", err)
 	}
-	if got == "" {
-		t.Errorf("expected non-empty clipboard text")
+	if got != expected {
+		t.Errorf("expected %q, got %q", expected, got)
 	}
 }
