@@ -22,17 +22,20 @@ type LinuxClipboard struct {
 }
 
 type x11Driver struct {
-	mu          sync.RWMutex
-	conn        *xgb.Conn
-	win         xproto.Window
-	clipAtom    xproto.Atom
-	primaryAtom xproto.Atom
-	utf8Atom    xproto.Atom
-	stringAtom  xproto.Atom
-	targetsAtom xproto.Atom
-	propAtom    xproto.Atom
-	text        string
-	stopChan    chan struct{}
+	mu            sync.RWMutex
+	conn          *xgb.Conn
+	win           xproto.Window
+	clipAtom      xproto.Atom
+	primaryAtom   xproto.Atom
+	utf8Atom      xproto.Atom
+	stringAtom    xproto.Atom
+	textAtom      xproto.Atom
+	plainAtom     xproto.Atom
+	plainUtf8Atom xproto.Atom
+	targetsAtom   xproto.Atom
+	propAtom      xproto.Atom
+	text          string
+	stopChan      chan struct{}
 }
 
 func internAtom(conn *xgb.Conn, name string) xproto.Atom {
@@ -66,15 +69,18 @@ func initX11Driver() *x11Driver {
 	}
 
 	d := &x11Driver{
-		conn:        conn,
-		win:         win,
-		clipAtom:    internAtom(conn, "CLIPBOARD"),
-		primaryAtom: internAtom(conn, "PRIMARY"),
-		utf8Atom:    internAtom(conn, "UTF8_STRING"),
-		stringAtom:  internAtom(conn, "STRING"),
-		targetsAtom: internAtom(conn, "TARGETS"),
-		propAtom:    internAtom(conn, "BARAHN_CLIPBOARD_PROP"),
-		stopChan:    make(chan struct{}),
+		conn:          conn,
+		win:           win,
+		clipAtom:      internAtom(conn, "CLIPBOARD"),
+		primaryAtom:   internAtom(conn, "PRIMARY"),
+		utf8Atom:      internAtom(conn, "UTF8_STRING"),
+		stringAtom:    internAtom(conn, "STRING"),
+		textAtom:      internAtom(conn, "TEXT"),
+		plainAtom:     internAtom(conn, "text/plain"),
+		plainUtf8Atom: internAtom(conn, "text/plain;charset=utf-8"),
+		targetsAtom:   internAtom(conn, "TARGETS"),
+		propAtom:      internAtom(conn, "BARAHN_CLIPBOARD_PROP"),
+		stopChan:      make(chan struct{}),
 	}
 
 	go d.eventLoop()
@@ -109,7 +115,14 @@ func (d *x11Driver) handleSelectionRequest(req xproto.SelectionRequestEvent) {
 	}
 
 	if req.Target == d.targetsAtom {
-		targets := []uint32{uint32(d.targetsAtom), uint32(d.utf8Atom), uint32(d.stringAtom)}
+		targets := []uint32{
+			uint32(d.targetsAtom),
+			uint32(d.utf8Atom),
+			uint32(d.plainUtf8Atom),
+			uint32(d.plainAtom),
+			uint32(d.stringAtom),
+			uint32(d.textAtom),
+		}
 		raw := make([]byte, len(targets)*4)
 		for i, t := range targets {
 			raw[i*4] = byte(t)
@@ -118,7 +131,7 @@ func (d *x11Driver) handleSelectionRequest(req xproto.SelectionRequestEvent) {
 			raw[i*4+3] = byte(t >> 24)
 		}
 		_ = xproto.ChangePropertyChecked(d.conn, xproto.PropModeReplace, req.Requestor, respProperty, xproto.AtomAtom, 32, uint32(len(targets)), raw).Check()
-	} else if req.Target == d.utf8Atom || req.Target == d.stringAtom {
+	} else if req.Target == d.utf8Atom || req.Target == d.stringAtom || req.Target == d.textAtom || req.Target == d.plainUtf8Atom || req.Target == d.plainAtom {
 		data := []byte(currentText)
 		_ = xproto.ChangePropertyChecked(d.conn, xproto.PropModeReplace, req.Requestor, respProperty, req.Target, 8, uint32(len(data)), data).Check()
 	} else {
@@ -274,12 +287,10 @@ func (lc *LinuxClipboard) SetText(ctx context.Context, text string) error {
 	lc.memoryFallback = text
 	lc.mu.Unlock()
 
-	var success bool
-
 	// 1. Try Native Pure Go X11 Driver
 	if lc.x11Driver != nil {
 		if err := lc.x11Driver.SetText(text); err == nil {
-			success = true
+			return nil
 		}
 	}
 
@@ -288,7 +299,7 @@ func (lc *LinuxClipboard) SetText(ctx context.Context, text string) error {
 		cmd := exec.CommandContext(ctx, path) // #nosec G204 -- path resolved via exec.LookPath
 		cmd.Stdin = strings.NewReader(text)
 		if err := cmd.Run(); err == nil {
-			success = true
+			return nil
 		}
 	}
 
@@ -297,7 +308,7 @@ func (lc *LinuxClipboard) SetText(ctx context.Context, text string) error {
 		cmd := exec.CommandContext(ctx, path, "-selection", "clipboard") // #nosec G204 -- path resolved via exec.LookPath
 		cmd.Stdin = strings.NewReader(text)
 		if err := cmd.Run(); err == nil {
-			success = true
+			return nil
 		}
 	}
 
@@ -306,10 +317,9 @@ func (lc *LinuxClipboard) SetText(ctx context.Context, text string) error {
 		cmd := exec.CommandContext(ctx, path, "--clipboard", "--input") // #nosec G204 -- path resolved via exec.LookPath
 		cmd.Stdin = strings.NewReader(text)
 		if err := cmd.Run(); err == nil {
-			success = true
+			return nil
 		}
 	}
 
-	_ = success
 	return nil
 }

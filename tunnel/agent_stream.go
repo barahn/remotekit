@@ -268,10 +268,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 					if peer == nil || peer.ConnectionState() == 4 /* Closed */ {
 						return
 					}
-					vp8Sample := BuildVP8Sample(frame)
-					_ = peer.WriteVideoSample(vp8Sample, 33*time.Millisecond)
-
-					// Send direct JPEG frame fallback over WebSocket for Podman/Docker networks
+					// Direct high-quality JPEG streaming over WebSocket
 					if frame != nil && frame.Image != nil {
 						var buf bytes.Buffer
 						if err := jpeg.Encode(&buf, frame.Image, &jpeg.Options{Quality: 60}); err == nil {
