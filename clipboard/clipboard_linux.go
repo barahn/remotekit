@@ -161,6 +161,22 @@ func (d *x11Driver) SetText(text string) error {
 }
 
 func (d *x11Driver) GetText() (string, error) {
+	// 1. Fast path: check current selection owner on X11
+	if d.conn != nil {
+		ownerReply, err := xproto.GetSelectionOwner(d.conn, d.clipAtom).Reply()
+		if err == nil {
+			if ownerReply.Owner == d.win {
+				d.mu.RLock()
+				defer d.mu.RUnlock()
+				return d.text, nil
+			}
+			if ownerReply.Owner == 0 {
+				return "", nil
+			}
+		}
+	}
+
+	// 2. External owner active: request selection content
 	conn, err := xgb.NewConn()
 	if err != nil {
 		d.mu.RLock()

@@ -321,14 +321,6 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				clipWatcher.UpdateLastText(text)
 				_ = clipMgr.SetText(ctx, text)
 				fmt.Printf("[AgentStream] Received and applied clipboard sync (%d bytes)\n", len(text))
-				if autoPaste, _ := signal["auto_paste"].(bool); autoPaste && r.injector != nil {
-					time.Sleep(30 * time.Millisecond)
-					_ = r.injector.KeyDown(input.KeyboardEvent{Key: "Control", Code: "ControlLeft", Ctrl: true})
-					_ = r.injector.KeyDown(input.KeyboardEvent{Key: "v", Code: "KeyV", Ctrl: true})
-					time.Sleep(30 * time.Millisecond)
-					_ = r.injector.KeyUp(input.KeyboardEvent{Key: "v", Code: "KeyV", Ctrl: true})
-					_ = r.injector.KeyUp(input.KeyboardEvent{Key: "Control", Code: "ControlLeft", Ctrl: false})
-				}
 			}
 
 		case "file_start":
