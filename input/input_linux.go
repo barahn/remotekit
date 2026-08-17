@@ -5,6 +5,7 @@ package input
 import (
 	"fmt"
 	"image"
+	"os"
 	"sync"
 
 	"github.com/jezek/xgb"
@@ -30,8 +31,29 @@ type linuxInjector struct {
 }
 
 // NewInjector creates a new platform-specific input injector.
-// On Linux, this connects to the X11 display server via pure Go xgb/xtest.
+// On Linux, this auto-detects Wayland vs X11 and returns the appropriate injector.
 func NewInjector() (Injector, error) {
+	if os.Getenv("XDG_SESSION_TYPE") == "wayland" && os.Getenv("DISPLAY") == "" {
+		if winj, err := newWaylandInjector(); err == nil {
+			return winj, nil
+		}
+	}
+
+	// Try X11 / XWayland first (direct low-latency input via XTest without portal prompts)
+	inj, err := newX11Injector()
+	if err == nil {
+		return inj, nil
+	}
+
+	// Fallback to Wayland RemoteDesktop portal
+	if winj, werr := newWaylandInjector(); werr == nil {
+		return winj, nil
+	}
+
+	return nil, err
+}
+
+func newX11Injector() (*linuxInjector, error) {
 	conn, err := xgb.NewConn()
 	if err != nil {
 		return nil, fmt.Errorf("%w: cannot connect to X11 display (is $DISPLAY set?): %v", ErrDeviceNotFound, err)
