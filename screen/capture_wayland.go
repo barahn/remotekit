@@ -129,10 +129,6 @@ func (c *waylandCapturer) Stop() {
 			_ = c.bus.Object(portalDest, c.session).Call("org.freedesktop.portal.Session.Close", 0).Store()
 		}
 		c.mu.Unlock()
-
-		if c.frames != nil {
-			close(c.frames)
-		}
 	})
 }
 
@@ -275,6 +271,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 		c.renderSyntheticFrames(ctx)
 		return
 	}
+	defer close(c.frames)
 
 	frameSize := c.width * c.height * 4
 	bufReader := bufio.NewReaderSize(stdout, frameSize*2)
@@ -322,6 +319,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 }
 
 func (c *waylandCapturer) renderSyntheticFrames(ctx context.Context) {
+	defer close(c.frames)
 	ticker := time.NewTicker(time.Second / time.Duration(c.config.TargetFPS))
 	defer ticker.Stop()
 
