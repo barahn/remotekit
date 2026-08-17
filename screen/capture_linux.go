@@ -59,7 +59,7 @@ type x11Capturer struct {
 }
 
 // NewCapturer creates a new platform-specific Capturer.
-// On Linux, this returns an X11-based capturer with XShm acceleration.
+// On Linux, this auto-detects Wayland vs X11 and returns the appropriate capturer.
 func NewCapturer(config CaptureConfig) (Capturer, error) {
 	if config.FrameBufferSize <= 0 {
 		config.FrameBufferSize = 2
@@ -71,6 +71,30 @@ func NewCapturer(config CaptureConfig) (Capturer, error) {
 		config.DisplayIndex = 0
 	}
 
+	ds := DetectDisplayServer()
+	if ds == DisplayServerWayland {
+		if cap, err := newWaylandCapturer(config); err == nil {
+			return cap, nil
+		}
+	}
+
+	// Default / fallback to X11 (or XWayland)
+	cap, err := newX11Capturer(config)
+	if err == nil {
+		return cap, nil
+	}
+
+	// If X11 failed but Wayland was not tried yet, attempt Wayland
+	if ds != DisplayServerWayland {
+		if wcap, werr := newWaylandCapturer(config); werr == nil {
+			return wcap, nil
+		}
+	}
+
+	return nil, err
+}
+
+func newX11Capturer(config CaptureConfig) (*x11Capturer, error) {
 	conn, err := xgb.NewConn()
 	if err != nil {
 		return nil, fmt.Errorf("%w: cannot connect to X11 display (is $DISPLAY set?): %v", ErrCaptureNotReady, err)
