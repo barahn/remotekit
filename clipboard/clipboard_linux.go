@@ -36,6 +36,13 @@ type x11Driver struct {
 	propAtom      xproto.Atom
 	text          string
 	stopChan      chan struct{}
+
+	// Dedicated reader connection and window for ConvertSelection requests.
+	// Using a separate connection avoids racing with the event loop that handles
+	// SelectionRequest events on the primary conn.
+	readerMu   sync.Mutex
+	readerConn *xgb.Conn
+	readerWin  xproto.Window
 }
 
 func internAtom(conn *xgb.Conn, name string) xproto.Atom {
@@ -68,6 +75,27 @@ func initX11Driver() *x11Driver {
 		return nil
 	}
 
+	// Create a dedicated secondary connection for reading clipboard from external owners.
+	// This prevents the ConvertSelection exchange from interfering with the primary
+	// event loop that must remain responsive to SelectionRequest events.
+	readerConn, err := xgb.NewConn()
+	if err != nil {
+		// Non-fatal: fall back to CLI tools for GetText.
+		readerConn = nil
+	}
+
+	var readerWin xproto.Window
+	if readerConn != nil {
+		rSetup := xproto.Setup(readerConn)
+		rScreen := rSetup.DefaultScreen(readerConn)
+		readerWin, err = xproto.NewWindowId(readerConn)
+		if err != nil || xproto.CreateWindowChecked(readerConn, rScreen.RootDepth, readerWin, rScreen.Root, 0, 0, 1, 1, 0,
+			xproto.WindowClassInputOutput, rScreen.RootVisual, 0, []uint32{}).Check() != nil {
+			readerConn.Close()
+			readerConn = nil
+		}
+	}
+
 	d := &x11Driver{
 		conn:          conn,
 		win:           win,
@@ -81,6 +109,8 @@ func initX11Driver() *x11Driver {
 		targetsAtom:   internAtom(conn, "TARGETS"),
 		propAtom:      internAtom(conn, "BARAHN_CLIPBOARD_PROP"),
 		stopChan:      make(chan struct{}),
+		readerConn:    readerConn,
+		readerWin:     readerWin,
 	}
 
 	go d.eventLoop()
@@ -160,8 +190,12 @@ func (d *x11Driver) SetText(text string) error {
 	return nil
 }
 
+// GetText retrieves the current clipboard text.
+// Fast-path: if we own the selection, return our cached text immediately.
+// Slow-path: use the dedicated reader connection (readerConn) to request the
+// selection from whoever owns it, avoiding any re-creation of X11 connections.
 func (d *x11Driver) GetText() (string, error) {
-	// 1. Fast path: check current selection owner on X11
+	// 1. Fast path: check if we are the current clipboard owner.
 	if d.conn != nil {
 		ownerReply, err := xproto.GetSelectionOwner(d.conn, d.clipAtom).Reply()
 		if err == nil {
@@ -171,46 +205,31 @@ func (d *x11Driver) GetText() (string, error) {
 				return d.text, nil
 			}
 			if ownerReply.Owner == 0 {
+				// No clipboard owner — clipboard is empty.
 				return "", nil
 			}
 		}
 	}
 
-	// 2. External owner active: request selection content
-	conn, err := xgb.NewConn()
-	if err != nil {
-		d.mu.RLock()
-		defer d.mu.RUnlock()
-		return d.text, nil
-	}
-	defer conn.Close()
+	// 2. Slow path: request the selection from the external owner using the
+	//    pre-allocated dedicated reader connection.
+	d.readerMu.Lock()
+	defer d.readerMu.Unlock()
 
-	setup := xproto.Setup(conn)
-	screen := setup.DefaultScreen(conn)
-
-	tmpWin, err := xproto.NewWindowId(conn)
-	if err != nil {
+	if d.readerConn == nil {
+		// No reader connection available; fall through to CLI tools.
 		d.mu.RLock()
 		defer d.mu.RUnlock()
 		return d.text, nil
 	}
 
-	err = xproto.CreateWindowChecked(conn, screen.RootDepth, tmpWin, screen.Root, 0, 0, 1, 1, 0,
-		xproto.WindowClassInputOutput, screen.RootVisual, 0, []uint32{}).Check()
-	if err != nil {
-		d.mu.RLock()
-		defer d.mu.RUnlock()
-		return d.text, nil
-	}
-	defer xproto.DestroyWindow(conn, tmpWin)
+	propAtom := internAtom(d.readerConn, "BARAHN_TEMP_READ_PROP")
+	clipAtom := internAtom(d.readerConn, "CLIPBOARD")
+	utf8Atom := internAtom(d.readerConn, "UTF8_STRING")
 
-	clipAtom := internAtom(conn, "CLIPBOARD")
-	utf8Atom := internAtom(conn, "UTF8_STRING")
-	propAtom := internAtom(conn, "BARAHN_TEMP_READ_PROP")
+	xproto.ConvertSelection(d.readerConn, d.readerWin, clipAtom, utf8Atom, propAtom, xproto.TimeCurrentTime)
 
-	xproto.ConvertSelection(conn, tmpWin, clipAtom, utf8Atom, propAtom, xproto.TimeCurrentTime)
-
-	timeout := time.After(150 * time.Millisecond)
+	timeout := time.After(200 * time.Millisecond)
 	for {
 		select {
 		case <-timeout:
@@ -218,7 +237,7 @@ func (d *x11Driver) GetText() (string, error) {
 			defer d.mu.RUnlock()
 			return d.text, nil
 		default:
-			ev, err := conn.PollForEvent()
+			ev, err := d.readerConn.PollForEvent()
 			if err != nil {
 				d.mu.RLock()
 				defer d.mu.RUnlock()
@@ -230,11 +249,12 @@ func (d *x11Driver) GetText() (string, error) {
 			}
 			if selNotify, ok := ev.(xproto.SelectionNotifyEvent); ok {
 				if selNotify.Property == 0 {
+					// Owner refused or does not support the requested format.
 					d.mu.RLock()
 					defer d.mu.RUnlock()
 					return d.text, nil
 				}
-				prop, err := xproto.GetProperty(conn, true, tmpWin, selNotify.Property, xproto.GetPropertyTypeAny, 0, 1024*1024).Reply()
+				prop, err := xproto.GetProperty(d.readerConn, true, d.readerWin, selNotify.Property, xproto.GetPropertyTypeAny, 0, 1024*1024).Reply()
 				if err != nil {
 					d.mu.RLock()
 					defer d.mu.RUnlock()
@@ -255,7 +275,7 @@ func NewManager() Manager {
 }
 
 func (lc *LinuxClipboard) GetText(ctx context.Context) (string, error) {
-	// 1. Try Native Pure Go X11 Driver
+	// 1. Try Native Pure Go X11 Driver (reutilizes persistent connections)
 	if lc.x11Driver != nil {
 		if text, err := lc.x11Driver.GetText(); err == nil && text != "" {
 			return text, nil
