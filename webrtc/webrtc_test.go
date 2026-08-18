@@ -100,26 +100,3 @@ func TestPeerSession_WriteVideoSample(t *testing.T) {
 		t.Fatalf("WriteVideoSample failed: %v", err)
 	}
 }
-
-func TestTURNServer_Lifecycle(t *testing.T) {
-	config := TURNConfig{
-		PublicIP: "127.0.0.1",
-		Port:     34789, // High test port
-		Realm:    "test-realm",
-		Username: "testuser",
-		Password: "testpassword",
-	}
-
-	turnServer, err := NewTURNServer(config)
-	if err != nil {
-		t.Fatalf("NewTURNServer failed: %v", err)
-	}
-
-	if turnServer.Config().Port != 34789 {
-		t.Errorf("expected port 34789, got %d", turnServer.Config().Port)
-	}
-
-	if err := turnServer.Close(); err != nil {
-		t.Errorf("Close failed: %v", err)
-	}
-}

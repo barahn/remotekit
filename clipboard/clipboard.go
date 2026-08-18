@@ -3,6 +3,7 @@ package clipboard
 import (
 	"context"
 	"errors"
+	"sync"
 )
 
 var ErrClipboardUnavailable = errors.New("clipboard utility not available on host system")
@@ -15,8 +16,9 @@ type Manager interface {
 	SetText(ctx context.Context, text string) error
 }
 
-// MemoryClipboard provides an in-memory fallback clipboard implementation.
+// MemoryClipboard provides a thread-safe in-memory fallback clipboard implementation.
 type MemoryClipboard struct {
+	mu      sync.RWMutex
 	content string
 }
 
@@ -25,10 +27,14 @@ func NewMemoryClipboard() *MemoryClipboard {
 }
 
 func (m *MemoryClipboard) GetText(ctx context.Context) (string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	return m.content, nil
 }
 
 func (m *MemoryClipboard) SetText(ctx context.Context, text string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.content = text
 	return nil
 }

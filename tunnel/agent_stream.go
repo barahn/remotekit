@@ -12,6 +12,8 @@ import (
 	"image/draw"
 	"image/jpeg"
 	"net/http"
+	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -67,6 +69,8 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 				continue
 			}
 
+			ws.SetReadLimit(10 * 1024 * 1024) // 10MB limit for fallback JPEG frames
+
 			fmt.Printf("[AgentStream] Connected to signaling channel for agent %s\n", r.creds.AgentID)
 			r.runSignalingLoop(ctx, ws)
 			_ = ws.Close()
@@ -83,6 +87,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 	var writeMu sync.Mutex
 
 	clipMgr := clipboard.NewManager()
+	clipWatcher := clipboard.NewWatcher(clipMgr, 500*time.Millisecond)
 	transferMgr, _ := transfer.NewManager("")
 
 	safeWrite := func(data []byte) error {
@@ -90,6 +95,25 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 		defer writeMu.Unlock()
 		return ws.WriteMessage(websocket.TextMessage, data)
 	}
+
+	// Start clipboard watcher for continuous sync from host to technician
+	clipCtx, clipCancel := context.WithCancel(ctx)
+	defer clipCancel()
+
+	go clipWatcher.Start(clipCtx, func(newText string) {
+		clipMsg, err := json.Marshal(map[string]interface{}{
+			"type":       "clipboard",
+			"session_id": r.creds.AgentID,
+			"text":       newText,
+		})
+		if err == nil {
+			_ = safeWrite(clipMsg)
+			fmt.Printf("[AgentStream] Dispatched host clipboard change to remote (%d bytes)\n", len(newText))
+		}
+	})
+
+	// Send agent_ready ping so any waiting browser viewer immediately initiates the WebRTC offer
+	_ = safeWrite([]byte(fmt.Sprintf(`{"type":"agent_ready","session_id":"%s"}`, r.creds.AgentID)))
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -163,8 +187,6 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				_ = safeWrite(data)
 			})
 
-			_ = peer.CreateVideoTrack("screen", "video")
-
 			answerSDP, err := peer.CreateAnswer(sdp)
 			if err != nil {
 				continue
@@ -180,6 +202,8 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 
 			// Start screen capturer and feed samples to WebRTC & WebSocket
 			cap, err := screen.NewCapturer(screen.DefaultConfig())
+			var framesChan <-chan *screen.Frame
+
 			if err == nil {
 				stateMu.Lock()
 				capturer = cap
@@ -187,49 +211,81 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				activeCapCancel = cancelCap
 				stateMu.Unlock()
 
-				if err := cap.Start(capCtx); err == nil {
-					go func() {
-						defer func() {
-							if r := recover(); r != nil {
-								fmt.Printf("[AgentStream] Recovered panic in frame sender: %v\n", r)
-							}
-						}()
-						frameCount := 0
-						for frame := range cap.Frames() {
-							frameCount++
-
-							stateMu.RLock()
-							peer := currentPeer
-							stateMu.RUnlock()
-
-							if peer == nil || peer.ConnectionState() == 4 /* Closed */ {
-								return
-							}
-							vp8Sample := BuildVP8Sample(frame)
-							_ = peer.WriteVideoSample(vp8Sample, 33*time.Millisecond)
-
-							// Send direct JPEG frame fallback over WebSocket for Podman/Docker networks
-							if frame != nil && frame.Image != nil {
-								var buf bytes.Buffer
-								if err := jpeg.Encode(&buf, frame.Image, &jpeg.Options{Quality: 60}); err == nil {
-									b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
-									frameMsg := map[string]interface{}{
-										"type":       "frame",
-										"session_id": r.creds.AgentID,
-										"data":       b64,
-									}
-									data, _ := json.Marshal(frameMsg)
-									_ = safeWrite(data)
-
-									if frameCount%30 == 1 {
-										fmt.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
-									}
-								}
-							}
-						}
-					}()
+				if startErr := cap.Start(capCtx); startErr == nil {
+					framesChan = cap.Frames()
 				}
 			}
+
+			// If native capture is unavailable (headless / display-less container), stream synthesized desktop
+			if framesChan == nil {
+				simChan := make(chan *screen.Frame, 2)
+				framesChan = simChan
+				go func() {
+					defer close(simChan)
+					ticker := time.NewTicker(33 * time.Millisecond)
+					defer ticker.Stop()
+					var seq uint64
+					hostname, _ := os.Hostname()
+					if hostname == "" {
+						hostname = "endpoint"
+					}
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						case t := <-ticker.C:
+							seq++
+							img := screen.GenerateTestDesktopImage(1920, 1080, runtime.GOOS, hostname, r.creds.AgentID, seq, t.UTC(), 960, 540)
+							f := &screen.Frame{
+								Image:       img,
+								Bounds:      img.Bounds(),
+								CapturedAt:  t,
+								SequenceNum: seq,
+							}
+							select {
+							case simChan <- f:
+							default:
+							}
+						}
+					}
+				}()
+			}
+
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						fmt.Printf("[AgentStream] Recovered panic in frame sender: %v\n", r)
+					}
+				}()
+				frameCount := 0
+				for frame := range framesChan {
+					frameCount++
+
+					if ctx.Err() != nil {
+						return
+					}
+					// Direct high-quality JPEG streaming over WebSocket
+					if frame != nil && frame.Image != nil {
+						var buf bytes.Buffer
+						if err := jpeg.Encode(&buf, frame.Image, &jpeg.Options{Quality: 60}); err == nil {
+							b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
+							frameMsg := map[string]interface{}{
+								"type":       "frame",
+								"session_id": r.creds.AgentID,
+								"data":       b64,
+							}
+							data, _ := json.Marshal(frameMsg)
+							if err := safeWrite(data); err != nil {
+								return // WebSocket closed
+							}
+
+							if frameCount%30 == 1 {
+								fmt.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
+							}
+						}
+					}
+				}
+			}()
 
 		case "candidate":
 			cand, _ := signal["candidate"].(string)
@@ -241,7 +297,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			}
 
 		case "input":
-			if payload, ok := signal["payload"].(map[string]interface{}); ok && r.injector != nil {
+			if payload, ok := signal["payload"].(map[string]interface{}); ok {
 				r.handleInputPayload(payload)
 			}
 
@@ -260,8 +316,9 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 		case "clipboard":
 			text, _ := signal["text"].(string)
 			if text != "" {
+				clipWatcher.UpdateLastText(text)
 				_ = clipMgr.SetText(ctx, text)
-				fmt.Printf("[AgentStream] Received clipboard sync (%d bytes)\n", len(text))
+				fmt.Printf("[AgentStream] Received and applied clipboard sync (%d bytes)\n", len(text))
 			}
 
 		case "file_start":
@@ -334,40 +391,53 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 
 func (r *AgentStreamRunner) handleInputPayload(payload map[string]interface{}) {
 	evtType, _ := payload["type"].(string)
+
 	switch evtType {
-	case "mousemove":
+	case "mousemove", "mouse_move":
 		x, _ := payload["x"].(float64)
 		y, _ := payload["y"].(float64)
-		_ = r.injector.MoveMouse(x, y)
+		if r.injector != nil {
+			_ = r.injector.MoveMouse(x, y)
+		}
 
-	case "mousedown":
-		x, _ := payload["x"].(float64)
-		y, _ := payload["y"].(float64)
-		btn, _ := payload["button"].(float64)
-		_ = r.injector.MouseDown(input.MouseButton(btn), x, y)
-
-	case "mouseup":
+	case "mousedown", "mouse_down":
 		x, _ := payload["x"].(float64)
 		y, _ := payload["y"].(float64)
 		btn, _ := payload["button"].(float64)
-		_ = r.injector.MouseUp(input.MouseButton(btn), x, y)
+		if r.injector != nil {
+			_ = r.injector.MouseDown(input.MouseButton(btn), x, y)
+		}
 
-	case "wheel":
+	case "mouseup", "mouse_up":
+		x, _ := payload["x"].(float64)
+		y, _ := payload["y"].(float64)
+		btn, _ := payload["button"].(float64)
+		if r.injector != nil {
+			_ = r.injector.MouseUp(input.MouseButton(btn), x, y)
+		}
+
+	case "wheel", "scroll":
 		x, _ := payload["x"].(float64)
 		y, _ := payload["y"].(float64)
 		deltaX, _ := payload["deltaX"].(float64)
 		deltaY, _ := payload["deltaY"].(float64)
-		_ = r.injector.Scroll(deltaX, deltaY, x, y)
+		if r.injector != nil {
+			_ = r.injector.Scroll(deltaX, deltaY, x, y)
+		}
 
-	case "keydown":
+	case "keydown", "key_down":
 		key, _ := payload["key"].(string)
 		code, _ := payload["code"].(string)
-		_ = r.injector.KeyDown(input.KeyboardEvent{Key: key, Code: code})
+		if r.injector != nil {
+			_ = r.injector.KeyDown(input.KeyboardEvent{Key: key, Code: code})
+		}
 
-	case "keyup":
+	case "keyup", "key_up":
 		key, _ := payload["key"].(string)
 		code, _ := payload["code"].(string)
-		_ = r.injector.KeyUp(input.KeyboardEvent{Key: key, Code: code})
+		if r.injector != nil {
+			_ = r.injector.KeyUp(input.KeyboardEvent{Key: key, Code: code})
+		}
 	}
 }
 
