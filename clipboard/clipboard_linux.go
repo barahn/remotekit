@@ -46,7 +46,10 @@ type x11Driver struct {
 }
 
 func internAtom(conn *xgb.Conn, name string) xproto.Atom {
-	reply, err := xproto.InternAtom(conn, false, uint16(len(name)), name).Reply()
+	if len(name) > 65535 {
+		return 0
+	}
+	reply, err := xproto.InternAtom(conn, false, uint16(len(name)), name).Reply() // #nosec G115 -- length checked
 	if err != nil {
 		return 0
 	}
@@ -160,10 +163,10 @@ func (d *x11Driver) handleSelectionRequest(req xproto.SelectionRequestEvent) {
 			raw[i*4+2] = byte(t >> 16)
 			raw[i*4+3] = byte(t >> 24)
 		}
-		_ = xproto.ChangePropertyChecked(d.conn, xproto.PropModeReplace, req.Requestor, respProperty, xproto.AtomAtom, 32, uint32(len(targets)), raw).Check()
+		_ = xproto.ChangePropertyChecked(d.conn, xproto.PropModeReplace, req.Requestor, respProperty, xproto.AtomAtom, 32, uint32(len(targets)), raw).Check() // #nosec G115
 	} else if req.Target == d.utf8Atom || req.Target == d.stringAtom || req.Target == d.textAtom || req.Target == d.plainUtf8Atom || req.Target == d.plainAtom {
 		data := []byte(currentText)
-		_ = xproto.ChangePropertyChecked(d.conn, xproto.PropModeReplace, req.Requestor, respProperty, req.Target, 8, uint32(len(data)), data).Check()
+		_ = xproto.ChangePropertyChecked(d.conn, xproto.PropModeReplace, req.Requestor, respProperty, req.Target, 8, uint32(len(data)), data).Check() // #nosec G115
 	} else {
 		respProperty = 0
 	}

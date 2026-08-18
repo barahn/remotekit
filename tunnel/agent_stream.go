@@ -264,7 +264,6 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 					if ctx.Err() != nil {
 						return
 					}
-
 					// Direct high-quality JPEG streaming over WebSocket
 					if frame != nil && frame.Image != nil {
 						var buf bytes.Buffer
@@ -276,7 +275,9 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 								"data":       b64,
 							}
 							data, _ := json.Marshal(frameMsg)
-							_ = safeWrite(data)
+							if err := safeWrite(data); err != nil {
+								return // WebSocket closed
+							}
 
 							if frameCount%30 == 1 {
 								fmt.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
