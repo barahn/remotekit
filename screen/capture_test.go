@@ -23,7 +23,7 @@ func TestNewCapturer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCapturer failed: %v", err)
 	}
-	defer cap.(*x11Capturer).Close()
+	defer cap.Stop()
 
 	displays, err := cap.Displays()
 	if err != nil {
@@ -52,7 +52,7 @@ func TestCaptureFrames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCapturer failed: %v", err)
 	}
-	defer cap.(*x11Capturer).Close()
+	defer cap.Stop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -109,7 +109,7 @@ func TestDoubleStart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCapturer failed: %v", err)
 	}
-	defer cap.(*x11Capturer).Close()
+	defer cap.Stop()
 
 	ctx := context.Background()
 	if err := cap.Start(ctx); err != nil {
@@ -134,7 +134,7 @@ func TestSetDisplayInvalid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCapturer failed: %v", err)
 	}
-	defer cap.(*x11Capturer).Close()
+	defer cap.Stop()
 
 	err = cap.SetDisplay(99)
 	if err != ErrDisplayNotFound {
@@ -155,9 +155,12 @@ func BenchmarkCaptureFrame(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewCapturer failed: %v", err)
 	}
-	defer cap.(*x11Capturer).Close()
+	defer cap.Stop()
 
-	x11cap := cap.(*x11Capturer)
+	x11cap, ok := cap.(*x11Capturer)
+	if !ok {
+		b.Skip("non-X11 capturer detected — skipping X11 SHM benchmark")
+	}
 
 	w := int(x11cap.width)
 	h := int(x11cap.height)

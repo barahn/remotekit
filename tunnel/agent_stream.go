@@ -69,6 +69,8 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 				continue
 			}
 
+			ws.SetReadLimit(10 * 1024 * 1024) // 10MB limit for fallback JPEG frames
+
 			fmt.Printf("[AgentStream] Connected to signaling channel for agent %s\n", r.creds.AgentID)
 			r.runSignalingLoop(ctx, ws)
 			_ = ws.Close()
@@ -185,8 +187,6 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				_ = safeWrite(data)
 			})
 
-			_ = peer.CreateVideoTrack("screen", "video")
-
 			answerSDP, err := peer.CreateAnswer(sdp)
 			if err != nil {
 				continue
@@ -261,6 +261,9 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				for frame := range framesChan {
 					frameCount++
 
+					if ctx.Err() != nil {
+						return
+					}
 					// Direct high-quality JPEG streaming over WebSocket
 					if frame != nil && frame.Image != nil {
 						var buf bytes.Buffer

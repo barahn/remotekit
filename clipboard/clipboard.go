@@ -16,7 +16,7 @@ type Manager interface {
 	SetText(ctx context.Context, text string) error
 }
 
-// MemoryClipboard provides an in-memory fallback clipboard implementation.
+// MemoryClipboard provides a thread-safe in-memory fallback clipboard implementation.
 type MemoryClipboard struct {
 	mu      sync.RWMutex
 	content string
