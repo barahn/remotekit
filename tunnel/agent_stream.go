@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -67,6 +68,8 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 				time.Sleep(2 * time.Second)
 				continue
 			}
+
+			ws.SetReadLimit(10 * 1024 * 1024) // 10MB limit for fallback JPEG frames
 
 			fmt.Printf("[AgentStream] Connected to signaling channel for agent %s\n", r.creds.AgentID)
 			r.runSignalingLoop(ctx, ws)
@@ -184,8 +187,6 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				_ = safeWrite(data)
 			})
 
-			_ = peer.CreateVideoTrack("screen", "video")
-
 			answerSDP, err := peer.CreateAnswer(sdp)
 			if err != nil {
 				continue
@@ -250,8 +251,6 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				}()
 			}
 
-			encoder := screen.NewVP8Encoder(30, 70)
-
 			go func() {
 				defer func() {
 					if r := recover(); r != nil {
@@ -262,22 +261,26 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				for frame := range framesChan {
 					frameCount++
 
-					stateMu.RLock()
-					peer := currentPeer
-					stateMu.RUnlock()
-
-					if peer == nil || peer.ConnectionState() == 4 /* Closed */ {
+					if ctx.Err() != nil {
 						return
 					}
 
-					// Encode frame using VP8 with frame difference detection
-					sample, err := encoder.Encode(frame)
-					if err == nil && len(sample) > 0 {
-						// Primary WebRTC streaming path
-						_ = peer.WriteVideoSample(sample, 33*time.Millisecond)
+					// Direct high-quality JPEG streaming over WebSocket
+					if frame != nil && frame.Image != nil {
+						var buf bytes.Buffer
+						if err := jpeg.Encode(&buf, frame.Image, &jpeg.Options{Quality: 60}); err == nil {
+							b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
+							frameMsg := map[string]interface{}{
+								"type":       "frame",
+								"session_id": r.creds.AgentID,
+								"data":       b64,
+							}
+							data, _ := json.Marshal(frameMsg)
+							_ = safeWrite(data)
 
-						if frameCount%60 == 1 {
-							fmt.Printf("[AgentStream] Pushed WebRTC VP8 video sample #%d (%dx%d, %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(sample))
+							if frameCount%30 == 1 {
+								fmt.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
+							}
 						}
 					}
 				}
