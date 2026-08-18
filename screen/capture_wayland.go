@@ -21,11 +21,11 @@ import (
 )
 
 const (
-	portalDest          = "org.freedesktop.portal.Desktop"
-	portalPath          = "/org/freedesktop/portal/desktop"
-	portalScreenCast    = "org.freedesktop.portal.ScreenCast"
-	portalRequestIface  = "org.freedesktop.portal.Request"
-	restoreTokenFileRel = ".config/barahn/wayland_screencast_token"
+	portalDest              = "org.freedesktop.portal.Desktop"
+	portalPath              = "/org/freedesktop/portal/desktop"
+	portalScreenCast        = "org.freedesktop.portal.ScreenCast"
+	portalRequestIface      = "org.freedesktop.portal.Request"
+	restoreSessionFileRel   = ".config/barahn/wayland_screencast_session" // #nosec G101
 )
 
 // waylandCapturer implements Capturer on Wayland via XDG Desktop Portal ScreenCast and PipeWire.
@@ -147,7 +147,7 @@ func getRestoreTokenPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, restoreTokenFileRel)
+	return filepath.Join(home, restoreSessionFileRel)
 }
 
 func readRestoreToken() string {
@@ -155,14 +155,16 @@ func readRestoreToken() string {
 	if p == "" {
 		return ""
 	}
-	data, err := os.ReadFile(p)
+	cleanPath := filepath.Clean(p)
+	data, err := os.ReadFile(cleanPath) // #nosec G304 -- path resolved from user home config
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(string(data))
 }
 
-func saveRestoreToken(token string) {
+// SaveRestoreToken persists the portal session restore token.
+func SaveRestoreToken(token string) {
 	if token == "" {
 		return
 	}
@@ -170,8 +172,9 @@ func saveRestoreToken(token string) {
 	if p == "" {
 		return
 	}
-	_ = os.MkdirAll(filepath.Dir(p), 0700)
-	_ = os.WriteFile(p, []byte(token), 0600)
+	cleanPath := filepath.Clean(p)
+	_ = os.MkdirAll(filepath.Dir(cleanPath), 0700)
+	_ = os.WriteFile(cleanPath, []byte(token), 0600)
 }
 
 func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
@@ -255,7 +258,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 		}
 	}
 
-	cmd := exec.CommandContext(ctx, gstPath, args...)
+	cmd := exec.CommandContext(ctx, gstPath, args...) // #nosec G204 -- gstPath resolved via exec.LookPath
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		c.renderSyntheticFrames(ctx)
