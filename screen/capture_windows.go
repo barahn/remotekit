@@ -23,12 +23,16 @@ const (
 var (
 	modUser32 = syscall.NewLazyDLL("user32.dll")
 	modGdi32  = syscall.NewLazyDLL("gdi32.dll")
+	modShcore = syscall.NewLazyDLL("shcore.dll")
 
-	procGetDC               = modUser32.NewProc("GetDC")
-	procReleaseDC           = modUser32.NewProc("ReleaseDC")
-	procGetSystemMetrics    = modUser32.NewProc("GetSystemMetrics")
-	procEnumDisplayMonitors = modUser32.NewProc("EnumDisplayMonitors")
-	procGetMonitorInfoW     = modUser32.NewProc("GetMonitorInfoW")
+	procGetDC                         = modUser32.NewProc("GetDC")
+	procReleaseDC                     = modUser32.NewProc("ReleaseDC")
+	procGetSystemMetrics              = modUser32.NewProc("GetSystemMetrics")
+	procEnumDisplayMonitors           = modUser32.NewProc("EnumDisplayMonitors")
+	procGetMonitorInfoW               = modUser32.NewProc("GetMonitorInfoW")
+	procSetProcessDpiAwarenessContext = modUser32.NewProc("SetProcessDpiAwarenessContext")
+	procSetProcessDPIAware            = modUser32.NewProc("SetProcessDPIAware")
+	procSetProcessDpiAwareness        = modShcore.NewProc("SetProcessDpiAwareness")
 
 	procCreateCompatibleDC     = modGdi32.NewProc("CreateCompatibleDC")
 	procCreateCompatibleBitmap = modGdi32.NewProc("CreateCompatibleBitmap")
@@ -38,6 +42,37 @@ var (
 	procDeleteDC               = modGdi32.NewProc("DeleteDC")
 	procDeleteObject           = modGdi32.NewProc("DeleteObject")
 )
+
+var initDPIOnce sync.Once
+
+// initDPIAwareness enables Per-Monitor DPI awareness on Windows so GetSystemMetrics and BitBlt operate on physical pixels.
+func initDPIAwareness() {
+	initDPIOnce.Do(func() {
+		// 1. Windows 10 1607+ (Per-Monitor V2: -4)
+		if procSetProcessDpiAwarenessContext.Find() == nil {
+			dpiContext := ^uintptr(3) // -4
+			ret, _, _ := procSetProcessDpiAwarenessContext.Call(dpiContext)
+			if ret != 0 {
+				return
+			}
+		}
+		// 2. Windows 8.1+ (PROCESS_PER_MONITOR_DPI_AWARE = 2)
+		if procSetProcessDpiAwareness.Find() == nil {
+			ret, _, _ := procSetProcessDpiAwareness.Call(2)
+			if ret == 0 {
+				return
+			}
+		}
+		// 3. Windows Vista+ System DPI Aware
+		if procSetProcessDPIAware.Find() == nil {
+			_, _, _ = procSetProcessDPIAware.Call()
+		}
+	})
+}
+
+func init() {
+	initDPIAwareness()
+}
 
 type bitmapInfoHeader struct {
 	biSize          uint32
@@ -197,6 +232,29 @@ func (c *windowsCapturer) Close() {
 	c.Stop()
 }
 
+func (c *windowsCapturer) getActiveDisplayBounds() (image.Rectangle, int, int) {
+	c.mu.Lock()
+	dispIdx := c.config.DisplayIndex
+	c.mu.Unlock()
+
+	displays, err := c.Displays()
+	if err == nil && dispIdx >= 0 && dispIdx < len(displays) {
+		b := displays[dispIdx].Bounds
+		return image.Rect(0, 0, b.Dx(), b.Dy()), b.Min.X, b.Min.Y
+	}
+	cx, _, _ := procGetSystemMetrics.Call(0) // SM_CXSCREEN
+	cy, _, _ := procGetSystemMetrics.Call(1) // SM_CYSCREEN
+	w := int(cx)
+	h := int(cy)
+	if w <= 0 {
+		w = 1920
+	}
+	if h <= 0 {
+		h = 1080
+	}
+	return image.Rect(0, 0, w, h), 0, 0
+}
+
 func (c *windowsCapturer) captureLoop(ctx context.Context) {
 	defer close(c.frames)
 
@@ -204,22 +262,12 @@ func (c *windowsCapturer) captureLoop(ctx context.Context) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	w := c.width
-	h := c.height
-	if w <= 0 {
-		w = 1920
-	}
-	if h <= 0 {
-		h = 1080
-	}
-
-	bgraBuf := make([]byte, w*h*4)
-	rgbaBuf := make([]byte, w*h*4)
+	var bgraBuf []byte
+	var rgbaBuf []byte
+	var currentW, currentH int
 
 	var bmi bitmapInfo
 	bmi.bmiHeader.biSize = uint32(unsafe.Sizeof(bmi.bmiHeader))
-	bmi.bmiHeader.biWidth = int32(w)
-	bmi.bmiHeader.biHeight = -int32(h) // Negative for top-down DIB
 	bmi.bmiHeader.biPlanes = 1
 	bmi.bmiHeader.biBitCount = 32
 	bmi.bmiHeader.biCompression = biRGB
@@ -233,7 +281,26 @@ func (c *windowsCapturer) captureLoop(ctx context.Context) {
 				return
 			}
 
-			err := c.captureFrame(bgraBuf, &bmi, w, h)
+			bounds, srcX, srcY := c.getActiveDisplayBounds()
+			w := bounds.Dx()
+			h := bounds.Dy()
+			if w <= 0 {
+				w = 1920
+			}
+			if h <= 0 {
+				h = 1080
+			}
+
+			if w != currentW || h != currentH || len(bgraBuf) != w*h*4 {
+				currentW = w
+				currentH = h
+				bgraBuf = make([]byte, w*h*4)
+				rgbaBuf = make([]byte, w*h*4)
+				bmi.bmiHeader.biWidth = int32(w)
+				bmi.bmiHeader.biHeight = -int32(h) // Negative for top-down DIB
+			}
+
+			err := c.captureFrame(bgraBuf, &bmi, srcX, srcY, w, h)
 			if err != nil {
 				continue
 			}
@@ -243,10 +310,14 @@ func (c *windowsCapturer) captureLoop(ctx context.Context) {
 			rgba := image.NewRGBA(image.Rect(0, 0, w, h))
 			copy(rgba.Pix, rgbaBuf)
 
+			c.mu.Lock()
+			currentDispIdx := c.config.DisplayIndex
+			c.mu.Unlock()
+
 			frame := &Frame{
 				Image:        rgba,
 				Bounds:       image.Rect(0, 0, w, h),
-				DisplayIndex: c.config.DisplayIndex,
+				DisplayIndex: currentDispIdx,
 				CapturedAt:   time.Now(),
 				SequenceNum:  c.seqNum.Add(1),
 			}
@@ -260,7 +331,7 @@ func (c *windowsCapturer) captureLoop(ctx context.Context) {
 	}
 }
 
-func (c *windowsCapturer) captureFrame(dst []byte, bmi *bitmapInfo, w, h int) error {
+func (c *windowsCapturer) captureFrame(dst []byte, bmi *bitmapInfo, srcX, srcY, w, h int) error {
 	hDesktopDC, _, _ := procGetDC.Call(0)
 	if hDesktopDC == 0 {
 		return fmt.Errorf("GetDC failed")
@@ -284,13 +355,13 @@ func (c *windowsCapturer) captureFrame(dst []byte, bmi *bitmapInfo, w, h int) er
 
 	r, _, _ := procBitBlt.Call(
 		hMemDC, 0, 0, uintptr(w), uintptr(h),
-		hDesktopDC, 0, 0, uintptr(srccopy|captureBlt),
+		hDesktopDC, uintptr(srcX), uintptr(srcY), uintptr(srccopy|captureBlt),
 	)
 	if r == 0 {
 		// Retry without CAPTUREBLT if layered windows capture fails
 		r, _, _ = procBitBlt.Call(
 			hMemDC, 0, 0, uintptr(w), uintptr(h),
-			hDesktopDC, 0, 0, uintptr(srccopy),
+			hDesktopDC, uintptr(srcX), uintptr(srcY), uintptr(srccopy),
 		)
 		if r == 0 {
 			return fmt.Errorf("BitBlt failed")
