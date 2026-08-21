@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/mendsec/barahn/pkg/bark"
 	"github.com/mendsec/barahn/pkg/clipboard"
 	"github.com/mendsec/barahn/pkg/input"
 	"github.com/mendsec/barahn/pkg/screen"
@@ -89,6 +90,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 	clipMgr := clipboard.NewManager()
 	clipWatcher := clipboard.NewWatcher(clipMgr, 500*time.Millisecond)
 	transferMgr, _ := transfer.NewManager("")
+	scriptRunner := NewScriptRunner()
 
 	safeWrite := func(data []byte) error {
 		writeMu.Lock()
@@ -312,6 +314,54 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			text, _ := signal["text"].(string)
 			sender, _ := signal["sender"].(string)
 			fmt.Printf("[AgentStream] Chat message from %s: %s\n", sender, text)
+
+		case "focus_state":
+			focused, _ := signal["focused"].(bool)
+			fmt.Printf("[AgentStream] Session focus state changed: focused=%v\n", focused)
+
+		case "script_exec_req":
+			execID, _ := signal["execution_id"].(string)
+			interpreter, _ := signal["interpreter"].(string)
+			scriptBody, _ := signal["script_body"].(string)
+			timeoutSec, _ := signal["timeout_seconds"].(float64)
+			workingDir, _ := signal["working_dir"].(string)
+
+			if execID != "" && scriptBody != "" {
+				go func() {
+					req := bark.ScriptExecutionRequest{
+						ExecutionID:    execID,
+						Interpreter:    interpreter,
+						ScriptBody:     scriptBody,
+						TimeoutSeconds: int(timeoutSec),
+						WorkingDir:     workingDir,
+					}
+					res := scriptRunner.Execute(ctx, req, func(chunk bark.ScriptExecutionChunk) {
+						chunkMsg, _ := json.Marshal(map[string]interface{}{
+							"type":         "script_exec_chunk",
+							"session_id":   r.creds.AgentID,
+							"execution_id": chunk.ExecutionID,
+							"stream":       chunk.Stream,
+							"data":         chunk.Data,
+							"index":        chunk.Index,
+						})
+						_ = safeWrite(chunkMsg)
+					})
+
+					resMsg, _ := json.Marshal(map[string]interface{}{
+						"type":                  "script_exec_res",
+						"session_id":            r.creds.AgentID,
+						"execution_id":          res.ExecutionID,
+						"exit_code":             res.ExitCode,
+						"execution_duration_ms": res.ExecutionDurationMS,
+						"error":                 res.Error,
+					})
+					_ = safeWrite(resMsg)
+				}()
+			}
+
+		case "power":
+			action, _ := signal["action"].(string)
+			fmt.Printf("[AgentStream] Received remote power instruction: %s\n", action)
 
 		case "clipboard":
 			text, _ := signal["text"].(string)
