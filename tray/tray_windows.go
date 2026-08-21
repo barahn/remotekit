@@ -32,9 +32,12 @@ var (
 	procSetForeground    = user32.NewProc("SetForegroundWindow")
 	procPostMessageW     = user32.NewProc("PostMessageW")
 	procLoadIconW        = user32.NewProc("LoadIconW")
+	procShowWindow       = user32.NewProc("ShowWindow")
+	procIsWindowVisible  = user32.NewProc("IsWindowVisible")
 
 	procShellNotifyIconW = shell32.NewProc("Shell_NotifyIconW")
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
+	procGetConsoleWindow = kernel32.NewProc("GetConsoleWindow")
 )
 
 const (
@@ -54,19 +57,21 @@ const (
 	nifTip     = 0x00000004
 	nifInfo    = 0x00000010
 
-	mfString   = 0x00000000
-	mfDisabled = 0x00000002
+	mfString    = 0x00000000
+	mfDisabled  = 0x00000002
 	mfSeparator = 0x00000800
 
 	tpmRightButton = 0x0002
 
-	cmdHeader = 1000
-	cmdStatus = 1001
-	cmdID     = 1002
-	cmdCopyID = 1003
-	cmdServer = 1004
-	cmdExit   = 1005
+	cmdHeader     = 1000
+	cmdStatus     = 1001
+	cmdID         = 1002
+	cmdCopyID     = 1003
+	cmdServer     = 1004
+	cmdExit       = 1005
+	cmdToggleLogs = 1006
 )
+
 
 type point struct {
 	x, y int32
@@ -258,6 +263,9 @@ func (t *windowsTrayManager) runMessageLoop(ctx context.Context) {
 	}
 	t.mu.Unlock()
 
+	// Hide console window into system tray by default
+	hideConsoleWindow()
+
 	go func() {
 		<-ctx.Done()
 		t.Stop()
@@ -274,6 +282,38 @@ func (t *windowsTrayManager) runMessageLoop(ctx context.Context) {
 	}
 }
 
+func hideConsoleWindow() {
+	consoleHwnd, _, _ := procGetConsoleWindow.Call()
+	if consoleHwnd != 0 {
+		procShowWindow.Call(consoleHwnd, 0 /* SW_HIDE */)
+	}
+}
+
+func showConsoleWindow() {
+	consoleHwnd, _, _ := procGetConsoleWindow.Call()
+	if consoleHwnd != 0 {
+		procShowWindow.Call(consoleHwnd, 5 /* SW_SHOW */)
+		procSetForeground.Call(consoleHwnd)
+	}
+}
+
+func isConsoleVisible() bool {
+	consoleHwnd, _, _ := procGetConsoleWindow.Call()
+	if consoleHwnd == 0 {
+		return false
+	}
+	vis, _, _ := procIsWindowVisible.Call(consoleHwnd)
+	return vis != 0
+}
+
+func toggleConsoleWindow() {
+	if isConsoleVisible() {
+		hideConsoleWindow()
+	} else {
+		showConsoleWindow()
+	}
+}
+
 func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintptr {
 	switch message {
 	case wmTrayIcon:
@@ -281,9 +321,7 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		case wmRButtonUp, wmContextMenu:
 			showContextMenu(hwnd)
 		case wmLButtonDbl:
-			if activeTray != nil {
-				activeTray.showBalloon()
-			}
+			toggleConsoleWindow()
 		}
 		return 0
 
@@ -294,6 +332,8 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 			if activeTray != nil {
 				activeTray.copyIDToClipboard()
 			}
+		case cmdToggleLogs:
+			toggleConsoleWindow()
 		case cmdExit:
 			if activeTray != nil {
 				if activeTray.onExit != nil {
@@ -329,6 +369,14 @@ func showContextMenu(hwnd uintptr) {
 	idText, _ := syscall.UTF16PtrFromString(fmt.Sprintf("🆔 ID: %s", activeTray.agentID))
 	serverText, _ := syscall.UTF16PtrFromString(fmt.Sprintf("🌐 Server: %s", activeTray.serverAddr))
 	copyText, _ := syscall.UTF16PtrFromString("📋 Copy Endpoint ID")
+
+	var logActionText string
+	if isConsoleVisible() {
+		logActionText = "📄 Hide Console Logs"
+	} else {
+		logActionText = "📄 View Console Logs"
+	}
+	logText, _ := syscall.UTF16PtrFromString(logActionText)
 	exitText, _ := syscall.UTF16PtrFromString("❌ Exit Agent")
 
 	procAppendMenuW.Call(hMenu, uintptr(mfString|mfDisabled), uintptr(cmdHeader), uintptr(unsafe.Pointer(headerText)))
@@ -338,6 +386,8 @@ func showContextMenu(hwnd uintptr) {
 	procAppendMenuW.Call(hMenu, uintptr(mfString|mfDisabled), uintptr(cmdServer), uintptr(unsafe.Pointer(serverText)))
 	procAppendMenuW.Call(hMenu, uintptr(mfSeparator), 0, 0)
 	procAppendMenuW.Call(hMenu, uintptr(mfString), uintptr(cmdCopyID), uintptr(unsafe.Pointer(copyText)))
+	procAppendMenuW.Call(hMenu, uintptr(mfString), uintptr(cmdToggleLogs), uintptr(unsafe.Pointer(logText)))
+	procAppendMenuW.Call(hMenu, uintptr(mfSeparator), 0, 0)
 	procAppendMenuW.Call(hMenu, uintptr(mfString), uintptr(cmdExit), uintptr(unsafe.Pointer(exitText)))
 
 	var p point
@@ -345,6 +395,7 @@ func showContextMenu(hwnd uintptr) {
 	procSetForeground.Call(hwnd)
 	procTrackPopupMenu.Call(hMenu, uintptr(tpmRightButton), uintptr(p.x), uintptr(p.y), 0, hwnd, 0)
 }
+
 
 func (t *windowsTrayManager) showBalloon() {
 	t.mu.Lock()
