@@ -14,6 +14,7 @@ import (
 	"context"
 	"fmt"
 	"image"
+	"os"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -72,6 +73,13 @@ func NewCapturer(config CaptureConfig) (Capturer, error) {
 	}
 
 	ds := DetectDisplayServer()
+	// When running under X11 or with DISPLAY available (e.g. Xvfb, XWayland), prioritize direct X11 capture
+	if ds == DisplayServerX11 || os.Getenv("DISPLAY") != "" {
+		if cap, err := newX11Capturer(config); err == nil {
+			return cap, nil
+		}
+	}
+
 	if ds == DisplayServerWayland {
 		if cap, err := newWaylandCapturer(config); err == nil {
 			return cap, nil

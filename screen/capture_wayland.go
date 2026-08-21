@@ -292,6 +292,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 			_, err := io.ReadFull(bufReader, frameBuf)
 			if err != nil {
 				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+					c.renderSyntheticFrames(ctx)
 					return
 				}
 				continue
