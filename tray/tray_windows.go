@@ -38,6 +38,8 @@ var (
 	procShellNotifyIconW = shell32.NewProc("Shell_NotifyIconW")
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 	procGetConsoleWindow = kernel32.NewProc("GetConsoleWindow")
+	procGetAncestor      = user32.NewProc("GetAncestor")
+	procGetParent        = user32.NewProc("GetParent")
 )
 
 const (
@@ -282,28 +284,62 @@ func (t *windowsTrayManager) runMessageLoop(ctx context.Context) {
 	}
 }
 
-func hideConsoleWindow() {
+func getConsoleWindows() []uintptr {
+	var hwnds []uintptr
 	consoleHwnd, _, _ := procGetConsoleWindow.Call()
-	if consoleHwnd != 0 {
-		procShowWindow.Call(consoleHwnd, 0 /* SW_HIDE */)
+	if consoleHwnd == 0 {
+		return hwnds
+	}
+	hwnds = append(hwnds, consoleHwnd)
+
+	// GA_ROOT = 2 (Windows Terminal / Host Frame Window)
+	rootHwnd, _, _ := procGetAncestor.Call(consoleHwnd, 2 /* GA_ROOT */)
+	if rootHwnd != 0 && rootHwnd != consoleHwnd {
+		hwnds = append(hwnds, rootHwnd)
+	}
+
+	// GA_ROOTOWNER = 3
+	ownerHwnd, _, _ := procGetAncestor.Call(consoleHwnd, 3 /* GA_ROOTOWNER */)
+	if ownerHwnd != 0 && ownerHwnd != consoleHwnd && ownerHwnd != rootHwnd {
+		hwnds = append(hwnds, ownerHwnd)
+	}
+
+	// Direct Parent
+	parentHwnd, _, _ := procGetParent.Call(consoleHwnd)
+	if parentHwnd != 0 && parentHwnd != consoleHwnd && parentHwnd != rootHwnd && parentHwnd != ownerHwnd {
+		hwnds = append(hwnds, parentHwnd)
+	}
+
+	return hwnds
+}
+
+func hideConsoleWindow() {
+	for _, h := range getConsoleWindows() {
+		procShowWindow.Call(h, 0 /* SW_HIDE */)
 	}
 }
 
 func showConsoleWindow() {
-	consoleHwnd, _, _ := procGetConsoleWindow.Call()
-	if consoleHwnd != 0 {
-		procShowWindow.Call(consoleHwnd, 5 /* SW_SHOW */)
-		procSetForeground.Call(consoleHwnd)
+	windows := getConsoleWindows()
+	for _, h := range windows {
+		procShowWindow.Call(h, 9 /* SW_RESTORE */)
+		procShowWindow.Call(h, 5 /* SW_SHOW */)
+		procSetForeground.Call(h)
 	}
 }
 
 func isConsoleVisible() bool {
-	consoleHwnd, _, _ := procGetConsoleWindow.Call()
-	if consoleHwnd == 0 {
+	windows := getConsoleWindows()
+	if len(windows) == 0 {
 		return false
 	}
-	vis, _, _ := procIsWindowVisible.Call(consoleHwnd)
-	return vis != 0
+	for _, h := range windows {
+		vis, _, _ := procIsWindowVisible.Call(h)
+		if vis != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func toggleConsoleWindow() {
