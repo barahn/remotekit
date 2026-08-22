@@ -304,11 +304,14 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				r.handleInputPayload(payload)
 			}
 
-		case "resize":
+		case "resize", "viewport_size":
 			w, _ := signal["width"].(float64)
 			h, _ := signal["height"].(float64)
-			if w > 0 && h > 0 && r.injector != nil {
-				r.injector.SetScreenBounds(image.Rect(0, 0, int(w), int(h)))
+			if w > 0 && h > 0 {
+				if r.injector != nil {
+					r.injector.SetScreenBounds(image.Rect(0, 0, int(w), int(h)))
+				}
+				fmt.Printf("[AgentStream] Synchronized target viewport bounds: %.0fx%.0f\n", w, h)
 			}
 
 		case "chat":

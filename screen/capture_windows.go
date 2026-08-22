@@ -41,6 +41,7 @@ var (
 	procGetDIBits              = modGdi32.NewProc("GetDIBits")
 	procDeleteDC               = modGdi32.NewProc("DeleteDC")
 	procDeleteObject           = modGdi32.NewProc("DeleteObject")
+	procChangeDisplaySettingsW = modUser32.NewProc("ChangeDisplaySettingsW")
 )
 
 var initDPIOnce sync.Once
@@ -121,6 +122,58 @@ type windowsCapturer struct {
 	height int
 }
 
+type devModeW struct {
+	dmDeviceName       [32]uint16
+	dmSpecVersion      uint16
+	dmDriverVersion    uint16
+	dmSize             uint16
+	dmDriverExtra      uint16
+	dmFields           uint32
+	dmOrientation      int16
+	dmPaperSize        int16
+	dmPaperLength      int16
+	dmPaperWidth       int16
+	dmScale            int16
+	dmCopies           int16
+	dmDefaultSource    int16
+	dmPrintQuality     int16
+	dmColor            int16
+	dmDuplex           int16
+	dmYResolution      int16
+	dmTTOption         int16
+	dmCollate          int16
+	dmFormName         [32]uint16
+	dmLogPixels        uint16
+	dmBitsPerPel       uint32
+	dmPelsWidth        uint32
+	dmPelsHeight       uint32
+	dmDisplayFlags     uint32
+	dmDisplayFrequency uint32
+	dmICMMethod        uint32
+	dmICMIntent        uint32
+	dmMediaType        uint32
+	dmDitherType       uint32
+	dmReserved1        uint32
+	dmReserved2        uint32
+	dmPanningWidth     uint32
+	dmPanningHeight    uint32
+}
+
+// TrySetDisplayResolution attempts to programmatically adjust the Windows display resolution to target bounds (e.g. 1920x1080).
+func TrySetDisplayResolution(targetW, targetH int) bool {
+	if procChangeDisplaySettingsW.Find() != nil {
+		return false
+	}
+	var dm devModeW
+	dm.dmSize = uint16(unsafe.Sizeof(dm))
+	dm.dmFields = 0x00080000 /* DM_PELSWIDTH */ | 0x00100000 /* DM_PELSHEIGHT */
+	dm.dmPelsWidth = uint32(targetW)
+	dm.dmPelsHeight = uint32(targetH)
+
+	ret, _, _ := procChangeDisplaySettingsW.Call(uintptr(unsafe.Pointer(&dm)), 0)
+	return ret == 0 /* DISP_CHANGE_SUCCESSFUL */
+}
+
 // NewCapturer creates a Windows screen capturer using the Win32 GDI / DirectX APIs.
 func NewCapturer(config CaptureConfig) (Capturer, error) {
 	if config.FrameBufferSize <= 0 {
@@ -137,6 +190,17 @@ func NewCapturer(config CaptureConfig) (Capturer, error) {
 	cy, _, _ := procGetSystemMetrics.Call(1) // SM_CYSCREEN
 	w := int(cx)
 	h := int(cy)
+
+	// If current display resolution is below standard FullHD, attempt to auto-negotiate to 1080p
+	if w < 1920 && w > 0 {
+		if TrySetDisplayResolution(1920, 1080) {
+			cx, _, _ = procGetSystemMetrics.Call(0)
+			cy, _, _ = procGetSystemMetrics.Call(1)
+			w = int(cx)
+			h = int(cy)
+		}
+	}
+
 	if w <= 0 {
 		w = 1920
 	}
