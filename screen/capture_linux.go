@@ -73,30 +73,30 @@ func NewCapturer(config CaptureConfig) (Capturer, error) {
 	}
 
 	ds := DetectDisplayServer()
-	// When running under X11 or with DISPLAY available (e.g. Xvfb, XWayland), prioritize direct X11 capture
-	if ds == DisplayServerX11 || os.Getenv("DISPLAY") != "" {
-		if cap, err := newX11Capturer(config); err == nil {
-			return cap, nil
-		}
-	}
-
+	// Under Wayland, prioritize native Wayland / PipeWire / Mutter ScreenCast capturer
 	if ds == DisplayServerWayland {
 		if cap, err := newWaylandCapturer(config); err == nil {
 			return cap, nil
 		}
 	}
 
-	// Default / fallback to X11 (or XWayland)
-	cap, err := newX11Capturer(config)
-	if err == nil {
-		return cap, nil
+	// When running under X11 or with DISPLAY available, prioritize direct X11 capture
+	if ds == DisplayServerX11 || os.Getenv("DISPLAY") != "" {
+		if cap, err := newX11Capturer(config); err == nil {
+			return cap, nil
+		}
 	}
 
-	// If X11 failed but Wayland was not tried yet, attempt Wayland
+	// Default fallback: try Wayland first if not tried, then X11
 	if ds != DisplayServerWayland {
 		if wcap, werr := newWaylandCapturer(config); werr == nil {
 			return wcap, nil
 		}
+	}
+
+	cap, err := newX11Capturer(config)
+	if err == nil {
+		return cap, nil
 	}
 
 	return nil, err

@@ -29,18 +29,18 @@ VERSION_ID="24.04"
 			},
 		},
 		{
-			name: "Fedora 41",
+			name: "Fedora 44",
 			input: `NAME="Fedora Linux"
-VERSION="41 (Workstation Edition)"
+VERSION="44 (Container Image)"
 ID=fedora
-VERSION_ID=41
-PRETTY_NAME="Fedora Linux 41 (Workstation Edition)"
+VERSION_ID=44
+PRETTY_NAME="Fedora Linux 44 (Container Image)"
 `,
 			expected: map[string]string{
 				"NAME":        "Fedora Linux",
 				"ID":          "fedora",
-				"VERSION_ID":  "41",
-				"PRETTY_NAME": "Fedora Linux 41 (Workstation Edition)",
+				"VERSION_ID":  "44",
+				"PRETTY_NAME": "Fedora Linux 44 (Container Image)",
 			},
 		},
 		{

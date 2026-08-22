@@ -33,24 +33,31 @@ type linuxInjector struct {
 // NewInjector creates a new platform-specific input injector.
 // On Linux, this auto-detects Wayland vs X11 and returns the appropriate injector.
 func NewInjector() (Injector, error) {
-	if os.Getenv("XDG_SESSION_TYPE") == "wayland" && os.Getenv("DISPLAY") == "" {
+	// If X11/Xwayland DISPLAY is set, prioritize direct low-latency input via XTest
+	if os.Getenv("DISPLAY") != "" {
+		if inj, err := newX11Injector(); err == nil {
+			return inj, nil
+		}
+	}
+
+	// Under Wayland, use native Wayland RemoteDesktop injector (Mutter / Portal)
+	if os.Getenv("WAYLAND_DISPLAY") != "" || os.Getenv("XDG_SESSION_TYPE") == "wayland" {
 		if winj, err := newWaylandInjector(); err == nil {
 			return winj, nil
 		}
 	}
 
-	// Try X11 / XWayland first (direct low-latency input via XTest without portal prompts)
-	inj, err := newX11Injector()
-	if err == nil {
+	// Fallback to X11
+	if inj, err := newX11Injector(); err == nil {
 		return inj, nil
 	}
 
-	// Fallback to Wayland RemoteDesktop portal
+	// Fallback to Wayland RemoteDesktop
 	if winj, werr := newWaylandInjector(); werr == nil {
 		return winj, nil
 	}
 
-	return nil, err
+	return nil, fmt.Errorf("%w: no suitable input injector found", ErrDeviceNotFound)
 }
 
 func newX11Injector() (*linuxInjector, error) {
@@ -99,15 +106,10 @@ func (inj *linuxInjector) MoveMouse(x, y float64) error {
 	px := int16(x * float64(inj.bounds.Dx()))
 	py := int16(y * float64(inj.bounds.Dy()))
 
-	// Warp mouse pointer to target screen coordinates
-	return xproto.WarpPointerChecked(
-		inj.conn,
-		xproto.WindowNone,
-		inj.root,
-		0, 0, 0, 0,
-		px, py,
-	).Check()
+	// Use XTest FakeInput for synthetic pointer motion (safe under pure X11 and XWayland)
+	return xtest.FakeInputChecked(inj.conn, xMotionNotify, 0, 0, inj.root, px, py, 0).Check()
 }
+
 
 func (inj *linuxInjector) MouseDown(button MouseButton, x, y float64) error {
 	if err := inj.MoveMouse(x, y); err != nil {
@@ -199,6 +201,9 @@ func (inj *linuxInjector) KeyUp(event KeyboardEvent) error {
 }
 
 func (inj *linuxInjector) Close() error {
+	if inj == nil {
+		return nil
+	}
 	inj.mu.Lock()
 	defer inj.mu.Unlock()
 

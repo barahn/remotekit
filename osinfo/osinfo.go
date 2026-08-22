@@ -13,10 +13,10 @@ import (
 type OSInfo struct {
 	OS            string `json:"os"`             // "linux", "windows", "darwin", etc.
 	DistroID      string `json:"distro_id"`      // "xubuntu", "ubuntu", "fedora", "debian", "arch", "alpine", etc.
-	DistroName    string `json:"distro_name"`    // "Xubuntu", "Ubuntu 24.04.1 LTS", "Fedora Linux 41", "Windows 11 Pro", etc.
-	Version       string `json:"version"`        // "24.04", "41", "11", etc.
+	DistroName    string `json:"distro_name"`    // "Xubuntu", "Ubuntu 24.04.1 LTS", "Fedora Linux 44", "Windows 11 Pro", etc.
+	Version       string `json:"version"`        // "24.04", "44", "11", etc.
 	DisplayServer string `json:"display_server"` // "x11", "wayland", or ""
-	Formatted     string `json:"formatted"`      // e.g. "Xubuntu 24.04 (X11)", "Fedora 41 (Wayland)", "Windows 11 Pro"
+	Formatted     string `json:"formatted"`      // e.g. "Xubuntu 24.04 (X11)", "Fedora 44 (Wayland)", "Windows 11 Pro"
 	IconKey       string `json:"icon_key"`       // "xubuntu-linux", "fedora", "microsoft-windows", etc.
 }
 
@@ -82,6 +82,16 @@ func detectLinux() OSInfo {
 	}
 
 	distroName := prettyName
+	for _, noise := range []string{
+		"(Container Image)",
+		"(container image)",
+		"Container Image",
+		"container image",
+		"(Workstation Edition)",
+		"(Server Edition)",
+	} {
+		distroName = strings.TrimSpace(strings.ReplaceAll(distroName, noise, ""))
+	}
 	if distroName == "" {
 		distroName = name
 	}
