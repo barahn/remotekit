@@ -183,9 +183,8 @@ func SaveRestoreToken(token string) {
 }
 
 func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
-
-	// 1. Try GNOME Mutter native ScreenCast first (RustDesk method on GNOME/Fedora)
-	if err := c.initMutterSession(ctx); err == nil {
+	// 1. Try GNOME Mutter native ScreenCast first (direct Mutter Monitor recording)
+	if err := c.initMutterSession(ctx); err == nil && c.nodeID > 0 {
 		return nil
 	}
 
@@ -208,7 +207,7 @@ func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
 	selectToken := fmt.Sprintf("barahn_sources_%d", time.Now().UnixNano())
 	selectOptions := map[string]dbus.Variant{
 		"types":        dbus.MakeVariant(uint32(1)), // Monitor
-		"multiple":     dbus.MakeVariant(true),
+		"multiple":     dbus.MakeVariant(false),
 		"cursor_mode":  dbus.MakeVariant(uint32(2)), // Embedded cursor
 		"handle_token": dbus.MakeVariant(selectToken),
 	}
@@ -224,11 +223,86 @@ func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
 		"handle_token": dbus.MakeVariant(startToken),
 	}
 
-	var startHandle dbus.ObjectPath
-	_ = obj.CallWithContext(ctx, portalScreenCast+".Start", 0, c.session, "", startOptions).Store(&startHandle)
+	// Listen for portal Request Response signal on session bus
+	sigChan := make(chan *dbus.Signal, 10)
+	c.bus.Signal(sigChan)
+	defer c.bus.RemoveSignal(sigChan)
 
-	c.nodeID = 0
-	return nil
+	var startHandle dbus.ObjectPath
+	err = obj.CallWithContext(ctx, portalScreenCast+".Start", 0, c.session, "", startOptions).Store(&startHandle)
+	if err != nil {
+		return fmt.Errorf("Start ScreenCast portal call failed: %w", err)
+	}
+
+	// Wait for user to grant permission and portal to return stream node ID
+	timeout := time.After(30 * time.Second)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeout:
+			return nil
+		case sig := <-sigChan:
+			if sig == nil {
+				continue
+			}
+			if strings.HasSuffix(string(sig.Path), startToken) || sig.Name == "org.freedesktop.portal.Request.Response" {
+				if len(sig.Body) >= 2 {
+					if respCode, ok := sig.Body[0].(uint32); ok && respCode == 0 {
+						if results, ok := sig.Body[1].(map[string]dbus.Variant); ok {
+							if streamsVar, exists := results["streams"]; exists {
+								c.parseStreamsVariant(streamsVar)
+							}
+							if tokVar, exists := results["restore_token"]; exists {
+								if tok, ok := tokVar.Value().(string); ok {
+									SaveRestoreToken(tok)
+								}
+							}
+							return nil
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func (c *waylandCapturer) parseStreamsVariant(streamsVar dbus.Variant) {
+	// D-Bus signature for streams: a(ua{sv})
+	val := streamsVar.Value()
+	switch s := val.(type) {
+	case [][2]interface{}:
+		if len(s) > 0 {
+			if id, ok := s[0][0].(uint32); ok {
+				c.nodeID = id
+			}
+			if props, ok := s[0][1].(map[string]dbus.Variant); ok {
+				c.extractDimensions(props)
+			}
+		}
+	case []interface{}:
+		for _, item := range s {
+			if pair, ok := item.([]interface{}); ok && len(pair) >= 2 {
+				if id, ok := pair[0].(uint32); ok {
+					c.nodeID = id
+				}
+				if props, ok := pair[1].(map[string]dbus.Variant); ok {
+					c.extractDimensions(props)
+				}
+			}
+		}
+	}
+}
+
+func (c *waylandCapturer) extractDimensions(props map[string]dbus.Variant) {
+	if sizeVar, exists := props["size"]; exists {
+		if sizeSlice, ok := sizeVar.Value().([]int32); ok && len(sizeSlice) == 2 {
+			if sizeSlice[0] > 0 && sizeSlice[1] > 0 {
+				c.width = int(sizeSlice[0])
+				c.height = int(sizeSlice[1])
+			}
+		}
+	}
 }
 
 func (c *waylandCapturer) initMutterSession(ctx context.Context) error {
@@ -246,9 +320,12 @@ func (c *waylandCapturer) initMutterSession(ctx context.Context) error {
 	recordOpts := map[string]dbus.Variant{
 		"cursor-mode": dbus.MakeVariant(uint32(1)), // Embedded cursor
 	}
-	err = sessObj.CallWithContext(ctx, mutterSessionIface+".RecordVirtual", 0, recordOpts).Store(&streamPath)
+
+	// Prioritize RecordMonitor to record user's physical screen
+	err = sessObj.CallWithContext(ctx, mutterSessionIface+".RecordMonitor", 0, "", recordOpts).Store(&streamPath)
 	if err != nil {
-		err = sessObj.CallWithContext(ctx, mutterSessionIface+".RecordMonitor", 0, "", recordOpts).Store(&streamPath)
+		// Fallback to RecordVirtual only if RecordMonitor is not supported
+		err = sessObj.CallWithContext(ctx, mutterSessionIface+".RecordVirtual", 0, recordOpts).Store(&streamPath)
 	}
 	if err != nil {
 		return err
@@ -262,6 +339,14 @@ func (c *waylandCapturer) initMutterSession(ctx context.Context) error {
 			if nodeIDVar, exists := params["pipewire-node-id"]; exists {
 				if id, ok := nodeIDVar.Value().(uint32); ok {
 					c.nodeID = id
+				}
+			}
+			if sizeVar, exists := params["size"]; exists {
+				if sizeSlice, ok := sizeVar.Value().([]int32); ok && len(sizeSlice) == 2 {
+					if sizeSlice[0] > 0 && sizeSlice[1] > 0 {
+						c.width = int(sizeSlice[0])
+						c.height = int(sizeSlice[1])
+					}
 				}
 			}
 		}
