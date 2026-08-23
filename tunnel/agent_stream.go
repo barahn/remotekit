@@ -13,6 +13,7 @@ import (
 	"image/jpeg"
 	"net/http"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
@@ -268,6 +269,9 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 						}
 						// Direct high-quality JPEG streaming over WebSocket
 						if frame != nil && frame.Image != nil {
+							if frameCount == 1 && r.injector != nil {
+								r.injector.SetScreenBounds(frame.Image.Bounds())
+							}
 							var buf bytes.Buffer
 							if err := jpeg.Encode(&buf, frame.Image, &jpeg.Options{Quality: 60}); err == nil {
 								b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
@@ -305,13 +309,11 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			}
 
 		case "resize", "viewport_size":
+			// Informational signal indicating technician viewport dimensions
 			w, _ := signal["width"].(float64)
 			h, _ := signal["height"].(float64)
 			if w > 0 && h > 0 {
-				if r.injector != nil {
-					r.injector.SetScreenBounds(image.Rect(0, 0, int(w), int(h)))
-				}
-				fmt.Printf("[AgentStream] Synchronized target viewport bounds: %.0fx%.0f\n", w, h)
+				fmt.Printf("[AgentStream] Technician browser viewport size: %.0fx%.0f\n", w, h)
 			}
 
 		case "chat":
@@ -366,6 +368,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 		case "power":
 			action, _ := signal["action"].(string)
 			fmt.Printf("[AgentStream] Received remote power instruction: %s\n", action)
+			go executePowerAction(action)
 
 		case "clipboard":
 			text, _ := signal["text"].(string)
@@ -535,4 +538,39 @@ func BuildVP8Sample(frame *screen.Frame) []byte {
 	}
 
 	return append(header, payloadBuf.Bytes()...)
+}
+
+func executePowerAction(action string) {
+	switch action {
+	case "reboot":
+		if runtime.GOOS == "windows" {
+			_ = exec.Command("shutdown", "/r", "/t", "0").Run()
+		} else {
+			if err := exec.Command("systemctl", "reboot").Run(); err != nil {
+				if err := exec.Command("loginctl", "reboot").Run(); err != nil {
+					_ = exec.Command("shutdown", "-r", "now").Run()
+				}
+			}
+		}
+	case "shutdown", "poweroff":
+		if runtime.GOOS == "windows" {
+			_ = exec.Command("shutdown", "/s", "/t", "0").Run()
+		} else {
+			if err := exec.Command("systemctl", "poweroff").Run(); err != nil {
+				if err := exec.Command("loginctl", "poweroff").Run(); err != nil {
+					_ = exec.Command("shutdown", "-h", "now").Run()
+				}
+			}
+		}
+	case "lock":
+		if runtime.GOOS == "windows" {
+			_ = exec.Command("rundll32.exe", "user32.dll,LockWorkStation").Run()
+		} else {
+			if err := exec.Command("loginctl", "lock-session").Run(); err != nil {
+				if err := exec.Command("gnome-screensaver-command", "-l").Run(); err != nil {
+					_ = exec.Command("xdg-screensaver", "lock").Run()
+				}
+			}
+		}
+	}
 }

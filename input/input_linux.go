@@ -5,6 +5,7 @@ package input
 import (
 	"fmt"
 	"image"
+	"math"
 	"os"
 	"sync"
 
@@ -15,8 +16,8 @@ import (
 
 // X11 event types for xtest.FakeInput
 const (
-	xKeyPress   byte = 2
-	xKeyRelease byte = 3
+	xKeyPress    byte = 2
+	xKeyRelease  byte = 3
 	xButtonPress byte = 4
 	xButtonRelease byte = 5
 	xMotionNotify  byte = 6
@@ -95,6 +96,33 @@ func (inj *linuxInjector) SetScreenBounds(bounds image.Rectangle) {
 	}
 }
 
+func (inj *linuxInjector) toPixels(x, y float64) (int16, int16) {
+	maxW := float64(inj.bounds.Dx() - 1)
+	maxH := float64(inj.bounds.Dy() - 1)
+	if maxW < 0 {
+		maxW = 0
+	}
+	if maxH < 0 {
+		maxH = 0
+	}
+
+	px := math.Round(x * maxW)
+	py := math.Round(y * maxH)
+
+	if px < 0 {
+		px = 0
+	} else if px > maxW {
+		px = maxW
+	}
+	if py < 0 {
+		py = 0
+	} else if py > maxH {
+		py = maxH
+	}
+
+	return int16(px), int16(py)
+}
+
 func (inj *linuxInjector) MoveMouse(x, y float64) error {
 	inj.mu.Lock()
 	defer inj.mu.Unlock()
@@ -103,52 +131,54 @@ func (inj *linuxInjector) MoveMouse(x, y float64) error {
 		return ErrDeviceNotFound
 	}
 
-	px := int16(x * float64(inj.bounds.Dx()))
-	py := int16(y * float64(inj.bounds.Dy()))
+	px, py := inj.toPixels(x, y)
 
-	// Use XTest FakeInput for synthetic pointer motion (safe under pure X11 and XWayland)
+	// Synchronize internal X11 pointer position and dispatch MotionNotify
+	_ = xproto.WarpPointer(inj.conn, 0, inj.root, 0, 0, 0, 0, px, py)
 	return xtest.FakeInputChecked(inj.conn, xMotionNotify, 0, 0, inj.root, px, py, 0).Check()
 }
 
-
 func (inj *linuxInjector) MouseDown(button MouseButton, x, y float64) error {
-	if err := inj.MoveMouse(x, y); err != nil {
-		return err
-	}
-
 	inj.mu.Lock()
 	defer inj.mu.Unlock()
 
-	px := int16(x * float64(inj.bounds.Dx()))
-	py := int16(y * float64(inj.bounds.Dy()))
+	if inj.conn == nil {
+		return ErrDeviceNotFound
+	}
+
+	px, py := inj.toPixels(x, y)
 	xButton := mapMouseButton(button)
+
+	_ = xproto.WarpPointer(inj.conn, 0, inj.root, 0, 0, 0, 0, px, py)
+	_ = xtest.FakeInputChecked(inj.conn, xMotionNotify, 0, 0, inj.root, px, py, 0).Check()
 	return xtest.FakeInputChecked(inj.conn, xButtonPress, xButton, 0, inj.root, px, py, 0).Check()
 }
 
 func (inj *linuxInjector) MouseUp(button MouseButton, x, y float64) error {
-	if err := inj.MoveMouse(x, y); err != nil {
-		return err
-	}
-
 	inj.mu.Lock()
 	defer inj.mu.Unlock()
 
-	px := int16(x * float64(inj.bounds.Dx()))
-	py := int16(y * float64(inj.bounds.Dy()))
+	if inj.conn == nil {
+		return ErrDeviceNotFound
+	}
+
+	px, py := inj.toPixels(x, y)
 	xButton := mapMouseButton(button)
+
+	_ = xproto.WarpPointer(inj.conn, 0, inj.root, 0, 0, 0, 0, px, py)
+	_ = xtest.FakeInputChecked(inj.conn, xMotionNotify, 0, 0, inj.root, px, py, 0).Check()
 	return xtest.FakeInputChecked(inj.conn, xButtonRelease, xButton, 0, inj.root, px, py, 0).Check()
 }
 
 func (inj *linuxInjector) Scroll(deltaX, deltaY float64, x, y float64) error {
-	if err := inj.MoveMouse(x, y); err != nil {
-		return err
-	}
-
 	inj.mu.Lock()
 	defer inj.mu.Unlock()
 
-	px := int16(x * float64(inj.bounds.Dx()))
-	py := int16(y * float64(inj.bounds.Dy()))
+	if inj.conn == nil {
+		return ErrDeviceNotFound
+	}
+
+	px, py := inj.toPixels(x, y)
 
 	// X11 mouse wheel buttons: 4 (scroll up), 5 (scroll down), 6 (scroll left), 7 (scroll right)
 	var btn byte
@@ -164,6 +194,7 @@ func (inj *linuxInjector) Scroll(deltaX, deltaY float64, x, y float64) error {
 		return nil
 	}
 
+	_ = xproto.WarpPointer(inj.conn, 0, inj.root, 0, 0, 0, 0, px, py)
 	_ = xtest.FakeInputChecked(inj.conn, xButtonPress, btn, 0, inj.root, px, py, 0).Check()
 	return xtest.FakeInputChecked(inj.conn, xButtonRelease, btn, 0, inj.root, px, py, 0).Check()
 }
