@@ -58,7 +58,7 @@ func newWaylandInjector() (*waylandInjector, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	// 1. Try GNOME Mutter native RemoteDesktop first (RustDesk Wayland Method)
+	// 1. Try GNOME Mutter native RemoteDesktop first (Mutter D-Bus Method)
 	mutterObj := bus.Object(mutterRemoteDesktopDest, dbus.ObjectPath(mutterRemoteDesktopPath))
 	var mutterSession dbus.ObjectPath
 	if err := mutterObj.CallWithContext(ctx, mutterRemoteDesktop+".CreateSession", 0).Store(&mutterSession); err == nil {
