@@ -111,7 +111,8 @@ func TestDoubleStart(t *testing.T) {
 	}
 	defer cap.Stop()
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
 	if err := cap.Start(ctx); err != nil {
 		t.Fatalf("first Start() failed: %v", err)
 	}

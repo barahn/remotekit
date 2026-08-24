@@ -131,12 +131,17 @@ func (c *waylandCapturer) Stop() {
 			_ = c.pipeIn.Close()
 		}
 		if c.session != "" && c.bus != nil {
-			// Close portal / mutter session
+			stopCtx, stopCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			defer stopCancel()
+			// Close portal / mutter session with short timeout
 			if c.isMutter {
-				_ = c.bus.Object(mutterDest, c.session).Call(mutterSessionIface+".Stop", 0).Store()
+				_ = c.bus.Object(mutterDest, c.session).CallWithContext(stopCtx, mutterSessionIface+".Stop", 0).Store()
 			} else {
-				_ = c.bus.Object(portalDest, c.session).Call("org.freedesktop.portal.Session.Close", 0).Store()
+				_ = c.bus.Object(portalDest, c.session).CallWithContext(stopCtx, "org.freedesktop.portal.Session.Close", 0).Store()
 			}
+		}
+		if c.frames != nil {
+			close(c.frames)
 		}
 		c.mu.Unlock()
 	})
@@ -241,7 +246,7 @@ func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
 	}
 
 	// Wait for user to grant permission and portal to return stream node ID
-	timeout := time.After(30 * time.Second)
+	timeout := time.After(5 * time.Second)
 	for {
 		select {
 		case <-ctx.Done():
