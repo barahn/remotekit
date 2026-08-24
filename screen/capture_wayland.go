@@ -44,15 +44,24 @@ type waylandCapturer struct {
 	width    int
 	height   int
 
-	frames   chan *Frame
-	running  atomic.Bool
-	seqNum   atomic.Uint64
-	stopOnce sync.Once
-	cancel   context.CancelFunc
+	frames    chan *Frame
+	running   atomic.Bool
+	seqNum    atomic.Uint64
+	stopOnce  sync.Once
+	closeOnce sync.Once
+	cancel    context.CancelFunc
 
 	cmd    *exec.Cmd
 	pipeIn io.ReadCloser
 	mu     sync.Mutex
+}
+
+func (c *waylandCapturer) closeFrames() {
+	c.closeOnce.Do(func() {
+		if c.frames != nil {
+			close(c.frames)
+		}
+	})
 }
 
 // newWaylandCapturer initializes a ScreenCast portal session on Wayland.
@@ -100,11 +109,16 @@ func (c *waylandCapturer) Start(ctx context.Context) error {
 	}
 
 	c.frames = make(chan *Frame, c.config.FrameBufferSize)
+	c.stopOnce = sync.Once{}
+	c.closeOnce = sync.Once{}
 	captureCtx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
 
-	// Initialize portal session and PipeWire stream
-	if err := c.initPortalSession(captureCtx); err != nil {
+	// Initialize portal session and PipeWire stream with a quick timeout
+	portalCtx, portalCancel := context.WithTimeout(captureCtx, 1500*time.Millisecond)
+	defer portalCancel()
+
+	if err := c.initPortalSession(portalCtx); err != nil || c.nodeID == 0 {
 		c.fallbackToRealOrSynthetic(captureCtx)
 		return nil
 	}
@@ -131,14 +145,17 @@ func (c *waylandCapturer) Stop() {
 			_ = c.pipeIn.Close()
 		}
 		if c.session != "" && c.bus != nil {
-			// Close portal / mutter session
+			stopCtx, stopCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+			defer stopCancel()
+			// Close portal / mutter session with short timeout
 			if c.isMutter {
-				_ = c.bus.Object(mutterDest, c.session).Call(mutterSessionIface+".Stop", 0).Store()
+				_ = c.bus.Object(mutterDest, c.session).CallWithContext(stopCtx, mutterSessionIface+".Stop", 0).Store()
 			} else {
-				_ = c.bus.Object(portalDest, c.session).Call("org.freedesktop.portal.Session.Close", 0).Store()
+				_ = c.bus.Object(portalDest, c.session).CallWithContext(stopCtx, "org.freedesktop.portal.Session.Close", 0).Store()
 			}
 		}
 		c.mu.Unlock()
+		c.closeFrames()
 	})
 }
 
@@ -241,13 +258,10 @@ func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
 	}
 
 	// Wait for user to grant permission and portal to return stream node ID
-	timeout := time.After(30 * time.Second)
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-timeout:
-			return nil
 		case sig := <-sigChan:
 			if sig == nil {
 				continue
@@ -364,6 +378,7 @@ func (c *waylandCapturer) initMutterSession(ctx context.Context) error {
 
 
 func (c *waylandCapturer) streamLoop(ctx context.Context) {
+	defer c.closeFrames()
 	gstPath, err := exec.LookPath("gst-launch-1.0")
 	if err != nil {
 		// Fall back to synthetic desktop renderer if gst-launch-1.0 is not installed
@@ -456,36 +471,38 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 
 func (c *waylandCapturer) fallbackToRealOrSynthetic(ctx context.Context) {
 	if xcap, xerr := newX11Capturer(c.config); xerr == nil {
-		_ = xcap.Start(ctx)
-		go func() {
-			defer xcap.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case f, ok := <-xcap.Frames():
-					if !ok {
-						return
-					}
-					if !c.running.Load() {
-						return
-					}
+		if err := xcap.Start(ctx); err == nil {
+			go func() {
+				defer c.closeFrames()
+				defer xcap.Stop()
+				for {
 					select {
 					case <-ctx.Done():
 						return
-					case c.frames <- f:
-					default:
+					case f, ok := <-xcap.Frames():
+						if !ok {
+							return
+						}
+						if !c.running.Load() {
+							return
+						}
+						select {
+						case <-ctx.Done():
+							return
+						case c.frames <- f:
+						}
 					}
 				}
-			}
-		}()
-		return
+			}()
+			return
+		}
 	}
-	c.renderSyntheticFrames(ctx)
+	go c.renderSyntheticFrames(ctx)
 }
 
 
 func (c *waylandCapturer) renderSyntheticFrames(ctx context.Context) {
+	defer c.closeFrames()
 	ticker := time.NewTicker(time.Second / time.Duration(c.config.TargetFPS))
 	defer ticker.Stop()
 

@@ -135,11 +135,11 @@ func saveCredentials(path string, creds *AgentCredentials) error {
 }
 
 func LoadCredentials(path string) (*AgentCredentials, error) {
-	cleanPath := filepath.Clean(path)
-	if strings.Contains(cleanPath, "..") {
+	if strings.Contains(path, "..") {
 		return nil, fmt.Errorf("invalid credential path: path traversal detected")
 	}
 
+	cleanPath := filepath.Clean(path)
 	data, err := os.ReadFile(cleanPath) // #nosec G304 -- cleanPath is sanitized via filepath.Clean and checked for traversal
 	if err != nil {
 		return nil, err
@@ -155,9 +155,15 @@ func LoadCredentials(path string) (*AgentCredentials, error) {
 
 // Connect connects outbound over WebSocket/TLS 1.3 to the control plane, initializes Yamux, and accepts reverse streams.
 func (tc *TunnelClient) Connect(ctx context.Context, creds *AgentCredentials) error {
-	wsURL := strings.Replace(creds.ServerAddr, "http://", "ws://", 1)
-	wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
-	wsURL = fmt.Sprintf("%s/tunnel/connect", strings.TrimRight(wsURL, "/"))
+	wsURL := creds.ServerAddr
+	if strings.HasPrefix(wsURL, "https://") {
+		wsURL = "wss" + wsURL[5:]
+	} else if strings.HasPrefix(wsURL, "http://") {
+		wsURL = "ws" + wsURL[4:]
+	}
+
+	wsURL = strings.TrimSuffix(wsURL, "/")
+	wsURL += "/tunnel/connect"
 
 	header := http.Header{}
 	header.Set("X-Barahn-Agent-ID", creds.AgentID)
