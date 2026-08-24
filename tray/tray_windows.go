@@ -56,7 +56,49 @@ var (
 	procProcess32FirstW           = kernel32.NewProc("Process32FirstW")
 	procProcess32NextW            = kernel32.NewProc("Process32NextW")
 	procCloseHandle               = kernel32.NewProc("CloseHandle")
+
+	wndProcCallback        uintptr
+	enumWindowsCallback    uintptr
+	enumWindowsMu          sync.Mutex
+	enumWindowsFoundMap    map[uintptr]bool
+	enumWindowsRelatedPIDs map[uint32]bool
 )
+
+func init() {
+	wndProcCallback = syscall.NewCallback(wndProc)
+	enumWindowsCallback = syscall.NewCallback(enumWindowsProc)
+}
+
+func enumWindowsProc(hwnd uintptr, lParam uintptr) uintptr {
+	var winPid uint32
+	procGetWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&winPid)))
+
+	var length uintptr
+	length, _, _ = procGetWindowTextLengthW.Call(hwnd)
+	if length > 0 {
+		buf := make([]uint16, length+1)
+		procGetWindowTextW.Call(hwnd, uintptr(unsafe.Pointer(&buf[0])), length+1)
+		title := strings.ToLower(syscall.UTF16ToString(buf))
+		if strings.Contains(title, "barahn") {
+			if enumWindowsFoundMap != nil {
+				enumWindowsFoundMap[hwnd] = true
+			}
+		}
+	}
+
+	if enumWindowsRelatedPIDs != nil && enumWindowsRelatedPIDs[winPid] {
+		var classNameBuf [256]uint16
+		procGetClassNameW.Call(hwnd, uintptr(unsafe.Pointer(&classNameBuf[0])), 256)
+		className := syscall.UTF16ToString(classNameBuf[:])
+
+		if className == "CASCADIA_HOSTING_WINDOW_CLASS" || className == "ConsoleWindowClass" || className == "PseudoConsoleWindow" {
+			if enumWindowsFoundMap != nil {
+				enumWindowsFoundMap[hwnd] = true
+			}
+		}
+	}
+	return 1
+}
 
 const (
 	wmUser        = 0x0400
@@ -213,8 +255,6 @@ func (t *windowsTrayManager) runMessageLoop(ctx context.Context) {
 
 	hInstance, _, _ := procGetModuleHandleW.Call(0)
 	className, _ := syscall.UTF16PtrFromString("BarahnTrayWindowClass")
-
-	wndProcCallback := syscall.NewCallback(wndProc)
 
 	wc := wndClassExW{
 		cbSize:        uint32(unsafe.Sizeof(wndClassExW{})),
@@ -386,35 +426,13 @@ func getConsoleWindows() []uintptr {
 	}
 
 	// 2. Enumerate all top-level windows matching title or process lineage
-	relatedPIDs := getRelatedProcessIDs()
-	enumCallback := syscall.NewCallback(func(hwnd uintptr, lParam uintptr) uintptr {
-		var winPid uint32
-		procGetWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&winPid)))
-
-		var length uintptr
-		length, _, _ = procGetWindowTextLengthW.Call(hwnd)
-		if length > 0 {
-			buf := make([]uint16, length+1)
-			procGetWindowTextW.Call(hwnd, uintptr(unsafe.Pointer(&buf[0])), length+1)
-			title := strings.ToLower(syscall.UTF16ToString(buf))
-			if strings.Contains(title, "barahn") {
-				foundMap[hwnd] = true
-			}
-		}
-
-		if relatedPIDs[winPid] {
-			var classNameBuf [256]uint16
-			procGetClassNameW.Call(hwnd, uintptr(unsafe.Pointer(&classNameBuf[0])), 256)
-			className := syscall.UTF16ToString(classNameBuf[:])
-
-			if className == "CASCADIA_HOSTING_WINDOW_CLASS" || className == "ConsoleWindowClass" || className == "PseudoConsoleWindow" {
-				foundMap[hwnd] = true
-			}
-		}
-		return 1
-	})
-
-	procEnumWindows.Call(enumCallback, 0)
+	enumWindowsMu.Lock()
+	enumWindowsFoundMap = foundMap
+	enumWindowsRelatedPIDs = getRelatedProcessIDs()
+	procEnumWindows.Call(enumWindowsCallback, 0)
+	enumWindowsFoundMap = nil
+	enumWindowsRelatedPIDs = nil
+	enumWindowsMu.Unlock()
 
 	var hwnds []uintptr
 	for h := range foundMap {
