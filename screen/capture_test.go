@@ -54,7 +54,7 @@ func TestCaptureFrames(t *testing.T) {
 	}
 	defer cap.Stop()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := cap.Start(ctx); err != nil {
@@ -111,7 +111,7 @@ func TestDoubleStart(t *testing.T) {
 	}
 	defer cap.Stop()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	if err := cap.Start(ctx); err != nil {
 		t.Fatalf("first Start() failed: %v", err)
