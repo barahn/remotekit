@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"sync"
 
 	"github.com/godbus/dbus/v5"
@@ -13,16 +14,32 @@ import (
 	"github.com/mendsec/barahn/pkg/clipboard"
 )
 
+
+// HideConsoleWindow is a no-op on non-Windows platforms.
+func HideConsoleWindow() {}
+
+// ShowConsoleWindow is a no-op on non-Windows platforms.
+func ShowConsoleWindow() {}
+
+// IsConsoleVisible returns true on non-Windows platforms.
+func IsConsoleVisible() bool { return true }
+
+// ToggleConsoleWindow is a no-op on non-Windows platforms.
+func ToggleConsoleWindow() {}
+
+
 const (
-	cmdRoot   int32 = 0
-	cmdHeader int32 = 1
-	cmdStatus int32 = 2
-	cmdID     int32 = 3
-	cmdServer int32 = 4
-	cmdSep1   int32 = 5
-	cmdCopyID int32 = 6
-	cmdSep2   int32 = 7
-	cmdExit   int32 = 8
+	cmdRoot          int32 = 0
+	cmdHeader        int32 = 1
+	cmdStatus        int32 = 2
+	cmdID            int32 = 3
+	cmdServer        int32 = 4
+	cmdSep1          int32 = 5
+	cmdCopyID        int32 = 6
+	cmdOpenDashboard int32 = 7
+	cmdToggleService int32 = 8
+	cmdSep2          int32 = 9
+	cmdExit          int32 = 10
 )
 
 type dbusMenuLayout struct {
@@ -97,6 +114,14 @@ func (m *dbusMenuServer) getItemProps(id int32) map[string]dbus.Variant {
 		props["label"] = dbus.MakeVariant("📋 Copy Endpoint ID")
 		props["enabled"] = dbus.MakeVariant(true)
 		props["visible"] = dbus.MakeVariant(true)
+	case cmdOpenDashboard:
+		props["label"] = dbus.MakeVariant("🌐 Open Web Dashboard")
+		props["enabled"] = dbus.MakeVariant(true)
+		props["visible"] = dbus.MakeVariant(true)
+	case cmdToggleService:
+		props["label"] = dbus.MakeVariant("⚙️ Toggle Background Service")
+		props["enabled"] = dbus.MakeVariant(true)
+		props["visible"] = dbus.MakeVariant(true)
 	case cmdSep2:
 		props["type"] = dbus.MakeVariant("separator")
 		props["visible"] = dbus.MakeVariant(true)
@@ -115,7 +140,7 @@ func (m *dbusMenuServer) GetLayout(parentId int32, recursionDepth int32, propert
 	m.mu.RUnlock()
 
 	rootProps := m.getItemProps(cmdRoot)
-	childrenIDs := []int32{cmdHeader, cmdStatus, cmdID, cmdServer, cmdSep1, cmdCopyID, cmdSep2, cmdExit}
+	childrenIDs := []int32{cmdHeader, cmdStatus, cmdID, cmdServer, cmdSep1, cmdCopyID, cmdOpenDashboard, cmdToggleService, cmdSep2, cmdExit}
 
 	var children []interface{}
 	for _, cid := range childrenIDs {
@@ -160,6 +185,8 @@ func (m *dbusMenuServer) Event(id int32, eventID string, data dbus.Variant, time
 		switch id {
 		case cmdCopyID:
 			go m.tray.copyIDToClipboard()
+		case cmdOpenDashboard:
+			go m.tray.openDashboard()
 		case cmdExit:
 			go func() {
 				if m.tray.onExit != nil {
@@ -171,6 +198,7 @@ func (m *dbusMenuServer) Event(id int32, eventID string, data dbus.Variant, time
 	}
 	return nil
 }
+
 
 func (m *dbusMenuServer) EventGroup(events []dbusMenuEvent) ([]int32, *dbus.Error) {
 	for _, ev := range events {
@@ -435,3 +463,12 @@ func (t *linuxTrayManager) sendDesktopNotification(summary, body string) {
 		int32(5000),
 	).Store()
 }
+
+func (t *linuxTrayManager) openDashboard() {
+	url := t.serverAddr
+	if url == "" {
+		url = "https://localhost:8443"
+	}
+	_ = exec.Command("xdg-open", url).Start()
+}
+

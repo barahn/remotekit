@@ -5,10 +5,15 @@ package tray
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
+
+	"github.com/mendsec/barahn/pkg/service"
 )
 
 var (
@@ -16,30 +21,41 @@ var (
 	shell32  = syscall.NewLazyDLL("shell32.dll")
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 
-	procRegisterClassExW = user32.NewProc("RegisterClassExW")
-	procCreateWindowExW  = user32.NewProc("CreateWindowExW")
-	procDefWindowProcW   = user32.NewProc("DefWindowProcW")
-	procDestroyWindow    = user32.NewProc("DestroyWindow")
-	procPostQuitMessage  = user32.NewProc("PostQuitMessage")
-	procGetMessageW      = user32.NewProc("GetMessageW")
-	procTranslateMessage = user32.NewProc("TranslateMessage")
-	procDispatchMessageW = user32.NewProc("DispatchMessageW")
-	procCreatePopupMenu  = user32.NewProc("CreatePopupMenu")
-	procAppendMenuW      = user32.NewProc("AppendMenuW")
-	procTrackPopupMenu   = user32.NewProc("TrackPopupMenu")
-	procDestroyMenu      = user32.NewProc("DestroyMenu")
-	procGetCursorPos     = user32.NewProc("GetCursorPos")
-	procSetForeground    = user32.NewProc("SetForegroundWindow")
-	procPostMessageW     = user32.NewProc("PostMessageW")
-	procLoadIconW        = user32.NewProc("LoadIconW")
-	procShowWindow       = user32.NewProc("ShowWindow")
-	procIsWindowVisible  = user32.NewProc("IsWindowVisible")
+	procRegisterClassExW          = user32.NewProc("RegisterClassExW")
+	procCreateWindowExW           = user32.NewProc("CreateWindowExW")
+	procDefWindowProcW            = user32.NewProc("DefWindowProcW")
+	procDestroyWindow             = user32.NewProc("DestroyWindow")
+	procPostQuitMessage           = user32.NewProc("PostQuitMessage")
+	procGetMessageW               = user32.NewProc("GetMessageW")
+	procTranslateMessage          = user32.NewProc("TranslateMessage")
+	procDispatchMessageW          = user32.NewProc("DispatchMessageW")
+	procCreatePopupMenu           = user32.NewProc("CreatePopupMenu")
+	procAppendMenuW               = user32.NewProc("AppendMenuW")
+	procTrackPopupMenu            = user32.NewProc("TrackPopupMenu")
+	procDestroyMenu               = user32.NewProc("DestroyMenu")
+	procGetCursorPos              = user32.NewProc("GetCursorPos")
+	procSetForeground             = user32.NewProc("SetForegroundWindow")
+	procPostMessageW              = user32.NewProc("PostMessageW")
+	procLoadIconW                 = user32.NewProc("LoadIconW")
+	procShowWindow                = user32.NewProc("ShowWindow")
+	procIsWindowVisible           = user32.NewProc("IsWindowVisible")
+	procEnumWindows               = user32.NewProc("EnumWindows")
+	procGetWindowThreadProcessId  = user32.NewProc("GetWindowThreadProcessId")
+	procGetClassNameW             = user32.NewProc("GetClassNameW")
+	procGetWindowTextW            = user32.NewProc("GetWindowTextW")
+	procGetWindowTextLengthW      = user32.NewProc("GetWindowTextLengthW")
+	procGetAncestor               = user32.NewProc("GetAncestor")
+	procGetParent                 = user32.NewProc("GetParent")
 
-	procShellNotifyIconW = shell32.NewProc("Shell_NotifyIconW")
-	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
-	procGetConsoleWindow = kernel32.NewProc("GetConsoleWindow")
-	procGetAncestor      = user32.NewProc("GetAncestor")
-	procGetParent        = user32.NewProc("GetParent")
+	procShellNotifyIconW          = shell32.NewProc("Shell_NotifyIconW")
+	procShellExecuteW             = shell32.NewProc("ShellExecuteW")
+	procGetModuleHandleW          = kernel32.NewProc("GetModuleHandleW")
+	procGetConsoleWindow          = kernel32.NewProc("GetConsoleWindow")
+	procGetCurrentProcessId       = kernel32.NewProc("GetCurrentProcessId")
+	procCreateToolhelp32Snapshot  = kernel32.NewProc("CreateToolhelp32Snapshot")
+	procProcess32FirstW           = kernel32.NewProc("Process32FirstW")
+	procProcess32NextW            = kernel32.NewProc("Process32NextW")
+	procCloseHandle               = kernel32.NewProc("CloseHandle")
 )
 
 const (
@@ -65,15 +81,16 @@ const (
 
 	tpmRightButton = 0x0002
 
-	cmdHeader     = 1000
-	cmdStatus     = 1001
-	cmdID         = 1002
-	cmdCopyID     = 1003
-	cmdServer     = 1004
-	cmdExit       = 1005
-	cmdToggleLogs = 1006
+	cmdHeader        = 1000
+	cmdStatus        = 1001
+	cmdID            = 1002
+	cmdCopyID        = 1003
+	cmdServer        = 1004
+	cmdOpenDashboard = 1005
+	cmdToggleLogs    = 1006
+	cmdToggleService = 1007
+	cmdExit          = 1008
 )
-
 
 type point struct {
 	x, y int32
@@ -252,7 +269,6 @@ func (t *windowsTrayManager) runMessageLoop(ctx context.Context) {
 
 	res, _, err := procShellNotifyIconW.Call(uintptr(nimAdd), uintptr(unsafe.Pointer(&t.nid)))
 	if res == 0 {
-		// Fallback without balloon flags
 		t.nid.uFlags = nifMessage | nifIcon | nifTip
 		res, _, err = procShellNotifyIconW.Call(uintptr(nimAdd), uintptr(unsafe.Pointer(&t.nid)))
 		if res != 0 {
@@ -264,9 +280,6 @@ func (t *windowsTrayManager) runMessageLoop(ctx context.Context) {
 		fmt.Println("[Tray] System tray icon registered successfully.")
 	}
 	t.mu.Unlock()
-
-	// Hide console window into system tray by default
-	hideConsoleWindow()
 
 	go func() {
 		<-ctx.Done()
@@ -284,51 +297,154 @@ func (t *windowsTrayManager) runMessageLoop(ctx context.Context) {
 	}
 }
 
+type processEntry32W struct {
+	dwSize              uint32
+	cntUsage            uint32
+	th32ProcessID       uint32
+	th32DefaultHeapID   uintptr
+	th32ModuleID        uint32
+	cntThreads          uint32
+	th32ParentProcessID uint32
+	pcPriClassBase      int32
+	dwFlags             uint32
+	szExeFile           [260]uint16
+}
+
+func getRelatedProcessIDs() map[uint32]bool {
+	pids := make(map[uint32]bool)
+	curPid, _, _ := procGetCurrentProcessId.Call()
+	if curPid == 0 {
+		return pids
+	}
+	pids[uint32(curPid)] = true
+
+	snap, _, _ := procCreateToolhelp32Snapshot.Call(0x00000002 /* TH32CS_SNAPPROCESS */, 0)
+	if snap == 0 || snap == uintptr(syscall.InvalidHandle) {
+		return pids
+	}
+	defer procCloseHandle.Call(snap)
+
+	parentMap := make(map[uint32]uint32)
+	var pe processEntry32W
+	pe.dwSize = uint32(unsafe.Sizeof(pe))
+
+	ret, _, _ := procProcess32FirstW.Call(snap, uintptr(unsafe.Pointer(&pe)))
+	for ret != 0 {
+		parentMap[pe.th32ProcessID] = pe.th32ParentProcessID
+		ret, _, _ = procProcess32NextW.Call(snap, uintptr(unsafe.Pointer(&pe)))
+	}
+
+	curr := uint32(curPid)
+	for i := 0; i < 5; i++ {
+		parent, ok := parentMap[curr]
+		if !ok || parent == 0 || parent == curr {
+			break
+		}
+		pids[parent] = true
+		curr = parent
+	}
+
+	return pids
+}
+
+// Global cached console window handles to ensure clean show/hide toggling
+var (
+	cachedConsoleHwndsMu sync.Mutex
+	cachedConsoleHwnds   []uintptr
+)
+
 func getConsoleWindows() []uintptr {
-	var hwnds []uintptr
+	cachedConsoleHwndsMu.Lock()
+	defer cachedConsoleHwndsMu.Unlock()
+
+	foundMap := make(map[uintptr]bool)
+	for _, h := range cachedConsoleHwnds {
+		if h != 0 {
+			foundMap[h] = true
+		}
+	}
+
+	// 1. Direct console window
 	consoleHwnd, _, _ := procGetConsoleWindow.Call()
-	if consoleHwnd == 0 {
-		return hwnds
-	}
-	hwnds = append(hwnds, consoleHwnd)
+	if consoleHwnd != 0 {
+		foundMap[consoleHwnd] = true
 
-	// GA_ROOT = 2 (Windows Terminal / Host Frame Window)
-	rootHwnd, _, _ := procGetAncestor.Call(consoleHwnd, 2 /* GA_ROOT */)
-	if rootHwnd != 0 && rootHwnd != consoleHwnd {
-		hwnds = append(hwnds, rootHwnd)
-	}
+		rootHwnd, _, _ := procGetAncestor.Call(consoleHwnd, 2 /* GA_ROOT */)
+		if rootHwnd != 0 {
+			foundMap[rootHwnd] = true
+		}
 
-	// GA_ROOTOWNER = 3
-	ownerHwnd, _, _ := procGetAncestor.Call(consoleHwnd, 3 /* GA_ROOTOWNER */)
-	if ownerHwnd != 0 && ownerHwnd != consoleHwnd && ownerHwnd != rootHwnd {
-		hwnds = append(hwnds, ownerHwnd)
-	}
+		ownerHwnd, _, _ := procGetAncestor.Call(consoleHwnd, 3 /* GA_ROOTOWNER */)
+		if ownerHwnd != 0 {
+			foundMap[ownerHwnd] = true
+		}
 
-	// Direct Parent
-	parentHwnd, _, _ := procGetParent.Call(consoleHwnd)
-	if parentHwnd != 0 && parentHwnd != consoleHwnd && parentHwnd != rootHwnd && parentHwnd != ownerHwnd {
-		hwnds = append(hwnds, parentHwnd)
+		parentHwnd, _, _ := procGetParent.Call(consoleHwnd)
+		if parentHwnd != 0 {
+			foundMap[parentHwnd] = true
+		}
 	}
 
+	// 2. Enumerate all top-level windows matching title or process lineage
+	relatedPIDs := getRelatedProcessIDs()
+	enumCallback := syscall.NewCallback(func(hwnd uintptr, lParam uintptr) uintptr {
+		var winPid uint32
+		procGetWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&winPid)))
+
+		var length uintptr
+		length, _, _ = procGetWindowTextLengthW.Call(hwnd)
+		if length > 0 {
+			buf := make([]uint16, length+1)
+			procGetWindowTextW.Call(hwnd, uintptr(unsafe.Pointer(&buf[0])), length+1)
+			title := strings.ToLower(syscall.UTF16ToString(buf))
+			if strings.Contains(title, "barahn") {
+				foundMap[hwnd] = true
+			}
+		}
+
+		if relatedPIDs[winPid] {
+			var classNameBuf [256]uint16
+			procGetClassNameW.Call(hwnd, uintptr(unsafe.Pointer(&classNameBuf[0])), 256)
+			className := syscall.UTF16ToString(classNameBuf[:])
+
+			if className == "CASCADIA_HOSTING_WINDOW_CLASS" || className == "ConsoleWindowClass" || className == "PseudoConsoleWindow" {
+				foundMap[hwnd] = true
+			}
+		}
+		return 1
+	})
+
+	procEnumWindows.Call(enumCallback, 0)
+
+	var hwnds []uintptr
+	for h := range foundMap {
+		if h != 0 {
+			hwnds = append(hwnds, h)
+		}
+	}
+
+	cachedConsoleHwnds = hwnds
 	return hwnds
 }
 
-func hideConsoleWindow() {
+// HideConsoleWindow hides all console and terminal windows associated with the agent.
+func HideConsoleWindow() {
 	for _, h := range getConsoleWindows() {
 		procShowWindow.Call(h, 0 /* SW_HIDE */)
 	}
 }
 
-func showConsoleWindow() {
-	windows := getConsoleWindows()
-	for _, h := range windows {
+// ShowConsoleWindow restores and brings to foreground all console and terminal windows.
+func ShowConsoleWindow() {
+	for _, h := range getConsoleWindows() {
 		procShowWindow.Call(h, 9 /* SW_RESTORE */)
 		procShowWindow.Call(h, 5 /* SW_SHOW */)
 		procSetForeground.Call(h)
 	}
 }
 
-func isConsoleVisible() bool {
+// IsConsoleVisible returns true if any console or terminal window is currently visible.
+func IsConsoleVisible() bool {
 	windows := getConsoleWindows()
 	if len(windows) == 0 {
 		return false
@@ -342,12 +458,91 @@ func isConsoleVisible() bool {
 	return false
 }
 
-func toggleConsoleWindow() {
-	if isConsoleVisible() {
-		hideConsoleWindow()
+// ToggleConsoleWindow toggles visibility between hidden and visible.
+func ToggleConsoleWindow() {
+	if IsConsoleVisible() {
+		HideConsoleWindow()
 	} else {
-		showConsoleWindow()
+		ShowConsoleWindow()
 	}
+}
+
+func hideConsoleWindow() {
+	HideConsoleWindow()
+}
+
+func showConsoleWindow() {
+	ShowConsoleWindow()
+}
+
+func isConsoleVisible() bool {
+	return IsConsoleVisible()
+}
+
+func toggleConsoleWindow() {
+	ToggleConsoleWindow()
+}
+
+func (t *windowsTrayManager) openDashboard() {
+	url := t.serverAddr
+	if url == "" {
+		url = "https://localhost:8443"
+	}
+	urlPtr, _ := syscall.UTF16PtrFromString(url)
+	openPtr, _ := syscall.UTF16PtrFromString("open")
+	procShellExecuteW.Call(0, uintptr(unsafe.Pointer(openPtr)), uintptr(unsafe.Pointer(urlPtr)), 0, 0, 1 /* SW_SHOWNORMAL */)
+}
+
+func (t *windowsTrayManager) toggleWindowsService() {
+	svcMgr := service.NewServiceManager("BarahnAgent")
+	status, err := svcMgr.Status()
+	if err == nil && status.Installed {
+		_ = svcMgr.Stop()
+		if err := svcMgr.Uninstall(); err != nil {
+			t.showBalloonMessage("Barahn Service Error", fmt.Sprintf("Failed to remove service: %v", err))
+			return
+		}
+		t.showBalloonMessage("Barahn Service Removed", "Windows background service uninstalled successfully.")
+	} else {
+		exePath, err := os.Executable()
+		if err != nil {
+			t.showBalloonMessage("Barahn Service Error", "Failed to detect executable path.")
+			return
+		}
+		exePath, _ = filepath.Abs(exePath)
+		configPath := "agent.pem"
+		if cand, err := filepath.Abs("agent.pem"); err == nil {
+			if _, err := os.Stat(cand); err == nil {
+				configPath = cand
+			}
+		}
+
+		cfg := service.Config{
+			Name:        "BarahnAgent",
+			DisplayName: "Barahn Remote Access Agent",
+			Description: "Barahn persistent unattended remote support and management agent daemon.",
+			ExecPath:    exePath,
+			Args:        service.BuildServiceArgs(t.serverAddr, configPath, true),
+			AutoStart:   true,
+		}
+
+		if err := svcMgr.Install(cfg); err != nil {
+			t.showBalloonMessage("Barahn Service Error", fmt.Sprintf("Installation failed: %v", err))
+			return
+		}
+		_ = svcMgr.Start()
+		t.showBalloonMessage("Barahn Service Active", "Barahn is now running as an unattended Windows Service (Auto-Start enabled).")
+	}
+}
+
+func (t *windowsTrayManager) showBalloonMessage(title, message string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	copyStringToUtf16Slice(title, t.nid.szInfoTitle[:])
+	copyStringToUtf16Slice(message, t.nid.szInfo[:])
+	t.nid.uFlags = nifInfo | nifTip | nifIcon | nifMessage
+	t.nid.dwInfoFlags = 0x00000001 /* NIIF_INFO */
+	procShellNotifyIconW.Call(uintptr(nimModify), uintptr(unsafe.Pointer(&t.nid)))
 }
 
 func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintptr {
@@ -368,8 +563,16 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 			if activeTray != nil {
 				activeTray.copyIDToClipboard()
 			}
+		case cmdOpenDashboard:
+			if activeTray != nil {
+				go activeTray.openDashboard()
+			}
 		case cmdToggleLogs:
 			toggleConsoleWindow()
+		case cmdToggleService:
+			if activeTray != nil {
+				go activeTray.toggleWindowsService()
+			}
 		case cmdExit:
 			if activeTray != nil {
 				if activeTray.onExit != nil {
@@ -405,6 +608,7 @@ func showContextMenu(hwnd uintptr) {
 	idText, _ := syscall.UTF16PtrFromString(fmt.Sprintf("🆔 ID: %s", activeTray.agentID))
 	serverText, _ := syscall.UTF16PtrFromString(fmt.Sprintf("🌐 Server: %s", activeTray.serverAddr))
 	copyText, _ := syscall.UTF16PtrFromString("📋 Copy Endpoint ID")
+	dashText, _ := syscall.UTF16PtrFromString("🌐 Open Web Dashboard")
 
 	var logActionText string
 	if isConsoleVisible() {
@@ -413,6 +617,18 @@ func showContextMenu(hwnd uintptr) {
 		logActionText = "📄 View Console Logs"
 	}
 	logText, _ := syscall.UTF16PtrFromString(logActionText)
+
+	// Check if Windows Service is installed
+	svcMgr := service.NewServiceManager("BarahnAgent")
+	svcStatus, _ := svcMgr.Status()
+	var svcActionText string
+	if svcStatus.Installed {
+		svcActionText = "⚙️ Uninstall Windows Service"
+	} else {
+		svcActionText = "⚙️ Install as Windows Service (Auto-Start)"
+	}
+	svcText, _ := syscall.UTF16PtrFromString(svcActionText)
+
 	exitText, _ := syscall.UTF16PtrFromString("❌ Exit Agent")
 
 	procAppendMenuW.Call(hMenu, uintptr(mfString|mfDisabled), uintptr(cmdHeader), uintptr(unsafe.Pointer(headerText)))
@@ -422,7 +638,9 @@ func showContextMenu(hwnd uintptr) {
 	procAppendMenuW.Call(hMenu, uintptr(mfString|mfDisabled), uintptr(cmdServer), uintptr(unsafe.Pointer(serverText)))
 	procAppendMenuW.Call(hMenu, uintptr(mfSeparator), 0, 0)
 	procAppendMenuW.Call(hMenu, uintptr(mfString), uintptr(cmdCopyID), uintptr(unsafe.Pointer(copyText)))
+	procAppendMenuW.Call(hMenu, uintptr(mfString), uintptr(cmdOpenDashboard), uintptr(unsafe.Pointer(dashText)))
 	procAppendMenuW.Call(hMenu, uintptr(mfString), uintptr(cmdToggleLogs), uintptr(unsafe.Pointer(logText)))
+	procAppendMenuW.Call(hMenu, uintptr(mfString), uintptr(cmdToggleService), uintptr(unsafe.Pointer(svcText)))
 	procAppendMenuW.Call(hMenu, uintptr(mfSeparator), 0, 0)
 	procAppendMenuW.Call(hMenu, uintptr(mfString), uintptr(cmdExit), uintptr(unsafe.Pointer(exitText)))
 
@@ -432,22 +650,7 @@ func showContextMenu(hwnd uintptr) {
 	procTrackPopupMenu.Call(hMenu, uintptr(tpmRightButton), uintptr(p.x), uintptr(p.y), 0, hwnd, 0)
 }
 
-
-func (t *windowsTrayManager) showBalloon() {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	infoTitle := "Barahn Agent - Active"
-	infoMsg := fmt.Sprintf("Status: %s\nID: %s\nConnected to %s", t.status, t.agentID, t.serverAddr)
-	copyStringToUtf16Slice(infoTitle, t.nid.szInfoTitle[:])
-	copyStringToUtf16Slice(infoMsg, t.nid.szInfo[:])
-	t.nid.uFlags = nifInfo
-	t.nid.dwInfoFlags = 0x00000001 /* NIIF_INFO */
-	procShellNotifyIconW.Call(uintptr(nimModify), uintptr(unsafe.Pointer(&t.nid)))
-}
-
 func (t *windowsTrayManager) copyIDToClipboard() {
-	// Optional clipboard setting using user32
 	procOpenClipboard := user32.NewProc("OpenClipboard")
 	procEmptyClipboard := user32.NewProc("EmptyClipboard")
 	procSetClipboardData := user32.NewProc("SetClipboardData")

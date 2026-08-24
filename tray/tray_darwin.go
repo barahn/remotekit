@@ -11,6 +11,18 @@ import (
 	"github.com/mendsec/barahn/pkg/clipboard"
 )
 
+// HideConsoleWindow is a no-op on non-Windows platforms.
+func HideConsoleWindow() {}
+
+// ShowConsoleWindow is a no-op on non-Windows platforms.
+func ShowConsoleWindow() {}
+
+// IsConsoleVisible returns true on non-Windows platforms.
+func IsConsoleVisible() bool { return true }
+
+// ToggleConsoleWindow is a no-op on non-Windows platforms.
+func ToggleConsoleWindow() {}
+
 type darwinTrayManager struct {
 	agentID    string
 	serverAddr string

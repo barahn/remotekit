@@ -38,9 +38,10 @@ func TestLinuxDBusMenuServer(t *testing.T) {
 	if layout.ID != cmdRoot {
 		t.Errorf("Expected layout ID %d, got %d", cmdRoot, layout.ID)
 	}
-	if len(layout.Children) != 8 {
-		t.Fatalf("Expected 8 menu children, got %d", len(layout.Children))
+	if len(layout.Children) != 10 {
+		t.Fatalf("Expected 10 menu children, got %d", len(layout.Children))
 	}
+
 
 	// Verify Header item
 	headerChild := layout.Children[0].(dbusMenuLayout)
