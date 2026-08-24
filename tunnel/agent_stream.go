@@ -45,8 +45,12 @@ func NewAgentStreamRunner(creds *AgentCredentials, insecureSkipVerify bool) *Age
 }
 
 func (r *AgentStreamRunner) Start(ctx context.Context) {
-	wsURL := strings.Replace(r.creds.ServerAddr, "http://", "ws://", 1)
-	wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
+	wsURL := r.creds.ServerAddr
+	if strings.HasPrefix(wsURL, "https://") {
+		wsURL = "wss://" + wsURL[8:]
+	} else if strings.HasPrefix(wsURL, "http://") {
+		wsURL = "ws://" + wsURL[7:]
+	}
 	signalURL := fmt.Sprintf("%s/api/v1/sessions/%s/signal", strings.TrimRight(wsURL, "/"), r.creds.AgentID)
 
 	dialer := websocket.Dialer{
