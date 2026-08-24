@@ -285,7 +285,7 @@ func (inj *waylandInjector) KeyDown(event KeyboardEvent) error {
 
 	if inj.isMutter {
 		sessObj := inj.bus.Object(mutterRemoteDesktopDest, inj.session)
-		err := sessObj.Call(mutterRemoteSession+".NotifyKeyboardKeycode", 0, uint32(evdevCode), true).Err
+		err := sessObj.Call(mutterRemoteSession+".NotifyKeyboardKeycode", 0, evdevCode, true).Err
 		if err != nil {
 			if fb := inj.getX11Fallback(); fb != nil {
 				return fb.KeyDown(event)
@@ -297,7 +297,7 @@ func (inj *waylandInjector) KeyDown(event KeyboardEvent) error {
 
 	obj := inj.bus.Object(portalDest, dbus.ObjectPath(portalPath))
 	options := map[string]dbus.Variant{}
-	err := obj.Call(portalRemoteDesktop+".NotifyKeyboardKeycode", 0, inj.session, options, int32(evdevCode), uint32(1)).Err
+	err := obj.Call(portalRemoteDesktop+".NotifyKeyboardKeycode", 0, inj.session, options, int32(evdevCode), uint32(1)).Err // #nosec G115 -- evdevCode fits in int32
 	if err != nil {
 		if fb := inj.getX11Fallback(); fb != nil {
 			return fb.KeyDown(event)
@@ -318,7 +318,7 @@ func (inj *waylandInjector) KeyUp(event KeyboardEvent) error {
 
 	if inj.isMutter {
 		sessObj := inj.bus.Object(mutterRemoteDesktopDest, inj.session)
-		err := sessObj.Call(mutterRemoteSession+".NotifyKeyboardKeycode", 0, uint32(evdevCode), false).Err
+		err := sessObj.Call(mutterRemoteSession+".NotifyKeyboardKeycode", 0, evdevCode, false).Err
 		if err != nil {
 			if fb := inj.getX11Fallback(); fb != nil {
 				return fb.KeyUp(event)
@@ -330,7 +330,7 @@ func (inj *waylandInjector) KeyUp(event KeyboardEvent) error {
 
 	obj := inj.bus.Object(portalDest, dbus.ObjectPath(portalPath))
 	options := map[string]dbus.Variant{}
-	err := obj.Call(portalRemoteDesktop+".NotifyKeyboardKeycode", 0, inj.session, options, int32(evdevCode), uint32(0)).Err
+	err := obj.Call(portalRemoteDesktop+".NotifyKeyboardKeycode", 0, inj.session, options, int32(evdevCode), uint32(0)).Err // #nosec G115 -- evdevCode fits in int32
 	if err != nil {
 		if fb := inj.getX11Fallback(); fb != nil {
 			return fb.KeyUp(event)
@@ -374,11 +374,11 @@ func mapWaylandButton(button MouseButton) int32 {
 }
 
 // mapToEvdevKeycode maps DOM codes/keys to Linux kernel evdev keycodes (KEY_* from linux/input-event-codes.h)
-func mapToEvdevKeycode(key, code string) int32 {
+func mapToEvdevKeycode(key, code string) uint32 {
 	x11Code := mapKeycode(key, code)
 	if x11Code >= 8 {
 		// Standard Linux evdev keycode = X11 keycode - 8
-		return int32(x11Code - 8)
+		return uint32(x11Code - 8)
 	}
 	return 0
 }

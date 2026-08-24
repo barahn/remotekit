@@ -469,6 +469,6 @@ func (t *linuxTrayManager) openDashboard() {
 	if url == "" {
 		url = "https://localhost:8443"
 	}
-	_ = exec.Command("xdg-open", url).Start()
+	_ = exec.Command("xdg-open", url).Start() // #nosec G204 -- url is configured server address
 }
 

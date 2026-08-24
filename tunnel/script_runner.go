@@ -14,9 +14,7 @@ import (
 )
 
 // ScriptRunner executes ad-hoc commands and scripts in the background on the agent OS.
-type ScriptRunner struct {
-	mu sync.Mutex
-}
+type ScriptRunner struct{}
 
 func NewScriptRunner() *ScriptRunner {
 	return &ScriptRunner{}

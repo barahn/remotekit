@@ -33,11 +33,18 @@ func Detect() OSInfo {
 		return OSInfo{
 			OS:         runtime.GOOS,
 			DistroID:   runtime.GOOS,
-			DistroName: strings.Title(runtime.GOOS),
-			Formatted:  strings.Title(runtime.GOOS),
+			DistroName: capitalize(runtime.GOOS),
+			Formatted:  capitalize(runtime.GOOS),
 			IconKey:    "tux",
 		}
 	}
+}
+
+func capitalize(s string) string {
+	if s == "" {
+		return ""
+	}
+	return strings.ToUpper(s[:1]) + strings.ToLower(s[1:])
 }
 
 // detectLinux parses /etc/os-release, lsb-release, and desktop environment / display server variables.

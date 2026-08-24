@@ -85,13 +85,13 @@ LimitNOFILE=65535
 WantedBy=multi-user.target
 `, description, execCommand, workDir)
 
-	if err := os.WriteFile(unitFile, []byte(unitContent), 0644); err != nil {
+	if err := os.WriteFile(unitFile, []byte(unitContent), 0600); err != nil {
 		return fmt.Errorf("failed to write systemd unit file '%s': %w", unitFile, err)
 	}
 
 	_ = exec.Command("systemctl", "daemon-reload").Run()
 	if cfg.AutoStart {
-		_ = exec.Command("systemctl", "enable", m.name).Run()
+		_ = exec.Command("systemctl", "enable", m.name).Run() // #nosec G204 -- m.name is internal service identifier
 	}
 
 	return nil
@@ -103,8 +103,8 @@ func (m *linuxServiceManager) Uninstall() error {
 		return ErrServiceNotInstalled
 	}
 
-	_ = exec.Command("systemctl", "stop", m.name).Run()
-	_ = exec.Command("systemctl", "disable", m.name).Run()
+	_ = exec.Command("systemctl", "stop", m.name).Run()    // #nosec G204 -- m.name is internal service identifier
+	_ = exec.Command("systemctl", "disable", m.name).Run() // #nosec G204 -- m.name is internal service identifier
 
 	if err := os.Remove(unitFile); err != nil {
 		return fmt.Errorf("failed to remove systemd unit file '%s': %w", unitFile, err)
@@ -120,7 +120,7 @@ func (m *linuxServiceManager) Start() error {
 		return ErrServiceNotInstalled
 	}
 
-	cmd := exec.Command("systemctl", "start", m.name)
+	cmd := exec.Command("systemctl", "start", m.name) // #nosec G204 -- m.name is internal service identifier
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -135,7 +135,7 @@ func (m *linuxServiceManager) Stop() error {
 		return ErrServiceNotInstalled
 	}
 
-	cmd := exec.Command("systemctl", "stop", m.name)
+	cmd := exec.Command("systemctl", "stop", m.name) // #nosec G204 -- m.name is internal service identifier
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -150,7 +150,7 @@ func (m *linuxServiceManager) Status() (Status, error) {
 		return Status{Installed: false, State: StateStopped}, nil
 	}
 
-	out, _ := exec.Command("systemctl", "is-active", m.name).Output()
+	out, _ := exec.Command("systemctl", "is-active", m.name).Output() // #nosec G204 -- m.name is internal service identifier
 	activeState := strings.TrimSpace(string(out))
 
 	var state State
@@ -168,7 +168,7 @@ func (m *linuxServiceManager) Status() (Status, error) {
 	}
 
 	var pid int
-	pidOut, err := exec.Command("systemctl", "show", "--property", "MainPID", "--value", m.name).Output()
+	pidOut, err := exec.Command("systemctl", "show", "--property", "MainPID", "--value", m.name).Output() // #nosec G204 -- m.name is internal service identifier
 	if err == nil {
 		if parsedPid, err := strconv.Atoi(strings.TrimSpace(string(pidOut))); err == nil && parsedPid > 0 {
 			pid = parsedPid
