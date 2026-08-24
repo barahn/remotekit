@@ -53,8 +53,13 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 	}
 	signalURL := fmt.Sprintf("%s/api/v1/sessions/%s/signal", strings.TrimRight(wsURL, "/"), r.creds.AgentID)
 
-	dialer := websocket.Dialer{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: r.insecureSkipVerify}, // #nosec G402 -- CLI opt-in flag for dev/test
+	dialer := websocket.DefaultDialer
+	if r.insecureSkipVerify {
+		dialer = &websocket.Dialer{
+			Proxy:            http.ProxyFromEnvironment,
+			HandshakeTimeout: 45 * time.Second,
+			TLSClientConfig:  &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- CLI opt-in flag for dev/test
+		}
 	}
 
 	headers := http.Header{}
