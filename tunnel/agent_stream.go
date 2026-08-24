@@ -13,12 +13,14 @@ import (
 	"image/jpeg"
 	"net/http"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/mendsec/barahn/pkg/bark"
 	"github.com/mendsec/barahn/pkg/clipboard"
 	"github.com/mendsec/barahn/pkg/input"
 	"github.com/mendsec/barahn/pkg/screen"
@@ -89,6 +91,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 	clipMgr := clipboard.NewManager()
 	clipWatcher := clipboard.NewWatcher(clipMgr, 500*time.Millisecond)
 	transferMgr, _ := transfer.NewManager("")
+	scriptRunner := NewScriptRunner()
 
 	safeWrite := func(data []byte) error {
 		writeMu.Lock()
@@ -149,143 +152,147 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 		msgType, _ := signal["type"].(string)
 
 		switch msgType {
-		case "offer":
+		case "offer", "session_start":
 			sdp, _ := signal["sdp"].(string)
-			if sdp == "" {
-				continue
-			}
 
-			stateMu.Lock()
-			if activeCapCancel != nil {
-				activeCapCancel()
-				activeCapCancel = nil
-			}
-			if capturer != nil {
-				capturer.Stop()
-				capturer = nil
-			}
-			if currentPeer != nil {
-				_ = currentPeer.Close()
-				currentPeer = nil
-			}
+			// WebRTC negotiation (if SDP offer is provided)
+			if sdp != "" {
+				stateMu.Lock()
+				if currentPeer != nil {
+					_ = currentPeer.Close()
+					currentPeer = nil
+				}
 
-			peer, err := webrtc.NewPeerSession(webrtc.DefaultPeerConfig())
-			if err != nil {
+				peer, err := webrtc.NewPeerSession(webrtc.DefaultPeerConfig())
+				if err == nil {
+					currentPeer = peer
+					peer.OnICECandidate(func(candJSON string) {
+						candMsg := map[string]interface{}{
+							"type":       "candidate",
+							"session_id": r.creds.AgentID,
+							"candidate":  candJSON,
+						}
+						data, _ := json.Marshal(candMsg)
+						_ = safeWrite(data)
+					})
+
+					answerSDP, aErr := peer.CreateAnswer(sdp)
+					if aErr == nil {
+						ansMsg := map[string]interface{}{
+							"type":       "answer",
+							"session_id": r.creds.AgentID,
+							"sdp":        answerSDP,
+						}
+						ansBytes, _ := json.Marshal(ansMsg)
+						_ = safeWrite(ansBytes)
+					} else {
+						fmt.Printf("[AgentStream] WebRTC answer note (direct WebSocket stream active): %v\n", aErr)
+					}
+				}
 				stateMu.Unlock()
-				continue
 			}
-			currentPeer = peer
+
+			// Screen capture stream management: start if not already active
+			stateMu.Lock()
+			isAlreadyCapturing := (capturer != nil && activeCapCancel != nil)
 			stateMu.Unlock()
 
-			peer.OnICECandidate(func(candJSON string) {
-				candMsg := map[string]interface{}{
-					"type":       "candidate",
-					"session_id": r.creds.AgentID,
-					"candidate":  candJSON,
-				}
-				data, _ := json.Marshal(candMsg)
-				_ = safeWrite(data)
-			})
+			if !isAlreadyCapturing {
+				cap, err := screen.NewCapturer(screen.DefaultConfig())
+				var framesChan <-chan *screen.Frame
 
-			answerSDP, err := peer.CreateAnswer(sdp)
-			if err != nil {
-				continue
-			}
-
-			ansMsg := map[string]interface{}{
-				"type":       "answer",
-				"session_id": r.creds.AgentID,
-				"sdp":        answerSDP,
-			}
-			ansBytes, _ := json.Marshal(ansMsg)
-			_ = safeWrite(ansBytes)
-
-			// Start screen capturer and feed samples to WebRTC & WebSocket
-			cap, err := screen.NewCapturer(screen.DefaultConfig())
-			var framesChan <-chan *screen.Frame
-
-			if err == nil {
-				stateMu.Lock()
-				capturer = cap
-				capCtx, cancelCap := context.WithCancel(ctx)
-				activeCapCancel = cancelCap
-				stateMu.Unlock()
-
-				if startErr := cap.Start(capCtx); startErr == nil {
-					framesChan = cap.Frames()
-				}
-			}
-
-			// If native capture is unavailable (headless / display-less container), stream synthesized desktop
-			if framesChan == nil {
-				simChan := make(chan *screen.Frame, 2)
-				framesChan = simChan
-				go func() {
-					defer close(simChan)
-					ticker := time.NewTicker(33 * time.Millisecond)
-					defer ticker.Stop()
-					var seq uint64
-					hostname, _ := os.Hostname()
-					if hostname == "" {
-						hostname = "endpoint"
+				if err == nil {
+					capCtx, cancelCap := context.WithCancel(ctx)
+					if startErr := cap.Start(capCtx); startErr == nil {
+						stateMu.Lock()
+						capturer = cap
+						activeCapCancel = cancelCap
+						stateMu.Unlock()
+						framesChan = cap.Frames()
+					} else {
+						cancelCap()
 					}
-					for {
-						select {
-						case <-ctx.Done():
-							return
-						case t := <-ticker.C:
-							seq++
-							img := screen.GenerateTestDesktopImage(1920, 1080, runtime.GOOS, hostname, r.creds.AgentID, seq, t.UTC(), 960, 540)
-							f := &screen.Frame{
-								Image:       img,
-								Bounds:      img.Bounds(),
-								CapturedAt:  t,
-								SequenceNum: seq,
-							}
+				}
+
+				// If native capture is unavailable (headless / display-less container), stream synthesized desktop
+				if framesChan == nil {
+					simChan := make(chan *screen.Frame, 2)
+					framesChan = simChan
+					simCtx, cancelSim := context.WithCancel(ctx)
+					stateMu.Lock()
+					activeCapCancel = cancelSim
+					stateMu.Unlock()
+
+					go func() {
+						defer close(simChan)
+						ticker := time.NewTicker(33 * time.Millisecond)
+						defer ticker.Stop()
+						var seq uint64
+						hostname, _ := os.Hostname()
+						if hostname == "" {
+							hostname = "endpoint"
+						}
+						for {
 							select {
-							case simChan <- f:
-							default:
+							case <-simCtx.Done():
+								return
+							case t := <-ticker.C:
+								seq++
+								img := screen.GenerateTestDesktopImage(1920, 1080, runtime.GOOS, hostname, r.creds.AgentID, seq, t.UTC(), 960, 540)
+								f := &screen.Frame{
+									Image:       img,
+									Bounds:      img.Bounds(),
+									CapturedAt:  t,
+									SequenceNum: seq,
+								}
+								select {
+								case simChan <- f:
+								default:
+								}
+							}
+						}
+					}()
+				}
+
+				go func() {
+					defer func() {
+						if r := recover(); r != nil {
+							fmt.Printf("[AgentStream] Recovered panic in frame sender: %v\n", r)
+						}
+					}()
+					frameCount := 0
+					for frame := range framesChan {
+						frameCount++
+
+						if ctx.Err() != nil {
+							return
+						}
+						// Direct high-quality JPEG streaming over WebSocket
+						if frame != nil && frame.Image != nil {
+							if frameCount == 1 && r.injector != nil {
+								r.injector.SetScreenBounds(frame.Image.Bounds())
+							}
+							var buf bytes.Buffer
+							if err := jpeg.Encode(&buf, frame.Image, &jpeg.Options{Quality: 60}); err == nil {
+								b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
+								frameMsg := map[string]interface{}{
+									"type":       "frame",
+									"session_id": r.creds.AgentID,
+									"data":       b64,
+								}
+								data, _ := json.Marshal(frameMsg)
+								if err := safeWrite(data); err != nil {
+									return // WebSocket closed
+								}
+
+								if frameCount%30 == 1 {
+									fmt.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
+								}
 							}
 						}
 					}
 				}()
 			}
-
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						fmt.Printf("[AgentStream] Recovered panic in frame sender: %v\n", r)
-					}
-				}()
-				frameCount := 0
-				for frame := range framesChan {
-					frameCount++
-
-					if ctx.Err() != nil {
-						return
-					}
-					// Direct high-quality JPEG streaming over WebSocket
-					if frame != nil && frame.Image != nil {
-						var buf bytes.Buffer
-						if err := jpeg.Encode(&buf, frame.Image, &jpeg.Options{Quality: 60}); err == nil {
-							b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
-							frameMsg := map[string]interface{}{
-								"type":       "frame",
-								"session_id": r.creds.AgentID,
-								"data":       b64,
-							}
-							data, _ := json.Marshal(frameMsg)
-							if err := safeWrite(data); err != nil {
-								return // WebSocket closed
-							}
-
-							if frameCount%30 == 1 {
-								fmt.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
-							}
-						}
-					}
-				}
-			}()
 
 		case "candidate":
 			cand, _ := signal["candidate"].(string)
@@ -301,17 +308,67 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				r.handleInputPayload(payload)
 			}
 
-		case "resize":
+		case "resize", "viewport_size":
+			// Informational signal indicating technician viewport dimensions
 			w, _ := signal["width"].(float64)
 			h, _ := signal["height"].(float64)
-			if w > 0 && h > 0 && r.injector != nil {
-				r.injector.SetScreenBounds(image.Rect(0, 0, int(w), int(h)))
+			if w > 0 && h > 0 {
+				fmt.Printf("[AgentStream] Technician browser viewport size: %.0fx%.0f\n", w, h)
 			}
 
 		case "chat":
 			text, _ := signal["text"].(string)
 			sender, _ := signal["sender"].(string)
 			fmt.Printf("[AgentStream] Chat message from %s: %s\n", sender, text)
+
+		case "focus_state":
+			focused, _ := signal["focused"].(bool)
+			fmt.Printf("[AgentStream] Session focus state changed: focused=%v\n", focused)
+
+		case "script_exec_req":
+			execID, _ := signal["execution_id"].(string)
+			interpreter, _ := signal["interpreter"].(string)
+			scriptBody, _ := signal["script_body"].(string)
+			timeoutSec, _ := signal["timeout_seconds"].(float64)
+			workingDir, _ := signal["working_dir"].(string)
+
+			if execID != "" && scriptBody != "" {
+				go func() {
+					req := bark.ScriptExecutionRequest{
+						ExecutionID:    execID,
+						Interpreter:    interpreter,
+						ScriptBody:     scriptBody,
+						TimeoutSeconds: int(timeoutSec),
+						WorkingDir:     workingDir,
+					}
+					res := scriptRunner.Execute(ctx, req, func(chunk bark.ScriptExecutionChunk) {
+						chunkMsg, _ := json.Marshal(map[string]interface{}{
+							"type":         "script_exec_chunk",
+							"session_id":   r.creds.AgentID,
+							"execution_id": chunk.ExecutionID,
+							"stream":       chunk.Stream,
+							"data":         chunk.Data,
+							"index":        chunk.Index,
+						})
+						_ = safeWrite(chunkMsg)
+					})
+
+					resMsg, _ := json.Marshal(map[string]interface{}{
+						"type":                  "script_exec_res",
+						"session_id":            r.creds.AgentID,
+						"execution_id":          res.ExecutionID,
+						"exit_code":             res.ExitCode,
+						"execution_duration_ms": res.ExecutionDurationMS,
+						"error":                 res.Error,
+					})
+					_ = safeWrite(resMsg)
+				}()
+			}
+
+		case "power":
+			action, _ := signal["action"].(string)
+			fmt.Printf("[AgentStream] Received remote power instruction: %s\n", action)
+			go executePowerAction(action)
 
 		case "clipboard":
 			text, _ := signal["text"].(string)
@@ -481,4 +538,39 @@ func BuildVP8Sample(frame *screen.Frame) []byte {
 	}
 
 	return append(header, payloadBuf.Bytes()...)
+}
+
+func executePowerAction(action string) {
+	switch action {
+	case "reboot":
+		if runtime.GOOS == "windows" {
+			_ = exec.Command("shutdown", "/r", "/t", "0").Run()
+		} else {
+			if err := exec.Command("systemctl", "reboot").Run(); err != nil {
+				if err := exec.Command("loginctl", "reboot").Run(); err != nil {
+					_ = exec.Command("shutdown", "-r", "now").Run()
+				}
+			}
+		}
+	case "shutdown", "poweroff":
+		if runtime.GOOS == "windows" {
+			_ = exec.Command("shutdown", "/s", "/t", "0").Run()
+		} else {
+			if err := exec.Command("systemctl", "poweroff").Run(); err != nil {
+				if err := exec.Command("loginctl", "poweroff").Run(); err != nil {
+					_ = exec.Command("shutdown", "-h", "now").Run()
+				}
+			}
+		}
+	case "lock":
+		if runtime.GOOS == "windows" {
+			_ = exec.Command("rundll32.exe", "user32.dll,LockWorkStation").Run()
+		} else {
+			if err := exec.Command("loginctl", "lock-session").Run(); err != nil {
+				if err := exec.Command("gnome-screensaver-command", "-l").Run(); err != nil {
+					_ = exec.Command("xdg-screensaver", "lock").Run()
+				}
+			}
+		}
+	}
 }

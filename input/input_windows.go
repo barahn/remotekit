@@ -12,10 +12,45 @@ import (
 
 var (
 	modUser32 = syscall.NewLazyDLL("user32.dll")
+	modShcore = syscall.NewLazyDLL("shcore.dll")
 
-	procSendInput       = modUser32.NewProc("SendInput")
-	procGetSystemMetric = modUser32.NewProc("GetSystemMetrics")
+	procSendInput                     = modUser32.NewProc("SendInput")
+	procGetSystemMetric               = modUser32.NewProc("GetSystemMetrics")
+	procSetProcessDpiAwarenessContext = modUser32.NewProc("SetProcessDpiAwarenessContext")
+	procSetProcessDPIAware            = modUser32.NewProc("SetProcessDPIAware")
+	procSetProcessDpiAwareness        = modShcore.NewProc("SetProcessDpiAwareness")
 )
+
+var initDPIOnce sync.Once
+
+// initDPIAwareness enables Per-Monitor DPI awareness on Windows so SendInput coordinates map accurately to physical pixels.
+func initDPIAwareness() {
+	initDPIOnce.Do(func() {
+		// 1. Windows 10 1607+ (Per-Monitor V2: -4)
+		if procSetProcessDpiAwarenessContext.Find() == nil {
+			dpiContext := ^uintptr(3) // -4
+			ret, _, _ := procSetProcessDpiAwarenessContext.Call(dpiContext)
+			if ret != 0 {
+				return
+			}
+		}
+		// 2. Windows 8.1+ (PROCESS_PER_MONITOR_DPI_AWARE = 2)
+		if procSetProcessDpiAwareness.Find() == nil {
+			ret, _, _ := procSetProcessDpiAwareness.Call(2)
+			if ret == 0 {
+				return
+			}
+		}
+		// 3. Windows Vista+ System DPI Aware
+		if procSetProcessDPIAware.Find() == nil {
+			_, _, _ = procSetProcessDPIAware.Call()
+		}
+	})
+}
+
+func init() {
+	initDPIAwareness()
+}
 
 const (
 	inputMouse    uint32 = 0

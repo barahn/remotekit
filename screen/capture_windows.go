@@ -23,12 +23,16 @@ const (
 var (
 	modUser32 = syscall.NewLazyDLL("user32.dll")
 	modGdi32  = syscall.NewLazyDLL("gdi32.dll")
+	modShcore = syscall.NewLazyDLL("shcore.dll")
 
-	procGetDC               = modUser32.NewProc("GetDC")
-	procReleaseDC           = modUser32.NewProc("ReleaseDC")
-	procGetSystemMetrics    = modUser32.NewProc("GetSystemMetrics")
-	procEnumDisplayMonitors = modUser32.NewProc("EnumDisplayMonitors")
-	procGetMonitorInfoW     = modUser32.NewProc("GetMonitorInfoW")
+	procGetDC                         = modUser32.NewProc("GetDC")
+	procReleaseDC                     = modUser32.NewProc("ReleaseDC")
+	procGetSystemMetrics              = modUser32.NewProc("GetSystemMetrics")
+	procEnumDisplayMonitors           = modUser32.NewProc("EnumDisplayMonitors")
+	procGetMonitorInfoW               = modUser32.NewProc("GetMonitorInfoW")
+	procSetProcessDpiAwarenessContext = modUser32.NewProc("SetProcessDpiAwarenessContext")
+	procSetProcessDPIAware            = modUser32.NewProc("SetProcessDPIAware")
+	procSetProcessDpiAwareness        = modShcore.NewProc("SetProcessDpiAwareness")
 
 	procCreateCompatibleDC     = modGdi32.NewProc("CreateCompatibleDC")
 	procCreateCompatibleBitmap = modGdi32.NewProc("CreateCompatibleBitmap")
@@ -37,7 +41,61 @@ var (
 	procGetDIBits              = modGdi32.NewProc("GetDIBits")
 	procDeleteDC               = modGdi32.NewProc("DeleteDC")
 	procDeleteObject           = modGdi32.NewProc("DeleteObject")
+	procChangeDisplaySettingsW = modUser32.NewProc("ChangeDisplaySettingsW")
 )
+
+var initDPIOnce sync.Once
+
+// initDPIAwareness enables Per-Monitor DPI awareness on Windows so GetSystemMetrics and BitBlt operate on physical pixels.
+func initDPIAwareness() {
+	initDPIOnce.Do(func() {
+		// 1. Windows 10 1607+ (Per-Monitor V2: -4)
+		if procSetProcessDpiAwarenessContext.Find() == nil {
+			dpiContext := ^uintptr(3) // -4
+			ret, _, _ := procSetProcessDpiAwarenessContext.Call(dpiContext)
+			if ret != 0 {
+				return
+			}
+		}
+		// 2. Windows 8.1+ (PROCESS_PER_MONITOR_DPI_AWARE = 2)
+		if procSetProcessDpiAwareness.Find() == nil {
+			ret, _, _ := procSetProcessDpiAwareness.Call(2)
+			if ret == 0 {
+				return
+			}
+		}
+		// 3. Windows Vista+ System DPI Aware
+		if procSetProcessDPIAware.Find() == nil {
+			_, _, _ = procSetProcessDPIAware.Call()
+		}
+	})
+}
+
+var (
+	enumDisplayMonitorsMu       sync.Mutex
+	enumDisplayMonitorsSlice    []Display
+	enumDisplayMonitorsCallback uintptr
+)
+
+func enumDisplayMonitorsProc(hMonitor, hdcMonitor, lprcMonitor, dwData uintptr) uintptr {
+	r := (*rect)(unsafe.Pointer(lprcMonitor)) // #nosec G103 -- Win32 callback struct
+	idx := len(enumDisplayMonitorsSlice)
+	name := fmt.Sprintf("Display %d (%dx%d)", idx+1, r.right-r.left, r.bottom-r.top)
+	primary := (r.left == 0 && r.top == 0)
+
+	enumDisplayMonitorsSlice = append(enumDisplayMonitorsSlice, Display{
+		Index:   idx,
+		Name:    name,
+		Bounds:  image.Rect(int(r.left), int(r.top), int(r.right), int(r.bottom)),
+		Primary: primary,
+	})
+	return 1 // Continue enumeration
+}
+
+func init() {
+	initDPIAwareness()
+	enumDisplayMonitorsCallback = syscall.NewCallback(enumDisplayMonitorsProc)
+}
 
 type bitmapInfoHeader struct {
 	biSize          uint32
@@ -86,6 +144,58 @@ type windowsCapturer struct {
 	height int
 }
 
+type devModeW struct {
+	dmDeviceName       [32]uint16
+	dmSpecVersion      uint16
+	dmDriverVersion    uint16
+	dmSize             uint16
+	dmDriverExtra      uint16
+	dmFields           uint32
+	dmOrientation      int16
+	dmPaperSize        int16
+	dmPaperLength      int16
+	dmPaperWidth       int16
+	dmScale            int16
+	dmCopies           int16
+	dmDefaultSource    int16
+	dmPrintQuality     int16
+	dmColor            int16
+	dmDuplex           int16
+	dmYResolution      int16
+	dmTTOption         int16
+	dmCollate          int16
+	dmFormName         [32]uint16
+	dmLogPixels        uint16
+	dmBitsPerPel       uint32
+	dmPelsWidth        uint32
+	dmPelsHeight       uint32
+	dmDisplayFlags     uint32
+	dmDisplayFrequency uint32
+	dmICMMethod        uint32
+	dmICMIntent        uint32
+	dmMediaType        uint32
+	dmDitherType       uint32
+	dmReserved1        uint32
+	dmReserved2        uint32
+	dmPanningWidth     uint32
+	dmPanningHeight    uint32
+}
+
+// TrySetDisplayResolution attempts to programmatically adjust the Windows display resolution to target bounds (e.g. 1920x1080).
+func TrySetDisplayResolution(targetW, targetH int) bool {
+	if procChangeDisplaySettingsW.Find() != nil {
+		return false
+	}
+	var dm devModeW
+	dm.dmSize = uint16(unsafe.Sizeof(dm))
+	dm.dmFields = 0x00080000 /* DM_PELSWIDTH */ | 0x00100000 /* DM_PELSHEIGHT */
+	dm.dmPelsWidth = uint32(targetW)
+	dm.dmPelsHeight = uint32(targetH)
+
+	ret, _, _ := procChangeDisplaySettingsW.Call(uintptr(unsafe.Pointer(&dm)), 0)
+	return ret == 0 /* DISP_CHANGE_SUCCESSFUL */
+}
+
 // NewCapturer creates a Windows screen capturer using the Win32 GDI / DirectX APIs.
 func NewCapturer(config CaptureConfig) (Capturer, error) {
 	if config.FrameBufferSize <= 0 {
@@ -102,6 +212,17 @@ func NewCapturer(config CaptureConfig) (Capturer, error) {
 	cy, _, _ := procGetSystemMetrics.Call(1) // SM_CYSCREEN
 	w := int(cx)
 	h := int(cy)
+
+	// If current display resolution is below standard FullHD, attempt to auto-negotiate to 1080p
+	if w < 1920 && w > 0 {
+		if TrySetDisplayResolution(1920, 1080) {
+			cx, _, _ = procGetSystemMetrics.Call(0)
+			cy, _, _ = procGetSystemMetrics.Call(1)
+			w = int(cx)
+			h = int(cy)
+		}
+	}
+
 	if w <= 0 {
 		w = 1920
 	}
@@ -120,23 +241,14 @@ func (c *windowsCapturer) Displays() ([]Display, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	var displays []Display
-	callback := syscall.NewCallback(func(hMonitor, hdcMonitor, lprcMonitor, dwData uintptr) uintptr {
-		r := (*rect)(unsafe.Pointer(lprcMonitor)) // #nosec G103 -- Win32 callback struct
-		idx := len(displays)
-		name := fmt.Sprintf("Display %d (%dx%d)", idx+1, r.right-r.left, r.bottom-r.top)
-		primary := (r.left == 0 && r.top == 0)
+	enumDisplayMonitorsMu.Lock()
+	defer enumDisplayMonitorsMu.Unlock()
 
-		displays = append(displays, Display{
-			Index:   idx,
-			Name:    name,
-			Bounds:  image.Rect(int(r.left), int(r.top), int(r.right), int(r.bottom)),
-			Primary: primary,
-		})
-		return 1 // Continue enumeration
-	})
-
-	_, _, _ = procEnumDisplayMonitors.Call(0, 0, callback, 0)
+	enumDisplayMonitorsSlice = nil
+	_, _, _ = procEnumDisplayMonitors.Call(0, 0, enumDisplayMonitorsCallback, 0)
+	displays := make([]Display, len(enumDisplayMonitorsSlice))
+	copy(displays, enumDisplayMonitorsSlice)
+	enumDisplayMonitorsSlice = nil
 
 	if len(displays) == 0 {
 		// Fallback to primary screen
@@ -197,6 +309,29 @@ func (c *windowsCapturer) Close() {
 	c.Stop()
 }
 
+func (c *windowsCapturer) getActiveDisplayBounds() (image.Rectangle, int, int) {
+	c.mu.Lock()
+	dispIdx := c.config.DisplayIndex
+	c.mu.Unlock()
+
+	displays, err := c.Displays()
+	if err == nil && dispIdx >= 0 && dispIdx < len(displays) {
+		b := displays[dispIdx].Bounds
+		return image.Rect(0, 0, b.Dx(), b.Dy()), b.Min.X, b.Min.Y
+	}
+	cx, _, _ := procGetSystemMetrics.Call(0) // SM_CXSCREEN
+	cy, _, _ := procGetSystemMetrics.Call(1) // SM_CYSCREEN
+	w := int(cx)
+	h := int(cy)
+	if w <= 0 {
+		w = 1920
+	}
+	if h <= 0 {
+		h = 1080
+	}
+	return image.Rect(0, 0, w, h), 0, 0
+}
+
 func (c *windowsCapturer) captureLoop(ctx context.Context) {
 	defer close(c.frames)
 
@@ -204,22 +339,12 @@ func (c *windowsCapturer) captureLoop(ctx context.Context) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	w := c.width
-	h := c.height
-	if w <= 0 {
-		w = 1920
-	}
-	if h <= 0 {
-		h = 1080
-	}
-
-	bgraBuf := make([]byte, w*h*4)
-	rgbaBuf := make([]byte, w*h*4)
+	var bgraBuf []byte
+	var rgbaBuf []byte
+	var currentW, currentH int
 
 	var bmi bitmapInfo
 	bmi.bmiHeader.biSize = uint32(unsafe.Sizeof(bmi.bmiHeader))
-	bmi.bmiHeader.biWidth = int32(w)
-	bmi.bmiHeader.biHeight = -int32(h) // Negative for top-down DIB
 	bmi.bmiHeader.biPlanes = 1
 	bmi.bmiHeader.biBitCount = 32
 	bmi.bmiHeader.biCompression = biRGB
@@ -233,7 +358,26 @@ func (c *windowsCapturer) captureLoop(ctx context.Context) {
 				return
 			}
 
-			err := c.captureFrame(bgraBuf, &bmi, w, h)
+			bounds, srcX, srcY := c.getActiveDisplayBounds()
+			w := bounds.Dx()
+			h := bounds.Dy()
+			if w <= 0 {
+				w = 1920
+			}
+			if h <= 0 {
+				h = 1080
+			}
+
+			if w != currentW || h != currentH || len(bgraBuf) != w*h*4 {
+				currentW = w
+				currentH = h
+				bgraBuf = make([]byte, w*h*4)
+				rgbaBuf = make([]byte, w*h*4)
+				bmi.bmiHeader.biWidth = int32(w)
+				bmi.bmiHeader.biHeight = -int32(h) // Negative for top-down DIB
+			}
+
+			err := c.captureFrame(bgraBuf, &bmi, srcX, srcY, w, h)
 			if err != nil {
 				continue
 			}
@@ -243,10 +387,14 @@ func (c *windowsCapturer) captureLoop(ctx context.Context) {
 			rgba := image.NewRGBA(image.Rect(0, 0, w, h))
 			copy(rgba.Pix, rgbaBuf)
 
+			c.mu.Lock()
+			currentDispIdx := c.config.DisplayIndex
+			c.mu.Unlock()
+
 			frame := &Frame{
 				Image:        rgba,
 				Bounds:       image.Rect(0, 0, w, h),
-				DisplayIndex: c.config.DisplayIndex,
+				DisplayIndex: currentDispIdx,
 				CapturedAt:   time.Now(),
 				SequenceNum:  c.seqNum.Add(1),
 			}
@@ -260,7 +408,7 @@ func (c *windowsCapturer) captureLoop(ctx context.Context) {
 	}
 }
 
-func (c *windowsCapturer) captureFrame(dst []byte, bmi *bitmapInfo, w, h int) error {
+func (c *windowsCapturer) captureFrame(dst []byte, bmi *bitmapInfo, srcX, srcY, w, h int) error {
 	hDesktopDC, _, _ := procGetDC.Call(0)
 	if hDesktopDC == 0 {
 		return fmt.Errorf("GetDC failed")
@@ -284,13 +432,13 @@ func (c *windowsCapturer) captureFrame(dst []byte, bmi *bitmapInfo, w, h int) er
 
 	r, _, _ := procBitBlt.Call(
 		hMemDC, 0, 0, uintptr(w), uintptr(h),
-		hDesktopDC, 0, 0, uintptr(srccopy|captureBlt),
+		hDesktopDC, uintptr(srcX), uintptr(srcY), uintptr(srccopy|captureBlt),
 	)
 	if r == 0 {
 		// Retry without CAPTUREBLT if layered windows capture fails
 		r, _, _ = procBitBlt.Call(
 			hMemDC, 0, 0, uintptr(w), uintptr(h),
-			hDesktopDC, 0, 0, uintptr(srccopy),
+			hDesktopDC, uintptr(srcX), uintptr(srcY), uintptr(srccopy),
 		)
 		if r == 0 {
 			return fmt.Errorf("BitBlt failed")

@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -21,7 +22,9 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/hashicorp/yamux"
 	"github.com/mendsec/barahn/pkg/heartbeat"
+	"github.com/mendsec/barahn/pkg/osinfo"
 )
+
 
 type AgentCredentials struct {
 	AgentID    string `json:"agent_id"`
@@ -159,6 +162,13 @@ func (tc *TunnelClient) Connect(ctx context.Context, creds *AgentCredentials) er
 	header := http.Header{}
 	header.Set("X-Barahn-Agent-ID", creds.AgentID)
 	header.Set("X-Barahn-Agent-Token", creds.AgentToken)
+
+	sysInfo := osinfo.Detect()
+	header.Set("X-Barahn-Agent-OS", sysInfo.Formatted)
+	header.Set("X-Barahn-Agent-Arch", runtime.GOARCH)
+	if hostname, err := os.Hostname(); err == nil && hostname != "" {
+		header.Set("X-Barahn-Agent-Hostname", hostname)
+	}
 
 	if tc.insecureSkipVerify {
 		fmt.Fprintln(os.Stderr, "[WARNING] TLS certificate verification is DISABLED (--insecure-skip-verify). Connection is insecure!")

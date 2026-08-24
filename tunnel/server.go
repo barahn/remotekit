@@ -176,6 +176,26 @@ func (ts *TunnelServer) HandleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Update OS and Hostname if provided and changed
+	agentOS := r.Header.Get("X-Barahn-Agent-OS")
+	agentHostname := r.Header.Get("X-Barahn-Agent-Hostname")
+	agentArch := r.Header.Get("X-Barahn-Agent-Arch")
+	if agentOS != "" || agentHostname != "" || agentArch != "" {
+		hostname := agent.Hostname
+		if agentHostname != "" {
+			hostname = agentHostname
+		}
+		osStr := agent.OS
+		if agentOS != "" {
+			osStr = agentOS
+		}
+		arch := agent.Arch
+		if agentArch != "" {
+			arch = agentArch
+		}
+		_ = ts.store.UpdateAgentInfo(ctx, agentID, hostname, osStr, arch)
+	}
+
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
@@ -197,6 +217,7 @@ func (ts *TunnelServer) HandleConnect(w http.ResponseWriter, r *http.Request) {
 	// Keep-alive stream loop
 	go ts.handleAgentControlStream(ctx, agentID, session)
 }
+
 
 func (ts *TunnelServer) handleAgentControlStream(ctx context.Context, agentID string, session *yamux.Session) {
 	defer func() {

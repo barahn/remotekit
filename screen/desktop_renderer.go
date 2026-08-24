@@ -436,7 +436,13 @@ func RenderDesktopState(dst []byte, w, h int, osName, hostname, agentID string, 
 	drawText(dst, w, termX, termY, "Barahn Unified Remote Support System [Active Session]", color.RGBA{56, 189, 248, 255}, 2)
 	termY += 28
 
-	drawText(dst, w, termX, termY, fmt.Sprintf("OS: %s (amd64)  |  Display: Virtual Xvfb (:99)  |  Frame: #%d", osName, seq), color.RGBA{148, 163, 184, 255}, 2)
+	displayDesc := "Virtual Xvfb (:99)"
+	if strings.Contains(strings.ToLower(osName), "wayland") {
+		displayDesc = "Weston Wayland (wayland-0)"
+	} else if strings.Contains(strings.ToLower(osName), "windows") {
+		displayDesc = "Win32 GDI (Primary)"
+	}
+	drawText(dst, w, termX, termY, fmt.Sprintf("OS: %s (amd64)  |  Display: %s  |  Frame: #%d", osName, displayDesc, seq), color.RGBA{148, 163, 184, 255}, 2)
 	termY += 24
 	drawHLine(dst, w, termX, winX+winW-28, termY, color.RGBA{30, 41, 59, 255})
 	termY += 16

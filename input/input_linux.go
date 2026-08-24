@@ -5,6 +5,7 @@ package input
 import (
 	"fmt"
 	"image"
+	"math"
 	"os"
 	"sync"
 
@@ -15,8 +16,8 @@ import (
 
 // X11 event types for xtest.FakeInput
 const (
-	xKeyPress   byte = 2
-	xKeyRelease byte = 3
+	xKeyPress    byte = 2
+	xKeyRelease  byte = 3
 	xButtonPress byte = 4
 	xButtonRelease byte = 5
 	xMotionNotify  byte = 6
@@ -33,24 +34,31 @@ type linuxInjector struct {
 // NewInjector creates a new platform-specific input injector.
 // On Linux, this auto-detects Wayland vs X11 and returns the appropriate injector.
 func NewInjector() (Injector, error) {
-	if os.Getenv("XDG_SESSION_TYPE") == "wayland" && os.Getenv("DISPLAY") == "" {
+	// If X11/Xwayland DISPLAY is set, prioritize direct low-latency input via XTest
+	if os.Getenv("DISPLAY") != "" {
+		if inj, err := newX11Injector(); err == nil {
+			return inj, nil
+		}
+	}
+
+	// Under Wayland, use native Wayland RemoteDesktop injector (Mutter / Portal)
+	if os.Getenv("WAYLAND_DISPLAY") != "" || os.Getenv("XDG_SESSION_TYPE") == "wayland" {
 		if winj, err := newWaylandInjector(); err == nil {
 			return winj, nil
 		}
 	}
 
-	// Try X11 / XWayland first (direct low-latency input via XTest without portal prompts)
-	inj, err := newX11Injector()
-	if err == nil {
+	// Fallback to X11
+	if inj, err := newX11Injector(); err == nil {
 		return inj, nil
 	}
 
-	// Fallback to Wayland RemoteDesktop portal
+	// Fallback to Wayland RemoteDesktop
 	if winj, werr := newWaylandInjector(); werr == nil {
 		return winj, nil
 	}
 
-	return nil, err
+	return nil, fmt.Errorf("%w: no suitable input injector found", ErrDeviceNotFound)
 }
 
 func newX11Injector() (*linuxInjector, error) {
@@ -88,6 +96,33 @@ func (inj *linuxInjector) SetScreenBounds(bounds image.Rectangle) {
 	}
 }
 
+func (inj *linuxInjector) toPixels(x, y float64) (int16, int16) {
+	maxW := float64(inj.bounds.Dx() - 1)
+	maxH := float64(inj.bounds.Dy() - 1)
+	if maxW < 0 {
+		maxW = 0
+	}
+	if maxH < 0 {
+		maxH = 0
+	}
+
+	px := math.Round(x * maxW)
+	py := math.Round(y * maxH)
+
+	if px < 0 {
+		px = 0
+	} else if px > maxW {
+		px = maxW
+	}
+	if py < 0 {
+		py = 0
+	} else if py > maxH {
+		py = maxH
+	}
+
+	return int16(px), int16(py)
+}
+
 func (inj *linuxInjector) MoveMouse(x, y float64) error {
 	inj.mu.Lock()
 	defer inj.mu.Unlock()
@@ -96,57 +131,54 @@ func (inj *linuxInjector) MoveMouse(x, y float64) error {
 		return ErrDeviceNotFound
 	}
 
-	px := int16(x * float64(inj.bounds.Dx()))
-	py := int16(y * float64(inj.bounds.Dy()))
+	px, py := inj.toPixels(x, y)
 
-	// Warp mouse pointer to target screen coordinates
-	return xproto.WarpPointerChecked(
-		inj.conn,
-		xproto.WindowNone,
-		inj.root,
-		0, 0, 0, 0,
-		px, py,
-	).Check()
+	// Synchronize internal X11 pointer position and dispatch MotionNotify
+	_ = xproto.WarpPointer(inj.conn, 0, inj.root, 0, 0, 0, 0, px, py)
+	return xtest.FakeInputChecked(inj.conn, xMotionNotify, 0, 0, inj.root, px, py, 0).Check()
 }
 
 func (inj *linuxInjector) MouseDown(button MouseButton, x, y float64) error {
-	if err := inj.MoveMouse(x, y); err != nil {
-		return err
-	}
-
 	inj.mu.Lock()
 	defer inj.mu.Unlock()
 
-	px := int16(x * float64(inj.bounds.Dx()))
-	py := int16(y * float64(inj.bounds.Dy()))
+	if inj.conn == nil {
+		return ErrDeviceNotFound
+	}
+
+	px, py := inj.toPixels(x, y)
 	xButton := mapMouseButton(button)
+
+	_ = xproto.WarpPointer(inj.conn, 0, inj.root, 0, 0, 0, 0, px, py)
+	_ = xtest.FakeInputChecked(inj.conn, xMotionNotify, 0, 0, inj.root, px, py, 0).Check()
 	return xtest.FakeInputChecked(inj.conn, xButtonPress, xButton, 0, inj.root, px, py, 0).Check()
 }
 
 func (inj *linuxInjector) MouseUp(button MouseButton, x, y float64) error {
-	if err := inj.MoveMouse(x, y); err != nil {
-		return err
-	}
-
 	inj.mu.Lock()
 	defer inj.mu.Unlock()
 
-	px := int16(x * float64(inj.bounds.Dx()))
-	py := int16(y * float64(inj.bounds.Dy()))
+	if inj.conn == nil {
+		return ErrDeviceNotFound
+	}
+
+	px, py := inj.toPixels(x, y)
 	xButton := mapMouseButton(button)
+
+	_ = xproto.WarpPointer(inj.conn, 0, inj.root, 0, 0, 0, 0, px, py)
+	_ = xtest.FakeInputChecked(inj.conn, xMotionNotify, 0, 0, inj.root, px, py, 0).Check()
 	return xtest.FakeInputChecked(inj.conn, xButtonRelease, xButton, 0, inj.root, px, py, 0).Check()
 }
 
 func (inj *linuxInjector) Scroll(deltaX, deltaY float64, x, y float64) error {
-	if err := inj.MoveMouse(x, y); err != nil {
-		return err
-	}
-
 	inj.mu.Lock()
 	defer inj.mu.Unlock()
 
-	px := int16(x * float64(inj.bounds.Dx()))
-	py := int16(y * float64(inj.bounds.Dy()))
+	if inj.conn == nil {
+		return ErrDeviceNotFound
+	}
+
+	px, py := inj.toPixels(x, y)
 
 	// X11 mouse wheel buttons: 4 (scroll up), 5 (scroll down), 6 (scroll left), 7 (scroll right)
 	var btn byte
@@ -162,6 +194,7 @@ func (inj *linuxInjector) Scroll(deltaX, deltaY float64, x, y float64) error {
 		return nil
 	}
 
+	_ = xproto.WarpPointer(inj.conn, 0, inj.root, 0, 0, 0, 0, px, py)
 	_ = xtest.FakeInputChecked(inj.conn, xButtonPress, btn, 0, inj.root, px, py, 0).Check()
 	return xtest.FakeInputChecked(inj.conn, xButtonRelease, btn, 0, inj.root, px, py, 0).Check()
 }
@@ -199,6 +232,9 @@ func (inj *linuxInjector) KeyUp(event KeyboardEvent) error {
 }
 
 func (inj *linuxInjector) Close() error {
+	if inj == nil {
+		return nil
+	}
 	inj.mu.Lock()
 	defer inj.mu.Unlock()
 

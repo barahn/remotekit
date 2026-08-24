@@ -21,21 +21,28 @@ import (
 )
 
 const (
-	portalDest              = "org.freedesktop.portal.Desktop"
-	portalPath              = "/org/freedesktop/portal/desktop"
-	portalScreenCast        = "org.freedesktop.portal.ScreenCast"
-	portalRequestIface      = "org.freedesktop.portal.Request"
-	restoreSessionFileRel   = ".config/barahn/wayland_screencast_session" // #nosec G101
+	mutterDest            = "org.gnome.Mutter.ScreenCast"
+	mutterPath            = "/org/gnome/Mutter/ScreenCast"
+	mutterScreenCast      = "org.gnome.Mutter.ScreenCast"
+	mutterSessionIface    = "org.gnome.Mutter.ScreenCast.Session"
+	mutterStreamIface     = "org.gnome.Mutter.ScreenCast.Stream"
+	portalDest            = "org.freedesktop.portal.Desktop"
+	portalPath            = "/org/freedesktop/portal/desktop"
+	portalScreenCast      = "org.freedesktop.portal.ScreenCast"
+	portalRequestIface    = "org.freedesktop.portal.Request"
+	restoreSessionFileRel = ".config/barahn/wayland_screencast_session" // #nosec G101
 )
+
 
 // waylandCapturer implements Capturer on Wayland via XDG Desktop Portal ScreenCast and PipeWire.
 type waylandCapturer struct {
-	config  CaptureConfig
-	bus     *dbus.Conn
-	session dbus.ObjectPath
-	nodeID  uint32
-	width   int
-	height  int
+	config   CaptureConfig
+	bus      *dbus.Conn
+	session  dbus.ObjectPath
+	isMutter bool
+	nodeID   uint32
+	width    int
+	height   int
 
 	frames   chan *Frame
 	running  atomic.Bool
@@ -98,8 +105,7 @@ func (c *waylandCapturer) Start(ctx context.Context) error {
 
 	// Initialize portal session and PipeWire stream
 	if err := c.initPortalSession(captureCtx); err != nil {
-		// Fallback to synthesized desktop frames if portal / PipeWire is unavailable in current environment
-		go c.renderSyntheticFrames(captureCtx)
+		c.fallbackToRealOrSynthetic(captureCtx)
 		return nil
 	}
 
@@ -125,8 +131,12 @@ func (c *waylandCapturer) Stop() {
 			_ = c.pipeIn.Close()
 		}
 		if c.session != "" && c.bus != nil {
-			// Close portal session
-			_ = c.bus.Object(portalDest, c.session).Call("org.freedesktop.portal.Session.Close", 0).Store()
+			// Close portal / mutter session
+			if c.isMutter {
+				_ = c.bus.Object(mutterDest, c.session).Call(mutterSessionIface+".Stop", 0).Store()
+			} else {
+				_ = c.bus.Object(portalDest, c.session).Call("org.freedesktop.portal.Session.Close", 0).Store()
+			}
 		}
 		c.mu.Unlock()
 	})
@@ -178,9 +188,14 @@ func SaveRestoreToken(token string) {
 }
 
 func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
+	// 1. Try GNOME Mutter native ScreenCast first (direct Mutter Monitor recording)
+	if err := c.initMutterSession(ctx); err == nil && c.nodeID > 0 {
+		return nil
+	}
+
+	// 2. Try XDG Desktop Portal ScreenCast
 	obj := c.bus.Object(portalDest, dbus.ObjectPath(portalPath))
 
-	// 1. CreateSession
 	sessionToken := fmt.Sprintf("barahn_session_%d", time.Now().UnixNano())
 	createOptions := map[string]dbus.Variant{
 		"session_handle_token": dbus.MakeVariant(sessionToken),
@@ -193,12 +208,12 @@ func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
 		return fmt.Errorf("CreateSession D-Bus call failed: %w", err)
 	}
 	c.session = sessionHandle
+	c.isMutter = false
 
-	// 2. SelectSources
 	selectToken := fmt.Sprintf("barahn_sources_%d", time.Now().UnixNano())
 	selectOptions := map[string]dbus.Variant{
 		"types":        dbus.MakeVariant(uint32(1)), // Monitor
-		"multiple":     dbus.MakeVariant(true),
+		"multiple":     dbus.MakeVariant(false),
 		"cursor_mode":  dbus.MakeVariant(uint32(2)), // Embedded cursor
 		"handle_token": dbus.MakeVariant(selectToken),
 	}
@@ -207,28 +222,146 @@ func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
 	}
 
 	var selectHandle dbus.ObjectPath
-	err = obj.CallWithContext(ctx, portalScreenCast+".SelectSources", 0, c.session, selectOptions).Store(&selectHandle)
-	if err != nil {
-		return fmt.Errorf("SelectSources D-Bus call failed: %w", err)
-	}
+	_ = obj.CallWithContext(ctx, portalScreenCast+".SelectSources", 0, c.session, selectOptions).Store(&selectHandle)
 
-	// 3. Start ScreenCast
 	startToken := fmt.Sprintf("barahn_start_%d", time.Now().UnixNano())
 	startOptions := map[string]dbus.Variant{
 		"handle_token": dbus.MakeVariant(startToken),
 	}
 
+	// Listen for portal Request Response signal on session bus
+	sigChan := make(chan *dbus.Signal, 10)
+	c.bus.Signal(sigChan)
+	defer c.bus.RemoveSignal(sigChan)
+
 	var startHandle dbus.ObjectPath
 	err = obj.CallWithContext(ctx, portalScreenCast+".Start", 0, c.session, "", startOptions).Store(&startHandle)
 	if err != nil {
-		return fmt.Errorf("Start ScreenCast D-Bus call failed: %w", err)
+		return fmt.Errorf("Start ScreenCast portal call failed: %w", err)
 	}
 
-	// We can use a default PipeWire node or extract from portal signals.
-	// For GStreamer PipeWire source, if nodeID is 0, pipewiresrc will capture the active portal stream.
-	c.nodeID = 0
+	// Wait for user to grant permission and portal to return stream node ID
+	timeout := time.After(30 * time.Second)
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timeout:
+			return nil
+		case sig := <-sigChan:
+			if sig == nil {
+				continue
+			}
+			if strings.HasSuffix(string(sig.Path), startToken) || sig.Name == "org.freedesktop.portal.Request.Response" {
+				if len(sig.Body) >= 2 {
+					if respCode, ok := sig.Body[0].(uint32); ok && respCode == 0 {
+						if results, ok := sig.Body[1].(map[string]dbus.Variant); ok {
+							if streamsVar, exists := results["streams"]; exists {
+								c.parseStreamsVariant(streamsVar)
+							}
+							if tokVar, exists := results["restore_token"]; exists {
+								if tok, ok := tokVar.Value().(string); ok {
+									SaveRestoreToken(tok)
+								}
+							}
+							return nil
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func (c *waylandCapturer) parseStreamsVariant(streamsVar dbus.Variant) {
+	// D-Bus signature for streams: a(ua{sv})
+	val := streamsVar.Value()
+	switch s := val.(type) {
+	case [][2]interface{}:
+		if len(s) > 0 {
+			if id, ok := s[0][0].(uint32); ok {
+				c.nodeID = id
+			}
+			if props, ok := s[0][1].(map[string]dbus.Variant); ok {
+				c.extractDimensions(props)
+			}
+		}
+	case []interface{}:
+		for _, item := range s {
+			if pair, ok := item.([]interface{}); ok && len(pair) >= 2 {
+				if id, ok := pair[0].(uint32); ok {
+					c.nodeID = id
+				}
+				if props, ok := pair[1].(map[string]dbus.Variant); ok {
+					c.extractDimensions(props)
+				}
+			}
+		}
+	}
+}
+
+func (c *waylandCapturer) extractDimensions(props map[string]dbus.Variant) {
+	if sizeVar, exists := props["size"]; exists {
+		if sizeSlice, ok := sizeVar.Value().([]int32); ok && len(sizeSlice) == 2 {
+			if sizeSlice[0] > 0 && sizeSlice[1] > 0 {
+				c.width = int(sizeSlice[0])
+				c.height = int(sizeSlice[1])
+			}
+		}
+	}
+}
+
+func (c *waylandCapturer) initMutterSession(ctx context.Context) error {
+	obj := c.bus.Object(mutterDest, dbus.ObjectPath(mutterPath))
+	var sessionPath dbus.ObjectPath
+	createOpts := map[string]dbus.Variant{}
+	err := obj.CallWithContext(ctx, mutterScreenCast+".CreateSession", 0, createOpts).Store(&sessionPath)
+	if err != nil {
+		return err
+	}
+	c.session = sessionPath
+	c.isMutter = true
+
+	sessObj := c.bus.Object(mutterDest, sessionPath)
+	var streamPath dbus.ObjectPath
+	recordOpts := map[string]dbus.Variant{
+		"cursor-mode": dbus.MakeVariant(uint32(1)), // Embedded cursor
+	}
+
+	// Prioritize RecordMonitor to record user's physical screen
+	err = sessObj.CallWithContext(ctx, mutterSessionIface+".RecordMonitor", 0, "", recordOpts).Store(&streamPath)
+	if err != nil {
+		// Fallback to RecordVirtual only if RecordMonitor is not supported
+		err = sessObj.CallWithContext(ctx, mutterSessionIface+".RecordVirtual", 0, recordOpts).Store(&streamPath)
+	}
+	if err != nil {
+		return err
+	}
+
+	_ = sessObj.CallWithContext(ctx, mutterSessionIface+".Start", 0).Store()
+
+	streamObj := c.bus.Object(mutterDest, streamPath)
+	if propVal, propErr := streamObj.GetProperty(mutterStreamIface + ".Parameters"); propErr == nil {
+		if params, ok := propVal.Value().(map[string]dbus.Variant); ok {
+			if nodeIDVar, exists := params["pipewire-node-id"]; exists {
+				if id, ok := nodeIDVar.Value().(uint32); ok {
+					c.nodeID = id
+				}
+			}
+			if sizeVar, exists := params["size"]; exists {
+				if sizeSlice, ok := sizeVar.Value().([]int32); ok && len(sizeSlice) == 2 {
+					if sizeSlice[0] > 0 && sizeSlice[1] > 0 {
+						c.width = int(sizeSlice[0])
+						c.height = int(sizeSlice[1])
+					}
+				}
+			}
+		}
+	}
 	return nil
 }
+
+
 
 func (c *waylandCapturer) streamLoop(ctx context.Context) {
 	gstPath, err := exec.LookPath("gst-launch-1.0")
@@ -243,7 +376,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 	if c.nodeID > 0 {
 		args = []string{
 			"-q",
-			"pipewiresrc", fmt.Sprintf("path=%d", c.nodeID), "do-timestamp=true", "keepalive-time=1000",
+			"pipewiresrc", fmt.Sprintf("target-object=%d", c.nodeID), "do-timestamp=true", "keepalive-time=1000",
 			"!", "videoconvert",
 			"!", fmt.Sprintf("video/x-raw,format=RGBA,width=%d,height=%d,framerate=%d/1", c.width, c.height, c.config.TargetFPS),
 			"!", "fdsink", "fd=1",
@@ -261,7 +394,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 	cmd := exec.CommandContext(ctx, gstPath, args...) // #nosec G204 -- gstPath resolved via exec.LookPath
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		c.renderSyntheticFrames(ctx)
+		c.fallbackToRealOrSynthetic(ctx)
 		return
 	}
 
@@ -271,10 +404,9 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 	c.mu.Unlock()
 
 	if err := cmd.Start(); err != nil {
-		c.renderSyntheticFrames(ctx)
+		c.fallbackToRealOrSynthetic(ctx)
 		return
 	}
-	defer close(c.frames)
 
 	frameSize := c.width * c.height * 4
 	bufReader := bufio.NewReaderSize(stdout, frameSize*2)
@@ -292,6 +424,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 			_, err := io.ReadFull(bufReader, frameBuf)
 			if err != nil {
 				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+					c.fallbackToRealOrSynthetic(ctx)
 					return
 				}
 				continue
@@ -321,10 +454,41 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 	}
 }
 
+func (c *waylandCapturer) fallbackToRealOrSynthetic(ctx context.Context) {
+	if xcap, xerr := newX11Capturer(c.config); xerr == nil {
+		_ = xcap.Start(ctx)
+		go func() {
+			defer xcap.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case f, ok := <-xcap.Frames():
+					if !ok {
+						return
+					}
+					if !c.running.Load() {
+						return
+					}
+					select {
+					case <-ctx.Done():
+						return
+					case c.frames <- f:
+					default:
+					}
+				}
+			}
+		}()
+		return
+	}
+	c.renderSyntheticFrames(ctx)
+}
+
+
 func (c *waylandCapturer) renderSyntheticFrames(ctx context.Context) {
-	defer close(c.frames)
 	ticker := time.NewTicker(time.Second / time.Duration(c.config.TargetFPS))
 	defer ticker.Stop()
+
 
 	hostname, _ := os.Hostname()
 	if hostname == "" {
