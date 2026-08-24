@@ -5,6 +5,7 @@ package tray
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -21,41 +22,41 @@ var (
 	shell32  = syscall.NewLazyDLL("shell32.dll")
 	kernel32 = syscall.NewLazyDLL("kernel32.dll")
 
-	procRegisterClassExW          = user32.NewProc("RegisterClassExW")
-	procCreateWindowExW           = user32.NewProc("CreateWindowExW")
-	procDefWindowProcW            = user32.NewProc("DefWindowProcW")
-	procDestroyWindow             = user32.NewProc("DestroyWindow")
-	procPostQuitMessage           = user32.NewProc("PostQuitMessage")
-	procGetMessageW               = user32.NewProc("GetMessageW")
-	procTranslateMessage          = user32.NewProc("TranslateMessage")
-	procDispatchMessageW          = user32.NewProc("DispatchMessageW")
-	procCreatePopupMenu           = user32.NewProc("CreatePopupMenu")
-	procAppendMenuW               = user32.NewProc("AppendMenuW")
-	procTrackPopupMenu            = user32.NewProc("TrackPopupMenu")
-	procDestroyMenu               = user32.NewProc("DestroyMenu")
-	procGetCursorPos              = user32.NewProc("GetCursorPos")
-	procSetForeground             = user32.NewProc("SetForegroundWindow")
-	procPostMessageW              = user32.NewProc("PostMessageW")
-	procLoadIconW                 = user32.NewProc("LoadIconW")
-	procShowWindow                = user32.NewProc("ShowWindow")
-	procIsWindowVisible           = user32.NewProc("IsWindowVisible")
-	procEnumWindows               = user32.NewProc("EnumWindows")
-	procGetWindowThreadProcessId  = user32.NewProc("GetWindowThreadProcessId")
-	procGetClassNameW             = user32.NewProc("GetClassNameW")
-	procGetWindowTextW            = user32.NewProc("GetWindowTextW")
-	procGetWindowTextLengthW      = user32.NewProc("GetWindowTextLengthW")
-	procGetAncestor               = user32.NewProc("GetAncestor")
-	procGetParent                 = user32.NewProc("GetParent")
+	procRegisterClassExW         = user32.NewProc("RegisterClassExW")
+	procCreateWindowExW          = user32.NewProc("CreateWindowExW")
+	procDefWindowProcW           = user32.NewProc("DefWindowProcW")
+	procDestroyWindow            = user32.NewProc("DestroyWindow")
+	procPostQuitMessage          = user32.NewProc("PostQuitMessage")
+	procGetMessageW              = user32.NewProc("GetMessageW")
+	procTranslateMessage         = user32.NewProc("TranslateMessage")
+	procDispatchMessageW         = user32.NewProc("DispatchMessageW")
+	procCreatePopupMenu          = user32.NewProc("CreatePopupMenu")
+	procAppendMenuW              = user32.NewProc("AppendMenuW")
+	procTrackPopupMenu           = user32.NewProc("TrackPopupMenu")
+	procDestroyMenu              = user32.NewProc("DestroyMenu")
+	procGetCursorPos             = user32.NewProc("GetCursorPos")
+	procSetForeground            = user32.NewProc("SetForegroundWindow")
+	procPostMessageW             = user32.NewProc("PostMessageW")
+	procLoadIconW                = user32.NewProc("LoadIconW")
+	procShowWindow               = user32.NewProc("ShowWindow")
+	procIsWindowVisible          = user32.NewProc("IsWindowVisible")
+	procEnumWindows              = user32.NewProc("EnumWindows")
+	procGetWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
+	procGetClassNameW            = user32.NewProc("GetClassNameW")
+	procGetWindowTextW           = user32.NewProc("GetWindowTextW")
+	procGetWindowTextLengthW     = user32.NewProc("GetWindowTextLengthW")
+	procGetAncestor              = user32.NewProc("GetAncestor")
+	procGetParent                = user32.NewProc("GetParent")
 
-	procShellNotifyIconW          = shell32.NewProc("Shell_NotifyIconW")
-	procShellExecuteW             = shell32.NewProc("ShellExecuteW")
-	procGetModuleHandleW          = kernel32.NewProc("GetModuleHandleW")
-	procGetConsoleWindow          = kernel32.NewProc("GetConsoleWindow")
-	procGetCurrentProcessId       = kernel32.NewProc("GetCurrentProcessId")
-	procCreateToolhelp32Snapshot  = kernel32.NewProc("CreateToolhelp32Snapshot")
-	procProcess32FirstW           = kernel32.NewProc("Process32FirstW")
-	procProcess32NextW            = kernel32.NewProc("Process32NextW")
-	procCloseHandle               = kernel32.NewProc("CloseHandle")
+	procShellNotifyIconW         = shell32.NewProc("Shell_NotifyIconW")
+	procShellExecuteW            = shell32.NewProc("ShellExecuteW")
+	procGetModuleHandleW         = kernel32.NewProc("GetModuleHandleW")
+	procGetConsoleWindow         = kernel32.NewProc("GetConsoleWindow")
+	procGetCurrentProcessId      = kernel32.NewProc("GetCurrentProcessId")
+	procCreateToolhelp32Snapshot = kernel32.NewProc("CreateToolhelp32Snapshot")
+	procProcess32FirstW          = kernel32.NewProc("Process32FirstW")
+	procProcess32NextW           = kernel32.NewProc("Process32NextW")
+	procCloseHandle              = kernel32.NewProc("CloseHandle")
 
 	wndProcCallback        uintptr
 	enumWindowsCallback    uintptr
@@ -163,23 +164,23 @@ type wndClassExW struct {
 }
 
 type notifyIconDataW struct {
-	cbSize           uint32
-	_                uint32 // 64-bit padding
-	hWnd             uintptr
-	uID              uint32
-	uFlags           uint32
-	uCallbackMessage uint32
-	_                uint32 // 64-bit padding
-	hIcon            uintptr
-	szTip            [128]uint16
-	dwState          uint32
-	dwStateMask      uint32
-	szInfo           [256]uint16
+	cbSize            uint32
+	_                 uint32 // 64-bit padding
+	hWnd              uintptr
+	uID               uint32
+	uFlags            uint32
+	uCallbackMessage  uint32
+	_                 uint32 // 64-bit padding
+	hIcon             uintptr
+	szTip             [128]uint16
+	dwState           uint32
+	dwStateMask       uint32
+	szInfo            [256]uint16
 	uTimeoutOrVersion uint32
-	szInfoTitle      [64]uint16
-	dwInfoFlags      uint32
-	guidItem         [16]byte
-	hBalloonIcon     uintptr
+	szInfoTitle       [64]uint16
+	dwInfoFlags       uint32
+	guidItem          [16]byte
+	hBalloonIcon      uintptr
 }
 
 type windowsTrayManager struct {
@@ -312,12 +313,12 @@ func (t *windowsTrayManager) runMessageLoop(ctx context.Context) {
 		t.nid.uFlags = nifMessage | nifIcon | nifTip
 		res, _, err = procShellNotifyIconW.Call(uintptr(nimAdd), uintptr(unsafe.Pointer(&t.nid)))
 		if res != 0 {
-			fmt.Println("[Tray] System tray icon registered successfully.")
+			log.Println("[Tray] System tray icon registered successfully.")
 		} else {
-			fmt.Printf("[Tray] Warning: Shell_NotifyIcon failed: %v\n", err)
+			log.Printf("[Tray] Warning: Shell_NotifyIcon failed: %v\n", err)
 		}
 	} else {
-		fmt.Println("[Tray] System tray icon registered successfully.")
+		log.Println("[Tray] System tray icon registered successfully.")
 	}
 	t.mu.Unlock()
 
@@ -601,7 +602,7 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 		}
 		return 0
 
-	case 0x0002 /* WM_DESTROY */:
+	case 0x0002 /* WM_DESTROY */ :
 		procPostQuitMessage.Call(0)
 		return 0
 	}
