@@ -36,12 +36,13 @@ const (
 
 // waylandCapturer implements Capturer on Wayland via XDG Desktop Portal ScreenCast and PipeWire.
 type waylandCapturer struct {
-	config  CaptureConfig
-	bus     *dbus.Conn
-	session dbus.ObjectPath
-	nodeID  uint32
-	width   int
-	height  int
+	config   CaptureConfig
+	bus      *dbus.Conn
+	session  dbus.ObjectPath
+	isMutter bool
+	nodeID   uint32
+	width    int
+	height   int
 
 	frames   chan *Frame
 	running  atomic.Bool
@@ -131,7 +132,11 @@ func (c *waylandCapturer) Stop() {
 		}
 		if c.session != "" && c.bus != nil {
 			// Close portal / mutter session
-			_ = c.bus.Object(portalDest, c.session).Call("org.freedesktop.portal.Session.Close", 0).Store()
+			if c.isMutter {
+				_ = c.bus.Object(mutterDest, c.session).Call(mutterSessionIface+".Stop", 0).Store()
+			} else {
+				_ = c.bus.Object(portalDest, c.session).Call("org.freedesktop.portal.Session.Close", 0).Store()
+			}
 		}
 		c.mu.Unlock()
 	})
@@ -203,6 +208,7 @@ func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
 		return fmt.Errorf("CreateSession D-Bus call failed: %w", err)
 	}
 	c.session = sessionHandle
+	c.isMutter = false
 
 	selectToken := fmt.Sprintf("barahn_sources_%d", time.Now().UnixNano())
 	selectOptions := map[string]dbus.Variant{
@@ -314,6 +320,7 @@ func (c *waylandCapturer) initMutterSession(ctx context.Context) error {
 		return err
 	}
 	c.session = sessionPath
+	c.isMutter = true
 
 	sessObj := c.bus.Object(mutterDest, sessionPath)
 	var streamPath dbus.ObjectPath

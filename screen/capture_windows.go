@@ -71,8 +71,30 @@ func initDPIAwareness() {
 	})
 }
 
+var (
+	enumDisplayMonitorsMu       sync.Mutex
+	enumDisplayMonitorsSlice    []Display
+	enumDisplayMonitorsCallback uintptr
+)
+
+func enumDisplayMonitorsProc(hMonitor, hdcMonitor, lprcMonitor, dwData uintptr) uintptr {
+	r := (*rect)(unsafe.Pointer(lprcMonitor)) // #nosec G103 -- Win32 callback struct
+	idx := len(enumDisplayMonitorsSlice)
+	name := fmt.Sprintf("Display %d (%dx%d)", idx+1, r.right-r.left, r.bottom-r.top)
+	primary := (r.left == 0 && r.top == 0)
+
+	enumDisplayMonitorsSlice = append(enumDisplayMonitorsSlice, Display{
+		Index:   idx,
+		Name:    name,
+		Bounds:  image.Rect(int(r.left), int(r.top), int(r.right), int(r.bottom)),
+		Primary: primary,
+	})
+	return 1 // Continue enumeration
+}
+
 func init() {
 	initDPIAwareness()
+	enumDisplayMonitorsCallback = syscall.NewCallback(enumDisplayMonitorsProc)
 }
 
 type bitmapInfoHeader struct {
@@ -219,23 +241,14 @@ func (c *windowsCapturer) Displays() ([]Display, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	var displays []Display
-	callback := syscall.NewCallback(func(hMonitor, hdcMonitor, lprcMonitor, dwData uintptr) uintptr {
-		r := (*rect)(unsafe.Pointer(lprcMonitor)) // #nosec G103 -- Win32 callback struct
-		idx := len(displays)
-		name := fmt.Sprintf("Display %d (%dx%d)", idx+1, r.right-r.left, r.bottom-r.top)
-		primary := (r.left == 0 && r.top == 0)
+	enumDisplayMonitorsMu.Lock()
+	defer enumDisplayMonitorsMu.Unlock()
 
-		displays = append(displays, Display{
-			Index:   idx,
-			Name:    name,
-			Bounds:  image.Rect(int(r.left), int(r.top), int(r.right), int(r.bottom)),
-			Primary: primary,
-		})
-		return 1 // Continue enumeration
-	})
-
-	_, _, _ = procEnumDisplayMonitors.Call(0, 0, callback, 0)
+	enumDisplayMonitorsSlice = nil
+	_, _, _ = procEnumDisplayMonitors.Call(0, 0, enumDisplayMonitorsCallback, 0)
+	displays := make([]Display, len(enumDisplayMonitorsSlice))
+	copy(displays, enumDisplayMonitorsSlice)
+	enumDisplayMonitorsSlice = nil
 
 	if len(displays) == 0 {
 		// Fallback to primary screen
