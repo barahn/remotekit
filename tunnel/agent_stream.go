@@ -11,6 +11,7 @@ import (
 	"image/color"
 	"image/draw"
 	"image/jpeg"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -66,14 +67,14 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 		default:
 			ws, _, err := dialer.DialContext(ctx, signalURL, headers)
 			if err != nil {
-				fmt.Printf("[AgentStream Error] Failed to connect to signaling WebSocket (%s): %v\n", signalURL, err)
+				log.Printf("[AgentStream Error] Failed to connect to signaling WebSocket (%s): %v\n", signalURL, err)
 				time.Sleep(2 * time.Second)
 				continue
 			}
 
 			ws.SetReadLimit(10 * 1024 * 1024) // 10MB limit for fallback JPEG frames
 
-			fmt.Printf("[AgentStream] Connected to signaling channel for agent %s\n", r.creds.AgentID)
+			log.Printf("[AgentStream] Connected to signaling channel for agent %s\n", r.creds.AgentID)
 			r.runSignalingLoop(ctx, ws)
 			_ = ws.Close()
 			time.Sleep(1 * time.Second)
@@ -111,7 +112,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 		})
 		if err == nil {
 			_ = safeWrite(clipMsg)
-			fmt.Printf("[AgentStream] Dispatched host clipboard change to remote (%d bytes)\n", len(newText))
+			log.Printf("[AgentStream] Dispatched host clipboard change to remote (%d bytes)\n", len(newText))
 		}
 	})
 
@@ -120,7 +121,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("[AgentStream] Recovered panic in signaling loop: %v\n", r)
+			log.Printf("[AgentStream] Recovered panic in signaling loop: %v\n", r)
 		}
 		stateMu.Lock()
 		if activeCapCancel != nil {
@@ -186,7 +187,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 						ansBytes, _ := json.Marshal(ansMsg)
 						_ = safeWrite(ansBytes)
 					} else {
-						fmt.Printf("[AgentStream] WebRTC answer note (direct WebSocket stream active): %v\n", aErr)
+						log.Printf("[AgentStream] WebRTC answer note (direct WebSocket stream active): %v\n", aErr)
 					}
 				}
 				stateMu.Unlock()
@@ -257,7 +258,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				go func() {
 					defer func() {
 						if r := recover(); r != nil {
-							fmt.Printf("[AgentStream] Recovered panic in frame sender: %v\n", r)
+							log.Printf("[AgentStream] Recovered panic in frame sender: %v\n", r)
 						}
 					}()
 					frameCount := 0
@@ -286,7 +287,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 								}
 
 								if frameCount%30 == 1 {
-									fmt.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
+									log.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
 								}
 							}
 						}
@@ -313,17 +314,17 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			w, _ := signal["width"].(float64)
 			h, _ := signal["height"].(float64)
 			if w > 0 && h > 0 {
-				fmt.Printf("[AgentStream] Technician browser viewport size: %.0fx%.0f\n", w, h)
+				log.Printf("[AgentStream] Technician browser viewport size: %.0fx%.0f\n", w, h)
 			}
 
 		case "chat":
 			text, _ := signal["text"].(string)
 			sender, _ := signal["sender"].(string)
-			fmt.Printf("[AgentStream] Chat message from %s: %s\n", sender, text)
+			log.Printf("[AgentStream] Chat message from %s: %s\n", sender, text)
 
 		case "focus_state":
 			focused, _ := signal["focused"].(bool)
-			fmt.Printf("[AgentStream] Session focus state changed: focused=%v\n", focused)
+			log.Printf("[AgentStream] Session focus state changed: focused=%v\n", focused)
 
 		case "script_exec_req":
 			execID, _ := signal["execution_id"].(string)
@@ -367,7 +368,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 
 		case "power":
 			action, _ := signal["action"].(string)
-			fmt.Printf("[AgentStream] Received remote power instruction: %s\n", action)
+			log.Printf("[AgentStream] Received remote power instruction: %s\n", action)
 			go executePowerAction(action)
 
 		case "clipboard":
@@ -375,7 +376,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			if text != "" {
 				clipWatcher.UpdateLastText(text)
 				_ = clipMgr.SetText(ctx, text)
-				fmt.Printf("[AgentStream] Received and applied clipboard sync (%d bytes)\n", len(text))
+				log.Printf("[AgentStream] Received and applied clipboard sync (%d bytes)\n", len(text))
 			}
 
 		case "file_start":
@@ -385,7 +386,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			sha, _ := signal["sha256"].(string)
 			if id != "" && name != "" {
 				transferMgr.StartSession(id, name, int64(size), sha)
-				fmt.Printf("[AgentStream] Started file transfer session %s (%s, %.0f bytes)\n", id, name, size)
+				log.Printf("[AgentStream] Started file transfer session %s (%s, %.0f bytes)\n", id, name, size)
 			}
 
 		case "file_chunk":
@@ -395,7 +396,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			if id != "" {
 				prog, done, err := transferMgr.AddChunkBase64(id, int(idx), b64Data)
 				if err != nil {
-					fmt.Printf("[AgentStream] File chunk error: %v\n", err)
+					log.Printf("[AgentStream] File chunk error: %v\n", err)
 				}
 				progMsg, _ := json.Marshal(map[string]interface{}{
 					"type":        "file_progress",
@@ -413,9 +414,9 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				errStr := ""
 				if err != nil {
 					errStr = err.Error()
-					fmt.Printf("[AgentStream] File assembly error for %s: %v\n", id, err)
+					log.Printf("[AgentStream] File assembly error for %s: %v\n", id, err)
 				} else {
-					fmt.Printf("[AgentStream] File transfer %s completed! Saved to: %s (SHA: %s)\n", id, destPath, sha)
+					log.Printf("[AgentStream] File transfer %s completed! Saved to: %s (SHA: %s)\n", id, destPath, sha)
 				}
 				resMsg, _ := json.Marshal(map[string]interface{}{
 					"type":        "file_saved",
