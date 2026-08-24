@@ -135,11 +135,11 @@ func saveCredentials(path string, creds *AgentCredentials) error {
 }
 
 func LoadCredentials(path string) (*AgentCredentials, error) {
-	cleanPath := filepath.Clean(path)
-	if strings.Contains(cleanPath, "..") {
+	if strings.Contains(path, "..") {
 		return nil, fmt.Errorf("invalid credential path: path traversal detected")
 	}
 
+	cleanPath := filepath.Clean(path)
 	data, err := os.ReadFile(cleanPath) // #nosec G304 -- cleanPath is sanitized via filepath.Clean and checked for traversal
 	if err != nil {
 		return nil, err

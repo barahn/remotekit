@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -174,5 +175,36 @@ func TestTunnel_TLSVerification_UntrustedCertFails(t *testing.T) {
 	}
 	if creds == nil || creds.AgentID == "" {
 		t.Fatalf("Enroll returned invalid credentials with insecureSkipVerify = true")
+	}
+}
+
+func TestLoadCredentials_PathTraversal(t *testing.T) {
+	// 1. Setup valid credential file
+	tmpDir := t.TempDir()
+	validPath := filepath.Join(tmpDir, "valid_agent.pem")
+
+	// Create some dummy valid content
+	validCreds := `{"agent_id":"123","agent_token":"abc","server_addr":"http://test"}`
+	if err := os.WriteFile(validPath, []byte(validCreds), 0600); err != nil {
+		t.Fatalf("failed to write valid creds: %v", err)
+	}
+
+	// 2. Test Path Traversal
+	traversalPath := tmpDir + "/../some_other_dir/agent.pem"
+	_, err := tunnel.LoadCredentials(traversalPath)
+	if err == nil {
+		t.Fatalf("Expected LoadCredentials to fail for path containing '..', but it succeeded")
+	}
+	if err.Error() != "invalid credential path: path traversal detected" {
+		t.Fatalf("Expected path traversal error, got: %v", err)
+	}
+
+	// 3. Test Valid Path
+	creds, err := tunnel.LoadCredentials(validPath)
+	if err != nil {
+		t.Fatalf("Expected LoadCredentials to succeed for valid path, but failed: %v", err)
+	}
+	if creds.AgentID != "123" {
+		t.Fatalf("Unexpected credential content: %+v", creds)
 	}
 }
