@@ -23,7 +23,6 @@ import (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024 * 64,
 	WriteBufferSize: 1024 * 64,
-	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
 type TunnelServer struct {
