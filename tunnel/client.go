@@ -87,10 +87,12 @@ func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath st
 
 	bodyBytes, _ := json.Marshal(payload)
 
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: insecureSkipVerify}, // #nosec G402 -- CLI opt-in flag for dev/test
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+	if insecureSkipVerify {
+		httpClient.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- CLI opt-in flag for dev/test
+		}
 	}
-	httpClient := &http.Client{Transport: tr, Timeout: 10 * time.Second}
 
 	// #nosec G107 -- serverAddr is provided by the agent administrator during enrollment, not an untrusted user
 	// nosemgrep: go.lang.security.audit.ssrf.ssrf
@@ -176,12 +178,14 @@ func (tc *TunnelClient) Connect(ctx context.Context, creds *AgentCredentials) er
 		header.Set("X-Barahn-Agent-Hostname", hostname)
 	}
 
+	dialer := websocket.DefaultDialer
 	if tc.insecureSkipVerify {
 		fmt.Fprintln(os.Stderr, "[WARNING] TLS certificate verification is DISABLED (--insecure-skip-verify). Connection is insecure!")
-	}
-
-	dialer := websocket.Dialer{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: tc.insecureSkipVerify}, // #nosec G402 -- CLI opt-in flag for dev/test
+		dialer = &websocket.Dialer{
+			Proxy:            http.ProxyFromEnvironment,
+			HandshakeTimeout: 45 * time.Second,
+			TLSClientConfig:  &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- CLI opt-in flag for dev/test
+		}
 	}
 
 	ws, _, err := dialer.DialContext(ctx, wsURL, header)
