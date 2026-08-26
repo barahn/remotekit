@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -52,9 +53,16 @@ func (m *Manager) StartSession(id, fileName string, totalSize int64, expectedSHA
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// Normalize Windows backslashes and strip directory components
+	normalized := strings.ReplaceAll(fileName, "\\", "/")
+	cleanBase := filepath.Base(normalized)
+	if cleanBase == "." || cleanBase == "/" || cleanBase == "" {
+		cleanBase = "download.bin"
+	}
+
 	session := &FileSession{
 		ID:             id,
-		FileName:       filepath.Base(fileName),
+		FileName:       cleanBase,
 		TotalSize:      totalSize,
 		Chunks:         make(map[int][]byte),
 		ExpectedSHA256: expectedSHA256,
