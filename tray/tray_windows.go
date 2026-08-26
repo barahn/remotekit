@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/mendsec/barahn/pkg/service"
+	"github.com/barahn/remotekit/service"
 )
 
 var (

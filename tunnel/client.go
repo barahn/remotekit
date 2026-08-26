@@ -21,8 +21,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/hashicorp/yamux"
-	"github.com/mendsec/barahn/pkg/heartbeat"
-	"github.com/mendsec/barahn/pkg/osinfo"
+	"github.com/barahn/remotekit/heartbeat"
+	"github.com/barahn/remotekit/osinfo"
 )
 
 

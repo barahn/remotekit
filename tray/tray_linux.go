@@ -11,7 +11,7 @@ import (
 
 	"github.com/godbus/dbus/v5"
 	"github.com/godbus/dbus/v5/prop"
-	"github.com/mendsec/barahn/pkg/clipboard"
+	"github.com/barahn/remotekit/clipboard"
 )
 
 

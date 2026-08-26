@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mendsec/barahn/pkg/heartbeat"
+	"github.com/barahn/remotekit/heartbeat"
 )
 
 func TestHeartbeatTicker(t *testing.T) {

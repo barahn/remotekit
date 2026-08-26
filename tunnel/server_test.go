@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/yamux"
-	"github.com/mendsec/barahn/internal/storage"
+	"github.com/barahn/barahn/internal/storage"
 )
 
 func TestTunnelServer_Multiplexing(t *testing.T) {
