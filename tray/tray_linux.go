@@ -5,13 +5,15 @@ package tray
 import (
 	"context"
 	"fmt"
+	"image"
+	_ "image/png"
 	"os"
 	"os/exec"
 	"sync"
 
+	"github.com/barahn/remotekit/clipboard"
 	"github.com/godbus/dbus/v5"
 	"github.com/godbus/dbus/v5/prop"
-	"github.com/barahn/remotekit/clipboard"
 )
 
 
@@ -79,7 +81,6 @@ func (m *dbusMenuServer) getItemProps(id int32) map[string]dbus.Variant {
 	agentID := m.tray.agentID
 	serverAddr := m.tray.serverAddr
 	status := m.tray.status
-	online := m.tray.online
 	m.tray.mu.Unlock()
 
 	props := make(map[string]dbus.Variant)
@@ -88,45 +89,41 @@ func (m *dbusMenuServer) getItemProps(id int32) map[string]dbus.Variant {
 	case cmdRoot:
 		props["children-display"] = dbus.MakeVariant("submenu")
 	case cmdHeader:
-		props["label"] = dbus.MakeVariant("🐕 Barahn Endpoint Agent")
+		props["label"] = dbus.MakeVariant("Barahn Endpoint Agent")
 		props["enabled"] = dbus.MakeVariant(false)
 		props["visible"] = dbus.MakeVariant(true)
 	case cmdStatus:
-		statusIcon := "🟢"
-		if !online {
-			statusIcon = "🔴"
-		}
-		props["label"] = dbus.MakeVariant(fmt.Sprintf("%s Status: %s", statusIcon, status))
+		props["label"] = dbus.MakeVariant(fmt.Sprintf("Status: %s", status))
 		props["enabled"] = dbus.MakeVariant(false)
 		props["visible"] = dbus.MakeVariant(true)
 	case cmdID:
-		props["label"] = dbus.MakeVariant(fmt.Sprintf("🆔 ID: %s", agentID))
+		props["label"] = dbus.MakeVariant(fmt.Sprintf("ID: %s", agentID))
 		props["enabled"] = dbus.MakeVariant(false)
 		props["visible"] = dbus.MakeVariant(true)
 	case cmdServer:
-		props["label"] = dbus.MakeVariant(fmt.Sprintf("🌐 Server: %s", serverAddr))
+		props["label"] = dbus.MakeVariant(fmt.Sprintf("Server: %s", serverAddr))
 		props["enabled"] = dbus.MakeVariant(false)
 		props["visible"] = dbus.MakeVariant(true)
 	case cmdSep1:
 		props["type"] = dbus.MakeVariant("separator")
 		props["visible"] = dbus.MakeVariant(true)
 	case cmdCopyID:
-		props["label"] = dbus.MakeVariant("📋 Copy Endpoint ID")
+		props["label"] = dbus.MakeVariant("Copy Endpoint ID")
 		props["enabled"] = dbus.MakeVariant(true)
 		props["visible"] = dbus.MakeVariant(true)
 	case cmdOpenDashboard:
-		props["label"] = dbus.MakeVariant("🌐 Open Web Dashboard")
+		props["label"] = dbus.MakeVariant("Open Web Dashboard")
 		props["enabled"] = dbus.MakeVariant(true)
 		props["visible"] = dbus.MakeVariant(true)
 	case cmdToggleService:
-		props["label"] = dbus.MakeVariant("⚙️ Toggle Background Service")
+		props["label"] = dbus.MakeVariant("Toggle Background Service")
 		props["enabled"] = dbus.MakeVariant(true)
 		props["visible"] = dbus.MakeVariant(true)
 	case cmdSep2:
 		props["type"] = dbus.MakeVariant("separator")
 		props["visible"] = dbus.MakeVariant(true)
 	case cmdExit:
-		props["label"] = dbus.MakeVariant("❌ Exit Agent")
+		props["label"] = dbus.MakeVariant("Exit Agent")
 		props["enabled"] = dbus.MakeVariant(true)
 		props["visible"] = dbus.MakeVariant(true)
 	}
@@ -272,6 +269,78 @@ func (t *linuxTrayManager) getConn() *dbus.Conn {
 	return t.conn
 }
 
+type dbusIconPixmap struct {
+	Width  int32
+	Height int32
+	Data   []byte
+}
+
+func loadLinuxIconPixmaps() []dbusIconPixmap {
+	candidatePaths := []string{
+		"icons/barahn.png",
+		"icons/512x512/barahn.png",
+		"assets/icon.png",
+	}
+
+	if home, err := os.UserHomeDir(); err == nil {
+		candidatePaths = append([]string{
+			fmt.Sprintf("%s/.local/share/icons/hicolor/512x512/apps/barahn.png", home),
+			fmt.Sprintf("%s/.local/share/icons/hicolor/24x24/apps/barahn.png", home),
+			fmt.Sprintf("%s/.local/share/icons/barahn.png", home),
+			fmt.Sprintf("%s/.local/share/pixmaps/barahn.png", home),
+		}, candidatePaths...)
+	}
+
+	var srcImg image.Image
+	for _, p := range candidatePaths {
+		if f, err := os.Open(p); err == nil {
+			if img, _, err := image.Decode(f); err == nil {
+				_ = f.Close()
+				srcImg = img
+				break
+			}
+			_ = f.Close()
+		}
+	}
+
+	if srcImg == nil {
+		return []dbusIconPixmap{}
+	}
+
+	bounds := srcImg.Bounds()
+	srcW := bounds.Dx()
+	srcH := bounds.Dy()
+	if srcW == 0 || srcH == 0 {
+		return []dbusIconPixmap{}
+	}
+
+	var pixmaps []dbusIconPixmap
+	for _, sz := range []int{22, 24, 32, 48, 64} {
+		pm := dbusIconPixmap{
+			Width:  int32(sz),
+			Height: int32(sz),
+			Data:   make([]byte, sz*sz*4),
+		}
+
+		for y := 0; y < sz; y++ {
+			for x := 0; x < sz; x++ {
+				srcX := bounds.Min.X + (x * srcW) / sz
+				srcY := bounds.Min.Y + (y * srcH) / sz
+				r, g, b, a := srcImg.At(srcX, srcY).RGBA()
+				// ARGB32 in network byte order (A, R, G, B)
+				offset := (y*sz + x) * 4
+				pm.Data[offset] = byte(a >> 8)
+				pm.Data[offset+1] = byte(r >> 8)
+				pm.Data[offset+2] = byte(g >> 8)
+				pm.Data[offset+3] = byte(b >> 8)
+			}
+		}
+		pixmaps = append(pixmaps, pm)
+	}
+
+	return pixmaps
+}
+
 func (t *linuxTrayManager) run(ctx context.Context) {
 	conn, err := dbus.SessionBus()
 	if err != nil {
@@ -294,16 +363,19 @@ func (t *linuxTrayManager) run(ctx context.Context) {
 
 	iconThemePath := ""
 	if home, err := os.UserHomeDir(); err == nil {
-		localIconDir := fmt.Sprintf("%s/.local/share/icons/hicolor", home)
+		localIconDir := fmt.Sprintf("%s/.local/share/icons/hicolor/24x24/apps", home)
 		if _, err := os.Stat(localIconDir); err == nil {
 			iconThemePath = localIconDir
+		} else {
+			fallbackDir := fmt.Sprintf("%s/.local/share/icons", home)
+			if _, err := os.Stat(fallbackDir); err == nil {
+				iconThemePath = fallbackDir
+			}
 		}
 	}
 
 	iconName := "barahn"
-	if iconThemePath == "" {
-		iconName = "preferences-desktop-remote-desktop"
-	}
+	pixmaps := loadLinuxIconPixmaps()
 
 	// 2. Export StatusNotifierItem Properties on /StatusNotifierItem
 	sniProps := map[string]map[string]*prop.Prop{
@@ -314,12 +386,12 @@ func (t *linuxTrayManager) run(ctx context.Context) {
 				Emit:     prop.EmitTrue,
 			},
 			"Id": {
-				Value:    "barahn-agent",
+				Value:    "barahn",
 				Writable: false,
 				Emit:     prop.EmitTrue,
 			},
 			"Title": {
-				Value:    "Barahn Remote Agent",
+				Value:    "Barahn Endpoint Agent",
 				Writable: false,
 				Emit:     prop.EmitTrue,
 			},
@@ -338,13 +410,18 @@ func (t *linuxTrayManager) run(ctx context.Context) {
 				Writable: false,
 				Emit:     prop.EmitTrue,
 			},
+			"IconPixmap": {
+				Value:    pixmaps,
+				Writable: false,
+				Emit:     prop.EmitTrue,
+			},
 			"Menu": {
 				Value:    dbus.ObjectPath("/MenuBar"),
 				Writable: false,
 				Emit:     prop.EmitTrue,
 			},
 			"ToolTip": {
-				Value:    []interface{}{"preferences-desktop-remote-desktop", []dbus.Variant{}, fmt.Sprintf("Barahn Agent: %s", t.agentID), fmt.Sprintf("Connected to %s", t.serverAddr)},
+				Value:    []interface{}{"barahn", []dbus.Variant{}, fmt.Sprintf("Barahn Agent: %s", t.agentID), fmt.Sprintf("Connected to %s", t.serverAddr)},
 				Writable: false,
 				Emit:     prop.EmitTrue,
 			},
@@ -373,7 +450,7 @@ func (t *linuxTrayManager) run(ctx context.Context) {
 
 	// 4. Send native desktop notification on connection
 	t.sendDesktopNotification(
-		"🐕 Barahn Agent Connected",
+		"Barahn Agent Connected",
 		fmt.Sprintf("Endpoint ID: %s\nRemote control daemon active on this workstation.", t.agentID),
 	)
 

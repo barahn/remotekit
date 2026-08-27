@@ -622,18 +622,18 @@ func showContextMenu(hwnd uintptr) {
 	}
 	defer procDestroyMenu.Call(hMenu)
 
-	headerText, _ := syscall.UTF16PtrFromString("🐕 Barahn Endpoint Agent")
-	statusText, _ := syscall.UTF16PtrFromString(fmt.Sprintf("🟢 Status: %s", activeTray.status))
-	idText, _ := syscall.UTF16PtrFromString(fmt.Sprintf("🆔 ID: %s", activeTray.agentID))
-	serverText, _ := syscall.UTF16PtrFromString(fmt.Sprintf("🌐 Server: %s", activeTray.serverAddr))
-	copyText, _ := syscall.UTF16PtrFromString("📋 Copy Endpoint ID")
-	dashText, _ := syscall.UTF16PtrFromString("🌐 Open Web Dashboard")
+	headerText, _ := syscall.UTF16PtrFromString("Barahn Endpoint Agent")
+	statusText, _ := syscall.UTF16PtrFromString(fmt.Sprintf("Status: %s", activeTray.status))
+	idText, _ := syscall.UTF16PtrFromString(fmt.Sprintf("ID: %s", activeTray.agentID))
+	serverText, _ := syscall.UTF16PtrFromString(fmt.Sprintf("Server: %s", activeTray.serverAddr))
+	copyText, _ := syscall.UTF16PtrFromString("Copy Endpoint ID")
+	dashText, _ := syscall.UTF16PtrFromString("Open Web Dashboard")
 
 	var logActionText string
 	if isConsoleVisible() {
-		logActionText = "📄 Hide Console Logs"
+		logActionText = "Hide Console Logs"
 	} else {
-		logActionText = "📄 View Console Logs"
+		logActionText = "View Console Logs"
 	}
 	logText, _ := syscall.UTF16PtrFromString(logActionText)
 
@@ -642,13 +642,13 @@ func showContextMenu(hwnd uintptr) {
 	svcStatus, _ := svcMgr.Status()
 	var svcActionText string
 	if svcStatus.Installed {
-		svcActionText = "⚙️ Uninstall Windows Service"
+		svcActionText = "Uninstall Windows Service"
 	} else {
-		svcActionText = "⚙️ Install as Windows Service (Auto-Start)"
+		svcActionText = "Install as Windows Service (Auto-Start)"
 	}
 	svcText, _ := syscall.UTF16PtrFromString(svcActionText)
 
-	exitText, _ := syscall.UTF16PtrFromString("❌ Exit Agent")
+	exitText, _ := syscall.UTF16PtrFromString("Exit Agent")
 
 	procAppendMenuW.Call(hMenu, uintptr(mfString|mfDisabled), uintptr(cmdHeader), uintptr(unsafe.Pointer(headerText)))
 	procAppendMenuW.Call(hMenu, uintptr(mfSeparator), 0, 0)
