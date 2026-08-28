@@ -109,7 +109,6 @@ func newWaylandInjector() (*waylandInjector, error) {
 	return inj, nil
 }
 
-
 func (inj *waylandInjector) SetScreenBounds(bounds image.Rectangle) {
 	inj.mu.Lock()
 	defer inj.mu.Unlock()
@@ -358,7 +357,6 @@ func (inj *waylandInjector) Close() error {
 	}
 	return nil
 }
-
 
 func mapWaylandButton(button MouseButton) int32 {
 	switch button {

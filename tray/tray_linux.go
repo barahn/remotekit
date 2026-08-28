@@ -17,7 +17,6 @@ import (
 	"github.com/godbus/dbus/v5/prop"
 )
 
-
 // HideConsoleWindow is a no-op on non-Windows platforms.
 func HideConsoleWindow() {}
 
@@ -29,7 +28,6 @@ func IsConsoleVisible() bool { return true }
 
 // ToggleConsoleWindow is a no-op on non-Windows platforms.
 func ToggleConsoleWindow() {}
-
 
 const (
 	cmdRoot          int32 = 0
@@ -197,7 +195,6 @@ func (m *dbusMenuServer) Event(id int32, eventID string, data dbus.Variant, time
 	return nil
 }
 
-
 func (m *dbusMenuServer) EventGroup(events []dbusMenuEvent) ([]int32, *dbus.Error) {
 	for _, ev := range events {
 		_ = m.Event(ev.ID, ev.EventID, ev.Data, ev.Timestamp)
@@ -326,8 +323,8 @@ func loadLinuxIconPixmaps() []dbusIconPixmap {
 
 		for y := 0; y < sz; y++ {
 			for x := 0; x < sz; x++ {
-				srcX := bounds.Min.X + (x * srcW) / sz
-				srcY := bounds.Min.Y + (y * srcH) / sz
+				srcX := bounds.Min.X + (x*srcW)/sz
+				srcY := bounds.Min.Y + (y*srcH)/sz
 				r, g, b, a := srcImg.At(srcX, srcY).RGBA()
 				// ARGB32 in network byte order (A, R, G, B)
 				offset := (y*sz + x) * 4
@@ -550,4 +547,3 @@ func (t *linuxTrayManager) openDashboard() {
 	}
 	_ = exec.Command("xdg-open", url).Start() // #nosec G204 -- url is configured server address
 }
-

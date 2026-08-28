@@ -16,9 +16,9 @@ import (
 
 // X11 event types for xtest.FakeInput
 const (
-	xKeyPress    byte = 2
-	xKeyRelease  byte = 3
-	xButtonPress byte = 4
+	xKeyPress      byte = 2
+	xKeyRelease    byte = 3
+	xButtonPress   byte = 4
 	xButtonRelease byte = 5
 	xMotionNotify  byte = 6
 )

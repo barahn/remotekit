@@ -429,7 +429,7 @@ var domCodeToVK = map[string]struct {
 	"Numpad0": {vkNumpad0, false}, "Numpad1": {vkNumpad1, false}, "Numpad2": {vkNumpad2, false},
 	"Numpad3": {vkNumpad3, false}, "Numpad4": {vkNumpad4, false}, "Numpad5": {vkNumpad5, false},
 	"Numpad6": {vkNumpad6, false}, "Numpad7": {vkNumpad7, false}, "Numpad8": {vkNumpad8, false},
-	"Numpad9": {vkNumpad9, false},
+	"Numpad9":        {vkNumpad9, false},
 	"NumpadMultiply": {vkMultiply, false}, "NumpadAdd": {vkAdd, false},
 	"NumpadSubtract": {vkSubtract, false}, "NumpadDecimal": {vkDecimal, false},
 	"NumpadDivide": {vkDivide, true},

@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	DefaultInterval     = 10 * time.Second
+	DefaultInterval      = 10 * time.Second
 	DefaultMissThreshold = 3
 )
 
@@ -19,11 +19,11 @@ type ChirpMessage struct {
 
 // ChirpTicker manages sending period keepalive signals with exponential backoff on failure.
 type ChirpTicker struct {
-	interval     time.Duration
-	maxInterval  time.Duration
-	sendFunc     func(ctx context.Context) error
-	stopChan     chan struct{}
-	wg           sync.WaitGroup
+	interval    time.Duration
+	maxInterval time.Duration
+	sendFunc    func(ctx context.Context) error
+	stopChan    chan struct{}
+	wg          sync.WaitGroup
 }
 
 func NewChirpTicker(interval time.Duration, sendFunc func(ctx context.Context) error) *ChirpTicker {

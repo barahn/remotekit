@@ -14,7 +14,6 @@ import (
 	"golang.org/x/sys/windows/svc/mgr"
 )
 
-
 type windowsServiceManager struct {
 	name string
 }
@@ -274,7 +273,6 @@ func (h *windowsServiceHandler) Execute(args []string, r <-chan svc.ChangeReques
 		}
 	}
 }
-
 
 func (m *windowsServiceManager) Run(ctx context.Context, runner func(ctx context.Context) error) error {
 	handler := &windowsServiceHandler{runner: runner}

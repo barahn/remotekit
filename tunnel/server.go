@@ -13,11 +13,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/barahn/barahn/internal/storage"
+	"github.com/barahn/remotekit/heartbeat"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/hashicorp/yamux"
-	"github.com/barahn/barahn/internal/storage"
-	"github.com/barahn/remotekit/heartbeat"
 )
 
 var upgrader = websocket.Upgrader{
@@ -142,8 +142,8 @@ func (ts *TunnelServer) HandlePairing(w http.ResponseWriter, r *http.Request) {
 	credToken := hex.EncodeToString(sha256.New().Sum([]byte(agent.ID + ":" + req.PublicKey)))
 
 	resp := map[string]interface{}{
-		"agent_id":     agent.ID,
-		"agent_token":  credToken,
+		"agent_id":      agent.ID,
+		"agent_token":   credToken,
 		"server_status": "enrolled",
 	}
 
@@ -216,7 +216,6 @@ func (ts *TunnelServer) HandleConnect(w http.ResponseWriter, r *http.Request) {
 	// Keep-alive stream loop
 	go ts.handleAgentControlStream(ctx, agentID, session)
 }
-
 
 func (ts *TunnelServer) handleAgentControlStream(ctx context.Context, agentID string, session *yamux.Session) {
 	defer func() {
