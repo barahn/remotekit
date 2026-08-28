@@ -9,6 +9,7 @@ import (
 	_ "image/png"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 
 	"github.com/barahn/remotekit/clipboard"
@@ -293,7 +294,8 @@ func loadLinuxIconPixmaps() []dbusIconPixmap {
 
 	var srcImg image.Image
 	for _, p := range candidatePaths {
-		if f, err := os.Open(p); err == nil {
+		cleanP := filepath.Clean(p)
+		if f, err := os.Open(cleanP); err == nil { // #nosec G304 -- local candidate icon paths
 			if img, _, err := image.Decode(f); err == nil {
 				_ = f.Close()
 				srcImg = img
@@ -317,8 +319,8 @@ func loadLinuxIconPixmaps() []dbusIconPixmap {
 	var pixmaps []dbusIconPixmap
 	for _, sz := range []int{22, 24, 32, 48, 64} {
 		pm := dbusIconPixmap{
-			Width:  int32(sz),
-			Height: int32(sz),
+			Width:  int32(sz), // #nosec G115 -- sz is bounded constant
+			Height: int32(sz), // #nosec G115 -- sz is bounded constant
 			Data:   make([]byte, sz*sz*4),
 		}
 
