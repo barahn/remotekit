@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"sync"
 
-	"github.com/mendsec/barahn/pkg/clipboard"
+	"github.com/barahn/remotekit/clipboard"
 )
 
 // HideConsoleWindow is a no-op on non-Windows platforms.

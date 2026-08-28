@@ -21,12 +21,12 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/mendsec/barahn/pkg/bark"
-	"github.com/mendsec/barahn/pkg/clipboard"
-	"github.com/mendsec/barahn/pkg/input"
-	"github.com/mendsec/barahn/pkg/screen"
-	"github.com/mendsec/barahn/pkg/transfer"
-	"github.com/mendsec/barahn/pkg/webrtc"
+	"github.com/barahn/remotekit/bark"
+	"github.com/barahn/remotekit/clipboard"
+	"github.com/barahn/remotekit/input"
+	"github.com/barahn/remotekit/screen"
+	"github.com/barahn/remotekit/transfer"
+	"github.com/barahn/remotekit/webrtc"
 )
 
 type AgentStreamRunner struct {

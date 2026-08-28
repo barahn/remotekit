@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mendsec/barahn/pkg/bark"
+	"github.com/barahn/remotekit/bark"
 )
 
 func TestBark_EnvelopeEncoding(t *testing.T) {

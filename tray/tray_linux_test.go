@@ -49,28 +49,28 @@ func TestLinuxDBusMenuServer(t *testing.T) {
 		t.Errorf("Expected first child to be cmdHeader, got %d", headerChild.ID)
 	}
 	headerLabel := headerChild.Properties["label"].Value().(string)
-	if headerLabel != "🐕 Barahn Endpoint Agent" {
+	if headerLabel != "Barahn Endpoint Agent" {
 		t.Errorf("Unexpected header label: %s", headerLabel)
 	}
 
 	// Verify Status item
 	statusChild := layout.Children[1].(dbusMenuLayout)
 	statusLabel := statusChild.Properties["label"].Value().(string)
-	if statusLabel != "🟢 Status: Online" {
+	if statusLabel != "Status: Online" {
 		t.Errorf("Unexpected initial status label: %s", statusLabel)
 	}
 
 	// Verify ID item
 	idChild := layout.Children[2].(dbusMenuLayout)
 	idLabel := idChild.Properties["label"].Value().(string)
-	if idLabel != "🆔 ID: agent-abc-456" {
+	if idLabel != "ID: agent-abc-456" {
 		t.Errorf("Unexpected ID label: %s", idLabel)
 	}
 
 	// Verify Server item
 	serverChild := layout.Children[3].(dbusMenuLayout)
 	serverLabel := serverChild.Properties["label"].Value().(string)
-	if serverLabel != "🌐 Server: https://control.barahn.internal:8443" {
+	if serverLabel != "Server: https://control.barahn.internal:8443" {
 		t.Errorf("Unexpected server label: %s", serverLabel)
 	}
 
@@ -79,7 +79,7 @@ func TestLinuxDBusMenuServer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetProperty returned error: %v", err)
 	}
-	if propVal.Value().(string) != "📋 Copy Endpoint ID" {
+	if propVal.Value().(string) != "Copy Endpoint ID" {
 		t.Errorf("Unexpected CopyID label: %v", propVal.Value())
 	}
 
@@ -99,8 +99,8 @@ func TestLinuxDBusMenuServer(t *testing.T) {
 	}
 	updatedStatusChild := updatedLayout.Children[1].(dbusMenuLayout)
 	updatedStatusLabel := updatedStatusChild.Properties["label"].Value().(string)
-	if updatedStatusLabel != "🔴 Status: Reconnecting..." {
-		t.Errorf("Expected updated status label '🔴 Status: Reconnecting...', got %s", updatedStatusLabel)
+	if updatedStatusLabel != "Status: Reconnecting..." {
+		t.Errorf("Expected updated status label 'Status: Reconnecting...', got %s", updatedStatusLabel)
 	}
 
 	// 4. Test Event handling (Exit)

@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mendsec/barahn/pkg/bark"
+	"github.com/barahn/remotekit/bark"
 )
 
 // ScriptRunner executes ad-hoc commands and scripts in the background on the agent OS.

@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mendsec/barahn/internal/storage"
-	"github.com/mendsec/barahn/pkg/tunnel"
+	"github.com/barahn/barahn/internal/storage"
+	"github.com/barahn/remotekit/tunnel"
 )
 
 func TestTunnel_EnrollmentAndReverseStream(t *testing.T) {

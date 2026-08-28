@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mendsec/barahn/pkg/bark"
-	"github.com/mendsec/barahn/pkg/tunnel"
+	"github.com/barahn/remotekit/bark"
+	"github.com/barahn/remotekit/tunnel"
 )
 
 func TestScriptRunner_EchoExecution(t *testing.T) {

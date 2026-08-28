@@ -16,8 +16,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/hashicorp/yamux"
-	"github.com/mendsec/barahn/internal/storage"
-	"github.com/mendsec/barahn/pkg/heartbeat"
+	"github.com/barahn/barahn/internal/storage"
+	"github.com/barahn/remotekit/heartbeat"
 )
 
 var upgrader = websocket.Upgrader{
