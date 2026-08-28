@@ -59,3 +59,43 @@ func TestBark_ScriptExecutionTypes(t *testing.T) {
 		t.Fatalf("Expected type %s, got %s", bark.TypeScriptExecutionRequest, env.Type)
 	}
 }
+
+func TestBark_ChirpConsentTypes(t *testing.T) {
+	req := &bark.ConsentRequestPayload{
+		SessionID:            "sess-chirp-1",
+		Code:                 "847-291",
+		TechnicianName:       "Lead Support",
+		RequestedPermissions: []string{"screen_view", "remote_control"},
+		Timestamp:            time.Now().UTC(),
+	}
+
+	envBytes, err := bark.EncodeEnvelope(bark.TypeConsentRequest, "sess-chirp-1", req)
+	if err != nil {
+		t.Fatalf("EncodeEnvelope failed for ConsentRequest: %v", err)
+	}
+
+	var env bark.Envelope
+	if err := json.Unmarshal(envBytes, &env); err != nil {
+		t.Fatalf("Unmarshal Envelope failed: %v", err)
+	}
+	if env.Type != bark.TypeConsentRequest {
+		t.Fatalf("Expected type %s, got %s", bark.TypeConsentRequest, env.Type)
+	}
+
+	res := &bark.ConsentResponsePayload{
+		SessionID: "sess-chirp-1",
+		Code:      "847-291",
+		Granted:   true,
+		Timestamp: time.Now().UTC(),
+	}
+	resBytes, err := bark.EncodeEnvelope(bark.TypeConsentResponse, "sess-chirp-1", res)
+	if err != nil {
+		t.Fatalf("EncodeEnvelope failed for ConsentResponse: %v", err)
+	}
+
+	var resEnv bark.Envelope
+	_ = json.Unmarshal(resBytes, &resEnv)
+	if resEnv.Type != bark.TypeConsentResponse {
+		t.Fatalf("Expected type %s, got %s", bark.TypeConsentResponse, resEnv.Type)
+	}
+}
