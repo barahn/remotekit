@@ -69,7 +69,7 @@ func (w *wsConnAdapter) Read(b []byte) (int, error) {
 				return n, err
 			}
 		}
-		_, r, err := w.Conn.NextReader()
+		_, r, err := w.NextReader()
 		if err != nil {
 			return 0, err
 		}
@@ -78,7 +78,7 @@ func (w *wsConnAdapter) Read(b []byte) (int, error) {
 }
 
 func (w *wsConnAdapter) Write(b []byte) (int, error) {
-	err := w.Conn.WriteMessage(websocket.BinaryMessage, b)
+	err := w.WriteMessage(websocket.BinaryMessage, b)
 	if err != nil {
 		return 0, err
 	}
