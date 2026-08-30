@@ -18,9 +18,9 @@ func NewCapturer(config CaptureConfig) (Capturer, error) {
 // darwinCapturer is a placeholder for the CGDisplayStream implementation.
 type darwinCapturer struct{}
 
-func (c *darwinCapturer) Displays() ([]Display, error)       { return nil, ErrCaptureNotReady }
-func (c *darwinCapturer) Start(_ context.Context) error       { return ErrCaptureNotReady }
-func (c *darwinCapturer) Frames() <-chan *Frame               { return nil }
-func (c *darwinCapturer) Stop()                               {}
-func (c *darwinCapturer) SetDisplay(_ int) error              { return ErrCaptureNotReady }
-func (c *darwinCapturer) Close()                              {}
+func (c *darwinCapturer) Displays() ([]Display, error)  { return nil, ErrCaptureNotReady }
+func (c *darwinCapturer) Start(_ context.Context) error { return ErrCaptureNotReady }
+func (c *darwinCapturer) Frames() <-chan *Frame         { return nil }
+func (c *darwinCapturer) Stop()                         {}
+func (c *darwinCapturer) SetDisplay(_ int) error        { return ErrCaptureNotReady }
+func (c *darwinCapturer) Close()                        {}

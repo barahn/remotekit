@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -150,7 +151,7 @@ func detectLinuxDisplayServer() string {
 	// Fallback to checking socket paths in runtime dir
 	runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
 	if runtimeDir != "" {
-		if _, err := os.Stat(runtimeDir + "/wayland-0"); err == nil {
+		if _, err := os.Stat(filepath.Clean(filepath.Join(runtimeDir, "wayland-0"))); err == nil { // #nosec G703
 			return "wayland"
 		}
 	}

@@ -97,25 +97,25 @@ func TestFileTransfer_PathTraversalPrevention(t *testing.T) {
 
 	// Verify assembled file stays within download directory
 	mgr.StartSession("sess-assemble-traversal", "../../escape.txt", 5, "")
-	mgr.sessions["sess-assemble-traversal"].Chunks[0] = []byte("hello")
-	mgr.sessions["sess-assemble-traversal"].ReceivedBytes = 5
-	mgr.sessions["sess-assemble-traversal"].Completed = true
+	// Explicitly test AssembleFile with ../../etc/passwd as input
+	mgr.StartSession("sess-passwd-traversal", "../../etc/passwd", 12, "")
+	mgr.sessions["sess-passwd-traversal"].Chunks[0] = []byte("root:x:0:0::")
+	mgr.sessions["sess-passwd-traversal"].ReceivedBytes = 12
+	mgr.sessions["sess-passwd-traversal"].Completed = true
 
-	outPath, _, err := mgr.AssembleFile("sess-assemble-traversal")
+	passwdOutPath, _, err := mgr.AssembleFile("sess-passwd-traversal")
 	if err != nil {
-		t.Fatalf("AssembleFile failed: %v", err)
+		t.Fatalf("AssembleFile failed for passwd traversal: %v", err)
 	}
 
-	// Verify the output file is contained within tempDir
-	absOut, _ := filepath.Abs(outPath)
 	absDir, _ := filepath.Abs(tempDir)
-	rel, err := filepath.Rel(absDir, absOut)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		t.Fatalf("Path traversal escape: assembled file %q is outside download dir %q (rel: %s)", absOut, absDir, rel)
+	absPasswdOut, _ := filepath.Abs(passwdOutPath)
+	relPasswd, err := filepath.Rel(absDir, absPasswdOut)
+	if err != nil || strings.HasPrefix(relPasswd, "..") {
+		t.Fatalf("CRITICAL SECURITY GAP: ../../etc/passwd escaped download dir %q (out: %q, rel: %s)", absDir, absPasswdOut, relPasswd)
 	}
-
-	expected := filepath.Join(tempDir, "escape.txt")
-	if outPath != expected {
-		t.Errorf("Expected output path %q, got %q", expected, outPath)
+	expectedPasswd := filepath.Join(tempDir, "passwd")
+	if passwdOutPath != expectedPasswd {
+		t.Errorf("Expected sanitized output %q, got %q", expectedPasswd, passwdOutPath)
 	}
 }

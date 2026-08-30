@@ -19,12 +19,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gorilla/websocket"
-	"github.com/hashicorp/yamux"
 	"github.com/barahn/remotekit/heartbeat"
 	"github.com/barahn/remotekit/osinfo"
+	"github.com/gorilla/websocket"
+	"github.com/hashicorp/yamux"
 )
-
 
 type AgentCredentials struct {
 	AgentID    string `json:"agent_id"`

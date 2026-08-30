@@ -33,7 +33,6 @@ const (
 	restoreSessionFileRel = ".config/barahn/wayland_screencast_session" // #nosec G101
 )
 
-
 // waylandCapturer implements Capturer on Wayland via XDG Desktop Portal ScreenCast and PipeWire.
 type waylandCapturer struct {
 	config   CaptureConfig
@@ -375,8 +374,6 @@ func (c *waylandCapturer) initMutterSession(ctx context.Context) error {
 	return nil
 }
 
-
-
 func (c *waylandCapturer) streamLoop(ctx context.Context) {
 	defer c.closeFrames()
 	gstPath, err := exec.LookPath("gst-launch-1.0")
@@ -500,12 +497,10 @@ func (c *waylandCapturer) fallbackToRealOrSynthetic(ctx context.Context) {
 	go c.renderSyntheticFrames(ctx)
 }
 
-
 func (c *waylandCapturer) renderSyntheticFrames(ctx context.Context) {
 	defer c.closeFrames()
 	ticker := time.NewTicker(time.Second / time.Duration(c.config.TargetFPS))
 	defer ticker.Stop()
-
 
 	hostname, _ := os.Hostname()
 	if hostname == "" {

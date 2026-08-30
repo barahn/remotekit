@@ -19,6 +19,9 @@ const (
 	TypeScriptExecutionResult  MessageType = "script_exec_res"
 	TypeFocusStateMessage      MessageType = "focus_state"
 	TypePowerActionMessage     MessageType = "power"
+	TypeConsentRequest         MessageType = "consent_req"
+	TypeConsentResponse        MessageType = "consent_res"
+	TypeChirpSessionState      MessageType = "chirp_state"
 )
 
 // Envelope is the top-level wire format for Yamux Bark multiplexed streams.
@@ -108,6 +111,32 @@ type FocusStateMessage struct {
 // PowerActionMessage represents remote workstation power instructions.
 type PowerActionMessage struct {
 	Action string `json:"action"` // "lock", "reboot", "shutdown"
+}
+
+// ConsentRequestPayload represents an authorization request sent to the end-user (Issue #12).
+type ConsentRequestPayload struct {
+	SessionID            string    `json:"session_id"`
+	Code                 string    `json:"code"`
+	TechnicianName       string    `json:"technician_name"`
+	RequestedPermissions []string  `json:"requested_permissions"` // e.g. ["screen_view", "remote_control"]
+	Timestamp            time.Time `json:"timestamp"`
+}
+
+// ConsentResponsePayload represents the end-user authorization decision (Issue #12).
+type ConsentResponsePayload struct {
+	SessionID string    `json:"session_id"`
+	Code      string    `json:"code"`
+	Granted   bool      `json:"granted"`
+	Reason    string    `json:"reason,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// ChirpStatePayload represents state updates for on-demand Chirp sessions.
+type ChirpStatePayload struct {
+	SessionID string    `json:"session_id"`
+	Code      string    `json:"code"`
+	State     string    `json:"state"` // "pending", "connected", "consent_requested", "active", "rejected", "expired", "terminated"
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 // EncodeEnvelope serializes a payload into a Bark envelope JSON bytes.

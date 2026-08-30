@@ -415,5 +415,3 @@ func (c *x11Capturer) Close() {
 func uintptrToPointer(ptr uintptr) unsafe.Pointer {
 	return *(*unsafe.Pointer)(unsafe.Pointer(&ptr)) // #nosec G103 -- required for X11 SHM pointer conversion
 }
-
-

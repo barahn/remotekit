@@ -147,7 +147,8 @@ func (d *x11Driver) handleSelectionRequest(req xproto.SelectionRequestEvent) {
 		respProperty = req.Target
 	}
 
-	if req.Target == d.targetsAtom {
+	switch req.Target {
+	case d.targetsAtom:
 		targets := []uint32{
 			uint32(d.targetsAtom),
 			uint32(d.utf8Atom),
@@ -164,10 +165,10 @@ func (d *x11Driver) handleSelectionRequest(req xproto.SelectionRequestEvent) {
 			raw[i*4+3] = byte(t >> 24)
 		}
 		_ = xproto.ChangePropertyChecked(d.conn, xproto.PropModeReplace, req.Requestor, respProperty, xproto.AtomAtom, 32, uint32(len(targets)), raw).Check() // #nosec G115
-	} else if req.Target == d.utf8Atom || req.Target == d.stringAtom || req.Target == d.textAtom || req.Target == d.plainUtf8Atom || req.Target == d.plainAtom {
+	case d.utf8Atom, d.stringAtom, d.textAtom, d.plainUtf8Atom, d.plainAtom:
 		data := []byte(currentText)
 		_ = xproto.ChangePropertyChecked(d.conn, xproto.PropModeReplace, req.Requestor, respProperty, req.Target, 8, uint32(len(data)), data).Check() // #nosec G115
-	} else {
+	default:
 		respProperty = 0
 	}
 

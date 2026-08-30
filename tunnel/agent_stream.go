@@ -20,13 +20,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/barahn/remotekit/bark"
 	"github.com/barahn/remotekit/clipboard"
 	"github.com/barahn/remotekit/input"
 	"github.com/barahn/remotekit/screen"
 	"github.com/barahn/remotekit/transfer"
 	"github.com/barahn/remotekit/webrtc"
+	"github.com/gorilla/websocket"
 )
 
 type AgentStreamRunner struct {
