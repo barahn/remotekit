@@ -366,9 +366,9 @@ func RenderDesktopState(dst []byte, w, h int, osName, hostname, agentID string, 
 	// 1. Draw Modern Deep Blue/Navy Gradient Wallpaper (#0b0f19 to #030712)
 	for y := 0; y < h; y++ {
 		ratio := float32(y) / float32(h)
-		r := byte(11 - int(8*ratio))
-		g := byte(15 - int(8*ratio))
-		b := byte(25 - int(7*ratio))
+		r := byte(11 - int(8*ratio)) // #nosec G115
+		g := byte(15 - int(8*ratio)) // #nosec G115
+		b := byte(25 - int(7*ratio)) // #nosec G115
 
 		rowOffset := y * w * 4
 		for x := 0; x < w; x++ {

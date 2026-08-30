@@ -328,10 +328,10 @@ func loadLinuxIconPixmaps() []dbusIconPixmap {
 				r, g, b, a := srcImg.At(srcX, srcY).RGBA()
 				// ARGB32 in network byte order (A, R, G, B)
 				offset := (y*sz + x) * 4
-				pm.Data[offset] = byte(a >> 8)
-				pm.Data[offset+1] = byte(r >> 8)
-				pm.Data[offset+2] = byte(g >> 8)
-				pm.Data[offset+3] = byte(b >> 8)
+				pm.Data[offset] = byte(a >> 8)     // #nosec G115
+				pm.Data[offset+1] = byte(r >> 8) // #nosec G115
+				pm.Data[offset+2] = byte(g >> 8) // #nosec G115
+				pm.Data[offset+3] = byte(b >> 8) // #nosec G115
 			}
 		}
 		pixmaps = append(pixmaps, pm)
