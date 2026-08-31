@@ -38,8 +38,8 @@ func TestLinuxDBusMenuServer(t *testing.T) {
 	if layout.ID != cmdRoot {
 		t.Errorf("Expected layout ID %d, got %d", cmdRoot, layout.ID)
 	}
-	if len(layout.Children) != 10 {
-		t.Fatalf("Expected 10 menu children, got %d", len(layout.Children))
+	if len(layout.Children) != 9 {
+		t.Fatalf("Expected 9 menu children, got %d", len(layout.Children))
 	}
 
 	// Verify Header item
@@ -55,7 +55,7 @@ func TestLinuxDBusMenuServer(t *testing.T) {
 	// Verify Status item
 	statusChild := layout.Children[1].(dbusMenuLayout)
 	statusLabel := statusChild.Properties["label"].Value().(string)
-	if statusLabel != "Status: Online" {
+	if statusLabel != "Status: Connecting..." {
 		t.Errorf("Unexpected initial status label: %s", statusLabel)
 	}
 

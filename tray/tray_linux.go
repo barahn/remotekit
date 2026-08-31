@@ -8,7 +8,6 @@ import (
 	"image"
 	_ "image/png"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sync"
 
@@ -37,7 +36,6 @@ const (
 	cmdServer        int32 = 4
 	cmdSep1          int32 = 5
 	cmdCopyID        int32 = 6
-	cmdOpenDashboard int32 = 7
 	cmdToggleService int32 = 8
 	cmdSep2          int32 = 9
 	cmdExit          int32 = 10
@@ -110,10 +108,6 @@ func (m *dbusMenuServer) getItemProps(id int32) map[string]dbus.Variant {
 		props["label"] = dbus.MakeVariant("Copy Endpoint ID")
 		props["enabled"] = dbus.MakeVariant(true)
 		props["visible"] = dbus.MakeVariant(true)
-	case cmdOpenDashboard:
-		props["label"] = dbus.MakeVariant("Open Web Dashboard")
-		props["enabled"] = dbus.MakeVariant(true)
-		props["visible"] = dbus.MakeVariant(true)
 	case cmdToggleService:
 		props["label"] = dbus.MakeVariant("Toggle Background Service")
 		props["enabled"] = dbus.MakeVariant(true)
@@ -136,7 +130,7 @@ func (m *dbusMenuServer) GetLayout(parentId int32, recursionDepth int32, propert
 	m.mu.RUnlock()
 
 	rootProps := m.getItemProps(cmdRoot)
-	childrenIDs := []int32{cmdHeader, cmdStatus, cmdID, cmdServer, cmdSep1, cmdCopyID, cmdOpenDashboard, cmdToggleService, cmdSep2, cmdExit}
+	childrenIDs := []int32{cmdHeader, cmdStatus, cmdID, cmdServer, cmdSep1, cmdCopyID, cmdToggleService, cmdSep2, cmdExit}
 
 	var children []interface{}
 	for _, cid := range childrenIDs {
@@ -181,8 +175,6 @@ func (m *dbusMenuServer) Event(id int32, eventID string, data dbus.Variant, time
 		switch id {
 		case cmdCopyID:
 			go m.tray.copyIDToClipboard()
-		case cmdOpenDashboard:
-			go m.tray.openDashboard()
 		case cmdExit:
 			go func() {
 				if m.tray.onExit != nil {
@@ -242,8 +234,8 @@ func NewTrayManager(agentID, serverAddr string, onExit func()) TrayManager {
 	lt := &linuxTrayManager{
 		agentID:    agentID,
 		serverAddr: serverAddr,
-		status:     "Online",
-		online:     true,
+		status:     "Connecting...",
+		online:     false,
 		onExit:     onExit,
 	}
 	lt.menu = newDBusMenuServer(lt)
@@ -540,10 +532,3 @@ func (t *linuxTrayManager) sendDesktopNotification(summary, body string) {
 	).Store()
 }
 
-func (t *linuxTrayManager) openDashboard() {
-	url := t.serverAddr
-	if url == "" {
-		url = "https://localhost:8443"
-	}
-	_ = exec.Command("xdg-open", url).Start() // #nosec G204 -- url is configured server address
-}

@@ -34,6 +34,13 @@ type AgentCredentials struct {
 type TunnelClient struct {
 	credsPath          string
 	insecureSkipVerify bool
+
+	// OnStatusChange, if set, is invoked whenever the tunnel's live connection
+	// state changes: true right after the WebSocket/Yamux session is established,
+	// false whenever Connect returns (error or clean shutdown). Callers use this
+	// to drive UI indicators (e.g. the desktop tray icon) with the real connection
+	// state instead of an assumed/static value.
+	OnStatusChange func(connected bool)
 }
 
 func NewTunnelClient(credsPath string, insecureSkipVerify bool) *TunnelClient {
@@ -199,6 +206,11 @@ func (tc *TunnelClient) Connect(ctx context.Context, creds *AgentCredentials) er
 		return fmt.Errorf("failed to establish yamux client session: %w", err)
 	}
 	defer func() { _ = session.Close() }()
+
+	if tc.OnStatusChange != nil {
+		tc.OnStatusChange(true)
+		defer tc.OnStatusChange(false)
+	}
 
 	// Start heartbeat ticker over control stream
 	chirpTicker := heartbeat.NewChirpTicker(10*time.Second, func(ctx context.Context) error {

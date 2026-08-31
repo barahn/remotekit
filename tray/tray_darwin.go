@@ -40,8 +40,8 @@ func NewTrayManager(agentID, serverAddr string, onExit func()) TrayManager {
 	return &darwinTrayManager{
 		agentID:    agentID,
 		serverAddr: serverAddr,
-		status:     "Online",
-		online:     true,
+		status:     "Connecting...",
+		online:     false,
 		onExit:     onExit,
 	}
 }
