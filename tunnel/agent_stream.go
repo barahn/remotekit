@@ -93,7 +93,13 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 
 func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.Conn) {
 	var stateMu sync.RWMutex
-	var currentPeer *webrtc.PeerSession
+	// One WebRTC negotiation per connected viewer (keyed by the server-assigned viewer_id,
+	// or "" for legacy/unattributed messages), so multiple technicians can view the same
+	// session concurrently without one viewer's offer tearing down another's in-flight
+	// negotiation. Actual frame delivery is a separate JSON-over-WebSocket broadcast (see
+	// safeWrite calls below) that already reaches every connection in the room; this map
+	// only tracks the SDP offer/answer/ICE bookkeeping.
+	peers := make(map[string]*webrtc.PeerSession)
 	var capturer screen.Capturer
 	var activeCapCancel context.CancelFunc
 	var writeMu sync.Mutex
@@ -137,9 +143,9 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			activeCapCancel()
 			activeCapCancel = nil
 		}
-		if currentPeer != nil {
-			_ = currentPeer.Close()
-			currentPeer = nil
+		for id, peer := range peers {
+			_ = peer.Close()
+			delete(peers, id)
 		}
 		if capturer != nil {
 			capturer.Stop()
@@ -164,22 +170,24 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 		switch msgType {
 		case "offer", "session_start":
 			sdp, _ := signal["sdp"].(string)
+			viewerID, _ := signal["viewer_id"].(string)
 
 			// WebRTC negotiation (if SDP offer is provided)
 			if sdp != "" {
 				stateMu.Lock()
-				if currentPeer != nil {
-					_ = currentPeer.Close()
-					currentPeer = nil
+				if old, ok := peers[viewerID]; ok {
+					_ = old.Close()
+					delete(peers, viewerID)
 				}
 
 				peer, err := webrtc.NewPeerSession(webrtc.DefaultPeerConfig())
 				if err == nil {
-					currentPeer = peer
+					peers[viewerID] = peer
 					peer.OnICECandidate(func(candJSON string) {
 						candMsg := map[string]interface{}{
 							"type":       "candidate",
 							"session_id": r.creds.AgentID,
+							"viewer_id":  viewerID,
 							"candidate":  candJSON,
 						}
 						data, _ := json.Marshal(candMsg)
@@ -191,6 +199,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 						ansMsg := map[string]interface{}{
 							"type":       "answer",
 							"session_id": r.creds.AgentID,
+							"viewer_id":  viewerID,
 							"sdp":        answerSDP,
 						}
 						ansBytes, _ := json.Marshal(ansMsg)
@@ -306,8 +315,9 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 
 		case "candidate":
 			cand, _ := signal["candidate"].(string)
+			viewerID, _ := signal["viewer_id"].(string)
 			stateMu.RLock()
-			peer := currentPeer
+			peer := peers[viewerID]
 			stateMu.RUnlock()
 			if cand != "" && peer != nil {
 				_ = peer.AddICECandidate(cand)
@@ -439,9 +449,9 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 
 		case "close":
 			stateMu.Lock()
-			if currentPeer != nil {
-				_ = currentPeer.Close()
-				currentPeer = nil
+			for id, peer := range peers {
+				_ = peer.Close()
+				delete(peers, id)
 			}
 			if capturer != nil {
 				capturer.Stop()
@@ -454,6 +464,12 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			stateMu.Unlock()
 		}
 	}
+}
+
+// boolPayload reads a boolean field from a decoded JSON signal payload, defaulting to false.
+func boolPayload(payload map[string]interface{}, key string) bool {
+	v, _ := payload[key].(bool)
+	return v
 }
 
 func (r *AgentStreamRunner) handleInputPayload(payload map[string]interface{}) {
@@ -496,14 +512,26 @@ func (r *AgentStreamRunner) handleInputPayload(payload map[string]interface{}) {
 		key, _ := payload["key"].(string)
 		code, _ := payload["code"].(string)
 		if r.injector != nil {
-			_ = r.injector.KeyDown(input.KeyboardEvent{Key: key, Code: code})
+			_ = r.injector.KeyDown(input.KeyboardEvent{
+				Key: key, Code: code,
+				Ctrl:  boolPayload(payload, "ctrl"),
+				Alt:   boolPayload(payload, "alt"),
+				Shift: boolPayload(payload, "shift"),
+				Meta:  boolPayload(payload, "meta"),
+			})
 		}
 
 	case "keyup", "key_up":
 		key, _ := payload["key"].(string)
 		code, _ := payload["code"].(string)
 		if r.injector != nil {
-			_ = r.injector.KeyUp(input.KeyboardEvent{Key: key, Code: code})
+			_ = r.injector.KeyUp(input.KeyboardEvent{
+				Key: key, Code: code,
+				Ctrl:  boolPayload(payload, "ctrl"),
+				Alt:   boolPayload(payload, "alt"),
+				Shift: boolPayload(payload, "shift"),
+				Meta:  boolPayload(payload, "meta"),
+			})
 		}
 	}
 }
