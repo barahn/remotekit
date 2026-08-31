@@ -86,6 +86,81 @@ type winInput struct {
 type windowsInjector struct {
 	mu     sync.Mutex
 	bounds image.Rectangle
+
+	// Reference-counted synthetic modifier state. The browser sends each held modifier
+	// (Ctrl/Alt/Shift/Meta) both as its own KeyboardEvent (e.g. code "ControlLeft") *and*
+	// as a boolean flag on every other key event pressed while it's held. Relying only on
+	// the dedicated modifier event is fragile: if it is ever dropped, reordered, or (as
+	// observed with some automated input sources) never sent as a discrete event at all,
+	// the remote side receives a bare key with no modifier actually down at the OS level
+	// -- e.g. Ctrl+V arrives as a lone "V", which Windows types literally instead of
+	// pasting. To make chorded shortcuts reliable regardless of event ordering, KeyDown
+	// presses the modifier (if not already down) before injecting a non-modifier key that
+	// carries that modifier's flag, and KeyUp releases it once no tracked key still needs
+	// it. This is additive to the real modifier-key events, which still work as before;
+	// SendInput on an already-down key is a harmless no-op.
+	ctrlDepth  int
+	altDepth   int
+	shiftDepth int
+	metaDepth  int
+}
+
+func isModifierCode(code string) bool {
+	switch code {
+	case "ControlLeft", "ControlRight", "AltLeft", "AltRight",
+		"ShiftLeft", "ShiftRight", "MetaLeft", "MetaRight":
+		return true
+	default:
+		return false
+	}
+}
+
+// pressModifiers injects keydown for each modifier flagged true on event that isn't
+// already synthetically held, incrementing its depth. Must be called with i.mu held.
+func (i *windowsInjector) pressModifiers(event KeyboardEvent) {
+	type mod struct {
+		held  bool
+		depth *int
+		vk    uint16
+	}
+	for _, m := range []mod{
+		{event.Ctrl, &i.ctrlDepth, vkLControl},
+		{event.Alt, &i.altDepth, vkLMenu},
+		{event.Shift, &i.shiftDepth, vkLShift},
+		{event.Meta, &i.metaDepth, vkLWin},
+	} {
+		if !m.held {
+			continue
+		}
+		if *m.depth == 0 {
+			_ = sendInputs([]winInput{createKeyboardInput(m.vk, 0, 0)})
+		}
+		*m.depth++
+	}
+}
+
+// releaseModifiers decrements depth for each modifier flagged true on event, injecting
+// keyup once a modifier's depth returns to zero. Must be called with i.mu held.
+func (i *windowsInjector) releaseModifiers(event KeyboardEvent) {
+	type mod struct {
+		held  bool
+		depth *int
+		vk    uint16
+	}
+	for _, m := range []mod{
+		{event.Ctrl, &i.ctrlDepth, vkLControl},
+		{event.Alt, &i.altDepth, vkLMenu},
+		{event.Shift, &i.shiftDepth, vkLShift},
+		{event.Meta, &i.metaDepth, vkLWin},
+	} {
+		if !m.held || *m.depth == 0 {
+			continue
+		}
+		*m.depth--
+		if *m.depth == 0 {
+			_ = sendInputs([]winInput{createKeyboardInput(m.vk, 0, keyEventFKeyUp)})
+		}
+	}
 }
 
 // NewInjector creates a Windows input injector using the Win32 SendInput API.
@@ -256,11 +331,19 @@ func (i *windowsInjector) KeyDown(event KeyboardEvent) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
+	isMod := isModifierCode(event.Code)
+	if !isMod {
+		i.pressModifiers(event)
+	}
+
 	vk, ext := mapKeycode(event.Key, event.Code)
 	if vk == 0 {
-		if len(event.Key) == 1 {
-			// Send as Unicode character
-			r := rune(event.Key[0])
+		if runes := []rune(event.Key); len(runes) == 1 {
+			// Send as Unicode character. event.Key is a UTF-8 string (e.g. from a JS
+			// KeyboardEvent.key); indexing it as a byte slice truncates any multi-byte
+			// rune (accented Latin characters, non-Latin scripts) to its first byte.
+			// Decode it as runes instead so non-ASCII characters inject correctly.
+			r := runes[0]
 			inp := createKeyboardInput(0, uint16(r), keyEventFUnicode)
 			return sendInputs([]winInput{inp})
 		}
@@ -280,12 +363,21 @@ func (i *windowsInjector) KeyUp(event KeyboardEvent) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
+	isMod := isModifierCode(event.Code)
+
 	vk, ext := mapKeycode(event.Key, event.Code)
 	if vk == 0 {
-		if len(event.Key) == 1 {
-			r := rune(event.Key[0])
+		if runes := []rune(event.Key); len(runes) == 1 {
+			r := runes[0]
 			inp := createKeyboardInput(0, uint16(r), keyEventFUnicode|keyEventFKeyUp)
-			return sendInputs([]winInput{inp})
+			err := sendInputs([]winInput{inp})
+			if !isMod {
+				i.releaseModifiers(event)
+			}
+			return err
+		}
+		if !isMod {
+			i.releaseModifiers(event)
 		}
 		return nil
 	}
@@ -296,7 +388,11 @@ func (i *windowsInjector) KeyUp(event KeyboardEvent) error {
 	}
 
 	inp := createKeyboardInput(vk, 0, flags)
-	return sendInputs([]winInput{inp})
+	err := sendInputs([]winInput{inp})
+	if !isMod {
+		i.releaseModifiers(event)
+	}
+	return err
 }
 
 func (i *windowsInjector) Close() error {
