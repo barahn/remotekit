@@ -12,6 +12,15 @@ import (
 
 // VP8Encoder encodes RGBA screen frames into VP8 video samples for WebRTC streaming.
 // It integrates FrameDiffer to skip duplicate or static frames, minimizing CPU and bandwidth consumption.
+//
+// KNOWN LIMITATION: Encode() does not produce a real VP8 bitstream. It prepends a fixed
+// RFC 6386 keyframe start-code header to a plain image/jpeg payload; this is scaffolding
+// from early development, not a working codec. WebRTC decoders in real browsers are
+// expected to reject or fail to render the resulting samples. Do not represent this as a
+// functional VP8 encoder until it is replaced with a real encoder (native OS hardware
+// encoder, a maintained Go/CGO VP8 library, or an equivalent). See
+// docs/reports/roadmap-clarification-report.md (§3.1) and
+// docs/reports/preliminary-assessment-report.md (§4.1).
 type VP8Encoder struct {
 	mu          sync.Mutex
 	differ      *FrameDiffer
