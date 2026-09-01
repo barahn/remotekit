@@ -49,7 +49,6 @@ var (
 	procGetParent                = user32.NewProc("GetParent")
 
 	procShellNotifyIconW         = shell32.NewProc("Shell_NotifyIconW")
-	procShellExecuteW            = shell32.NewProc("ShellExecuteW")
 	procGetModuleHandleW         = kernel32.NewProc("GetModuleHandleW")
 	procGetConsoleWindow         = kernel32.NewProc("GetConsoleWindow")
 	procGetCurrentProcessId      = kernel32.NewProc("GetCurrentProcessId")
@@ -129,7 +128,6 @@ const (
 	cmdID            = 1002
 	cmdCopyID        = 1003
 	cmdServer        = 1004
-	cmdOpenDashboard = 1005
 	cmdToggleLogs    = 1006
 	cmdToggleService = 1007
 	cmdExit          = 1008
@@ -204,8 +202,8 @@ func NewTrayManager(agentID, serverAddr string, onExit func()) TrayManager {
 	return &windowsTrayManager{
 		agentID:    agentID,
 		serverAddr: serverAddr,
-		status:     "Online",
-		online:     true,
+		status:     "Connecting...",
+		online:     false,
 		onExit:     onExit,
 	}
 }
@@ -502,16 +500,6 @@ func toggleConsoleWindow() {
 	ToggleConsoleWindow()
 }
 
-func (t *windowsTrayManager) openDashboard() {
-	url := t.serverAddr
-	if url == "" {
-		url = "https://localhost:8443"
-	}
-	urlPtr, _ := syscall.UTF16PtrFromString(url)
-	openPtr, _ := syscall.UTF16PtrFromString("open")
-	procShellExecuteW.Call(0, uintptr(unsafe.Pointer(openPtr)), uintptr(unsafe.Pointer(urlPtr)), 0, 0, 1 /* SW_SHOWNORMAL */)
-}
-
 func (t *windowsTrayManager) toggleWindowsService() {
 	svcMgr := service.NewServiceManager("BarahnAgent")
 	status, err := svcMgr.Status()
@@ -582,10 +570,6 @@ func wndProc(hwnd uintptr, message uint32, wParam uintptr, lParam uintptr) uintp
 			if activeTray != nil {
 				activeTray.copyIDToClipboard()
 			}
-		case cmdOpenDashboard:
-			if activeTray != nil {
-				go activeTray.openDashboard()
-			}
 		case cmdToggleLogs:
 			toggleConsoleWindow()
 		case cmdToggleService:
@@ -627,7 +611,6 @@ func showContextMenu(hwnd uintptr) {
 	idText, _ := syscall.UTF16PtrFromString(fmt.Sprintf("ID: %s", activeTray.agentID))
 	serverText, _ := syscall.UTF16PtrFromString(fmt.Sprintf("Server: %s", activeTray.serverAddr))
 	copyText, _ := syscall.UTF16PtrFromString("Copy Endpoint ID")
-	dashText, _ := syscall.UTF16PtrFromString("Open Web Dashboard")
 
 	var logActionText string
 	if isConsoleVisible() {
@@ -657,7 +640,6 @@ func showContextMenu(hwnd uintptr) {
 	procAppendMenuW.Call(hMenu, uintptr(mfString|mfDisabled), uintptr(cmdServer), uintptr(unsafe.Pointer(serverText)))
 	procAppendMenuW.Call(hMenu, uintptr(mfSeparator), 0, 0)
 	procAppendMenuW.Call(hMenu, uintptr(mfString), uintptr(cmdCopyID), uintptr(unsafe.Pointer(copyText)))
-	procAppendMenuW.Call(hMenu, uintptr(mfString), uintptr(cmdOpenDashboard), uintptr(unsafe.Pointer(dashText)))
 	procAppendMenuW.Call(hMenu, uintptr(mfString), uintptr(cmdToggleLogs), uintptr(unsafe.Pointer(logText)))
 	procAppendMenuW.Call(hMenu, uintptr(mfString), uintptr(cmdToggleService), uintptr(unsafe.Pointer(svcText)))
 	procAppendMenuW.Call(hMenu, uintptr(mfSeparator), 0, 0)
