@@ -25,6 +25,21 @@ func hasDisplay() bool {
 // The race is real and affects the agent, not only these tests - see #151.
 // Skipping keeps the rest of the package under -race instead of dropping the
 // whole package, which is the alternative.
+// requireNoInteractiveConsent skips tests that need real pixels on a Wayland
+// session.
+//
+// With the portal handshake fixed, Wayland capture goes through
+// xdg-desktop-portal, which raises a consent dialog and blocks until a person
+// answers it. A test cannot click Share, so it would either hang or assert on
+// frames that will never arrive. Under X11 - including Xvfb in CI - capture
+// needs no consent and these tests run normally.
+func requireNoInteractiveConsent(t *testing.T) {
+	t.Helper()
+	if DetectDisplayServer() == DisplayServerWayland {
+		t.Skip("skipping on a Wayland session: capture requires interactive portal consent")
+	}
+}
+
 func requireNoUpstreamRace(t *testing.T) {
 	t.Helper()
 	if raceDetectorEnabled {
@@ -37,6 +52,7 @@ func TestNewCapturer(t *testing.T) {
 		t.Skip("DISPLAY not set — skipping X11 capture test")
 	}
 	requireNoUpstreamRace(t)
+	requireNoInteractiveConsent(t)
 
 	config := DefaultConfig()
 	cap, err := NewCapturer(config)
@@ -66,6 +82,7 @@ func TestCaptureFrames(t *testing.T) {
 		t.Skip("DISPLAY not set — skipping X11 capture test")
 	}
 	requireNoUpstreamRace(t)
+	requireNoInteractiveConsent(t)
 
 	config := DefaultConfig()
 	config.TargetFPS = 10 // Low FPS for testing
@@ -125,6 +142,7 @@ func TestDoubleStart(t *testing.T) {
 		t.Skip("DISPLAY not set — skipping X11 capture test")
 	}
 	requireNoUpstreamRace(t)
+	requireNoInteractiveConsent(t)
 
 	config := DefaultConfig()
 	cap, err := NewCapturer(config)
@@ -152,6 +170,7 @@ func TestSetDisplayInvalid(t *testing.T) {
 		t.Skip("DISPLAY not set — skipping X11 capture test")
 	}
 	requireNoUpstreamRace(t)
+	requireNoInteractiveConsent(t)
 
 	config := DefaultConfig()
 	cap, err := NewCapturer(config)
