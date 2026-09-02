@@ -266,7 +266,14 @@ type dbusIconPixmap struct {
 }
 
 func loadLinuxIconPixmaps() []dbusIconPixmap {
+	// The symbolic variant comes first. It is the full-colour artwork flattened
+	// to white with its alpha kept, which is what a panel needs: the colour
+	// icon is dark navy and disappears against a dark top bar, which is what
+	// GNOME and most panels use. This pixmap is only the fallback - shells that
+	// honour IconName get the symbolic SVG and recolour it per theme.
 	candidatePaths := []string{
+		"icons/barahn-symbolic.png",
+		"assets/icon-symbolic.png",
 		"icons/barahn.png",
 		"icons/512x512/barahn.png",
 		"assets/icon.png",
@@ -274,6 +281,8 @@ func loadLinuxIconPixmaps() []dbusIconPixmap {
 
 	if home, err := os.UserHomeDir(); err == nil {
 		candidatePaths = append([]string{
+			fmt.Sprintf("%s/.local/share/icons/hicolor/24x24/apps/barahn-symbolic.png", home),
+			fmt.Sprintf("%s/.local/share/icons/barahn-symbolic.png", home),
 			fmt.Sprintf("%s/.local/share/icons/hicolor/512x512/apps/barahn.png", home),
 			fmt.Sprintf("%s/.local/share/icons/hicolor/24x24/apps/barahn.png", home),
 			fmt.Sprintf("%s/.local/share/icons/barahn.png", home),
@@ -320,7 +329,7 @@ func loadLinuxIconPixmaps() []dbusIconPixmap {
 				r, g, b, a := srcImg.At(srcX, srcY).RGBA()
 				// ARGB32 in network byte order (A, R, G, B)
 				offset := (y*sz + x) * 4
-				pm.Data[offset] = byte(a >> 8)     // #nosec G115
+				pm.Data[offset] = byte(a >> 8)   // #nosec G115
 				pm.Data[offset+1] = byte(r >> 8) // #nosec G115
 				pm.Data[offset+2] = byte(g >> 8) // #nosec G115
 				pm.Data[offset+3] = byte(b >> 8) // #nosec G115
@@ -365,7 +374,11 @@ func (t *linuxTrayManager) run(ctx context.Context) {
 		}
 	}
 
-	iconName := "barahn"
+	// barahn-symbolic, not barahn: symbolic icons are recoloured by the shell to
+	// the panel foreground, so the same asset stays legible on light and dark
+	// themes. Pointing at the colour icon is why the indicator was invisible
+	// against GNOME's dark top bar.
+	iconName := "barahn-symbolic"
 	pixmaps := loadLinuxIconPixmaps()
 
 	// 2. Export StatusNotifierItem Properties on /StatusNotifierItem
@@ -531,4 +544,3 @@ func (t *linuxTrayManager) sendDesktopNotification(summary, body string) {
 		int32(5000),
 	).Store()
 }
-
