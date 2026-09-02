@@ -144,7 +144,7 @@ func (c *waylandCapturer) Start(ctx context.Context) error {
 			c.logf("negotiation hit its %s deadline - note the portal dialog waits for a human to click Share, which takes longer than that",
 				portalNegotiationTimeout)
 		}
-		c.fallbackToRealOrSynthetic(captureCtx)
+		c.fallbackToX11(captureCtx)
 		return nil
 	}
 
@@ -412,8 +412,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 	defer c.closeFrames()
 	gstPath, err := exec.LookPath("gst-launch-1.0")
 	if err != nil {
-		c.logf("gst-launch-1.0 not found - rendering a synthetic desktop, NOT the real screen (install gstreamer1.0-tools and gstreamer1.0-pipewire)")
-		c.renderSyntheticFrames(ctx)
+		c.logf("gst-launch-1.0 not found - no screen capture is possible (install gstreamer1.0-tools and gstreamer1.0-pipewire)")
 		return
 	}
 
@@ -442,7 +441,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		c.logf("could not open the GStreamer stdout pipe: %v", err)
-		c.fallbackToRealOrSynthetic(ctx)
+		c.fallbackToX11(ctx)
 		return
 	}
 
@@ -453,7 +452,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 
 	if err := cmd.Start(); err != nil {
 		c.logf("GStreamer failed to start: %v", err)
-		c.fallbackToRealOrSynthetic(ctx)
+		c.fallbackToX11(ctx)
 		return
 	}
 
@@ -475,7 +474,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 			if err != nil {
 				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 					c.logf("GStreamer produced no frames (%v) after %d delivered - the PipeWire node was never readable", err, framesDelivered)
-					c.fallbackToRealOrSynthetic(ctx)
+					c.fallbackToX11(ctx)
 					return
 				}
 				continue
@@ -510,7 +509,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 	}
 }
 
-func (c *waylandCapturer) fallbackToRealOrSynthetic(ctx context.Context) {
+func (c *waylandCapturer) fallbackToX11(ctx context.Context) {
 	if xcap, xerr := newX11Capturer(c.config); xerr == nil {
 		if err := xcap.Start(ctx); err == nil {
 			// Under a Wayland session this usually captures nothing useful:
@@ -542,38 +541,6 @@ func (c *waylandCapturer) fallbackToRealOrSynthetic(ctx context.Context) {
 			return
 		}
 	}
-	go c.renderSyntheticFrames(ctx)
-}
-
-func (c *waylandCapturer) renderSyntheticFrames(ctx context.Context) {
-	c.logf("rendering SYNTHETIC frames - the viewer is not seeing the real desktop")
-	defer c.closeFrames()
-	ticker := time.NewTicker(time.Second / time.Duration(c.config.TargetFPS))
-	defer ticker.Stop()
-
-	hostname, _ := os.Hostname()
-	if hostname == "" {
-		hostname = "wayland-desktop"
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case t := <-ticker.C:
-			seq := c.seqNum.Add(1)
-			img := GenerateTestDesktopImage(c.width, c.height, "linux (Wayland)", hostname, "wayland-agent", seq, t.UTC(), c.width/2, c.height/2)
-			frame := &Frame{
-				Image:        img,
-				Bounds:       img.Bounds(),
-				DisplayIndex: c.config.DisplayIndex,
-				CapturedAt:   t,
-				SequenceNum:  seq,
-			}
-			select {
-			case c.frames <- frame:
-			default:
-			}
-		}
-	}
+	c.logf("no capture backend available - closing the frame channel instead of inventing frames")
+	c.closeFrames()
 }
