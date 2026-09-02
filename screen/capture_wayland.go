@@ -50,8 +50,11 @@ type waylandCapturer struct {
 	// sessionKind records which negotiation produced nodeID: "mutter" or
 	// "portal". They behave differently downstream, so the logs must say which.
 	sessionKind string
-	width       int
-	height      int
+	// pipewireFD is the restricted PipeWire connection returned by
+	// OpenPipeWireRemote. The portal's node id is only valid on it.
+	pipewireFD *os.File
+	width      int
+	height     int
 
 	frames    chan *Frame
 	running   atomic.Bool
@@ -70,6 +73,15 @@ type waylandCapturer struct {
 // a static desktop: the frame counter increments identically either way.
 func (c *waylandCapturer) logf(format string, args ...interface{}) {
 	log.Printf("[WaylandCapture] "+format, args...)
+}
+
+// releasePipeWireFD closes the portal's PipeWire descriptor. GStreamer inherits a
+// duplicate, so closing here does not disturb a running pipeline.
+func (c *waylandCapturer) releasePipeWireFD() {
+	if c.pipewireFD != nil {
+		_ = c.pipewireFD.Close()
+		c.pipewireFD = nil
+	}
 }
 
 func (c *waylandCapturer) closeFrames() {
@@ -164,6 +176,7 @@ func (c *waylandCapturer) Stop() {
 			c.cancel()
 		}
 		c.mu.Lock()
+		c.releasePipeWireFD()
 		if c.cmd != nil && c.cmd.Process != nil {
 			_ = c.cmd.Process.Kill()
 		}
@@ -230,6 +243,40 @@ func SaveRestoreToken(token string) {
 	_ = os.WriteFile(cleanPath, []byte(token), 0600)
 }
 
+// awaitPortalResponse blocks until the portal answers the given Request with a
+// Response signal and returns its results.
+//
+// Every xdg-desktop-portal method returns a Request object path, not its result:
+// the result arrives asynchronously on that Request. Treating the returned path
+// as the result is what produced "Invalid session" here for as long as Wayland
+// capture has existed - the session handle passed to SelectSources and Start was
+// a request path, and the portal was right to refuse it.
+func (c *waylandCapturer) awaitPortalResponse(ctx context.Context, sigChan <-chan *dbus.Signal, request dbus.ObjectPath) (map[string]dbus.Variant, error) {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("portal did not answer request %s: %w", request, ctx.Err())
+		case sig := <-sigChan:
+			if sig == nil || sig.Path != request || sig.Name != portalRequestIface+".Response" {
+				continue
+			}
+			if len(sig.Body) < 2 {
+				return nil, fmt.Errorf("malformed Response on %s", request)
+			}
+			code, _ := sig.Body[0].(uint32)
+			results, _ := sig.Body[1].(map[string]dbus.Variant)
+			switch code {
+			case 0:
+				return results, nil
+			case 1:
+				return nil, fmt.Errorf("the user dismissed the screen-share dialog")
+			default:
+				return nil, fmt.Errorf("portal refused request %s (response code %d)", request, code)
+			}
+		}
+	}
+}
+
 func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
 	// 1. Try GNOME Mutter native ScreenCast first (direct Mutter Monitor recording)
 	if err := c.initMutterSession(ctx); err == nil && c.nodeID > 0 {
@@ -242,82 +289,108 @@ func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
 		c.logf("Mutter ScreenCast returned no node id, falling through to xdg-desktop-portal")
 	}
 
-	// 2. Try XDG Desktop Portal ScreenCast
+	// 2. XDG Desktop Portal ScreenCast.
 	obj := c.bus.Object(portalDest, dbus.ObjectPath(portalPath))
 
-	sessionToken := fmt.Sprintf("barahn_session_%d", time.Now().UnixNano())
-	createOptions := map[string]dbus.Variant{
-		"session_handle_token": dbus.MakeVariant(sessionToken),
-		"handle_token":         dbus.MakeVariant(sessionToken),
+	// Subscribe before the first call: the portal may answer before we would
+	// otherwise be listening.
+	if err := c.bus.AddMatchSignal(
+		dbus.WithMatchInterface(portalRequestIface),
+		dbus.WithMatchMember("Response"),
+	); err != nil {
+		return fmt.Errorf("subscribing to portal Response signals: %w", err)
+	}
+	defer func() {
+		_ = c.bus.RemoveMatchSignal(
+			dbus.WithMatchInterface(portalRequestIface),
+			dbus.WithMatchMember("Response"),
+		)
+	}()
+
+	sigChan := make(chan *dbus.Signal, 16)
+	c.bus.Signal(sigChan)
+	defer c.bus.RemoveSignal(sigChan)
+
+	token := func(prefix string) string {
+		return fmt.Sprintf("barahn_%s_%d", prefix, time.Now().UnixNano())
 	}
 
-	var sessionHandle dbus.ObjectPath
-	err := obj.CallWithContext(ctx, portalScreenCast+".CreateSession", 0, createOptions).Store(&sessionHandle)
+	// 2a. CreateSession. The session handle comes back in the Response results.
+	var request dbus.ObjectPath
+	if err := obj.CallWithContext(ctx, portalScreenCast+".CreateSession", 0, map[string]dbus.Variant{
+		"session_handle_token": dbus.MakeVariant(token("session")),
+		"handle_token":         dbus.MakeVariant(token("create")),
+	}).Store(&request); err != nil {
+		return fmt.Errorf("CreateSession call failed: %w", err)
+	}
+	results, err := c.awaitPortalResponse(ctx, sigChan, request)
 	if err != nil {
-		return fmt.Errorf("CreateSession D-Bus call failed: %w", err)
+		return fmt.Errorf("CreateSession: %w", err)
 	}
-	c.session = sessionHandle
+	handle, ok := results["session_handle"].Value().(string)
+	if !ok || handle == "" {
+		return fmt.Errorf("CreateSession returned no session_handle")
+	}
+	c.session = dbus.ObjectPath(handle)
 	c.isMutter = false
+	c.sessionKind = "portal"
+	c.logf("portal session created: %s", c.session)
 
-	selectToken := fmt.Sprintf("barahn_sources_%d", time.Now().UnixNano())
+	// 2b. SelectSources.
 	selectOptions := map[string]dbus.Variant{
 		"types":        dbus.MakeVariant(uint32(1)), // Monitor
 		"multiple":     dbus.MakeVariant(false),
 		"cursor_mode":  dbus.MakeVariant(uint32(2)), // Embedded cursor
-		"handle_token": dbus.MakeVariant(selectToken),
+		"handle_token": dbus.MakeVariant(token("sources")),
 	}
 	if tok := readRestoreToken(); tok != "" {
 		selectOptions["restore_token"] = dbus.MakeVariant(tok)
 	}
-
-	var selectHandle dbus.ObjectPath
-	_ = obj.CallWithContext(ctx, portalScreenCast+".SelectSources", 0, c.session, selectOptions).Store(&selectHandle)
-
-	startToken := fmt.Sprintf("barahn_start_%d", time.Now().UnixNano())
-	startOptions := map[string]dbus.Variant{
-		"handle_token": dbus.MakeVariant(startToken),
+	if err := obj.CallWithContext(ctx, portalScreenCast+".SelectSources", 0, c.session, selectOptions).Store(&request); err != nil {
+		return fmt.Errorf("SelectSources call failed: %w", err)
+	}
+	if _, err := c.awaitPortalResponse(ctx, sigChan, request); err != nil {
+		return fmt.Errorf("SelectSources: %w", err)
 	}
 
-	// Listen for portal Request Response signal on session bus
-	sigChan := make(chan *dbus.Signal, 10)
-	c.bus.Signal(sigChan)
-	defer c.bus.RemoveSignal(sigChan)
-
+	// 2c. Start. This is where the consent dialog appears, so it can block for
+	// as long as a person takes to answer.
 	c.logf("portal Start called - waiting for the user to accept the screen-share dialog")
-	var startHandle dbus.ObjectPath
-	err = obj.CallWithContext(ctx, portalScreenCast+".Start", 0, c.session, "", startOptions).Store(&startHandle)
-	if err != nil {
-		return fmt.Errorf("Start ScreenCast portal call failed: %w", err)
+	if err := obj.CallWithContext(ctx, portalScreenCast+".Start", 0, c.session, "", map[string]dbus.Variant{
+		"handle_token": dbus.MakeVariant(token("start")),
+	}).Store(&request); err != nil {
+		return fmt.Errorf("Start call failed: %w", err)
 	}
-
-	// Wait for user to grant permission and portal to return stream node ID
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case sig := <-sigChan:
-			if sig == nil {
-				continue
-			}
-			if strings.HasSuffix(string(sig.Path), startToken) || sig.Name == "org.freedesktop.portal.Request.Response" {
-				if len(sig.Body) >= 2 {
-					if respCode, ok := sig.Body[0].(uint32); ok && respCode == 0 {
-						if results, ok := sig.Body[1].(map[string]dbus.Variant); ok {
-							if streamsVar, exists := results["streams"]; exists {
-								c.parseStreamsVariant(streamsVar)
-							}
-							if tokVar, exists := results["restore_token"]; exists {
-								if tok, ok := tokVar.Value().(string); ok {
-									SaveRestoreToken(tok)
-								}
-							}
-							return nil
-						}
-					}
-				}
-			}
+	results, err = c.awaitPortalResponse(ctx, sigChan, request)
+	if err != nil {
+		return fmt.Errorf("Start: %w", err)
+	}
+	if streams, exists := results["streams"]; exists {
+		c.parseStreamsVariant(streams)
+	}
+	if tokVar, exists := results["restore_token"]; exists {
+		if tok, ok := tokVar.Value().(string); ok {
+			SaveRestoreToken(tok)
 		}
 	}
+	if c.nodeID == 0 {
+		return fmt.Errorf("Start returned no PipeWire node id")
+	}
+
+	// 2d. OpenPipeWireRemote. The node id is only addressable on the restricted
+	// PipeWire connection this returns; on the session's default connection it
+	// does not exist, which is why pipewiresrc produced no buffers.
+	var fd dbus.UnixFD
+	if err := obj.CallWithContext(ctx, portalScreenCast+".OpenPipeWireRemote", 0, c.session, map[string]dbus.Variant{}).Store(&fd); err != nil {
+		return fmt.Errorf("OpenPipeWireRemote call failed: %w", err)
+	}
+	c.pipewireFD = os.NewFile(uintptr(fd), "pipewire-remote")
+	if c.pipewireFD == nil {
+		return fmt.Errorf("OpenPipeWireRemote returned an unusable descriptor")
+	}
+	c.logf("portal negotiated: node id %d on a dedicated PipeWire fd", c.nodeID)
+
+	return nil
 }
 
 func (c *waylandCapturer) parseStreamsVariant(streamsVar dbus.Variant) {
@@ -418,7 +491,17 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 
 	// GStreamer pipeline to pull frames from PipeWire into raw RGBA stdout
 	var args []string
-	if c.nodeID > 0 {
+	if c.pipewireFD != nil && c.nodeID > 0 {
+		// ExtraFiles[0] lands as fd 3 in the child. The portal's node is only
+		// reachable on that connection, so both parts are required.
+		args = []string{
+			"-q",
+			"pipewiresrc", "fd=3", fmt.Sprintf("path=%d", c.nodeID), "do-timestamp=true", "keepalive-time=1000",
+			"!", "videoconvert",
+			"!", fmt.Sprintf("video/x-raw,format=RGBA,width=%d,height=%d,framerate=%d/1", c.width, c.height, c.config.TargetFPS),
+			"!", "fdsink", "fd=1",
+		}
+	} else if c.nodeID > 0 {
 		args = []string{
 			"-q",
 			"pipewiresrc", fmt.Sprintf("target-object=%d", c.nodeID), "do-timestamp=true", "keepalive-time=1000",
@@ -438,6 +521,9 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 
 	c.logf("starting GStreamer: %s %s", gstPath, strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, gstPath, args...) // #nosec G204 -- gstPath resolved via exec.LookPath
+	if c.pipewireFD != nil {
+		cmd.ExtraFiles = []*os.File{c.pipewireFD}
+	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		c.logf("could not open the GStreamer stdout pipe: %v", err)
@@ -510,6 +596,18 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 }
 
 func (c *waylandCapturer) fallbackToX11(ctx context.Context) {
+	// Under Wayland this fallback is worse than none. Xwayland is running for
+	// X11 app compatibility, so an X11 capturer connects, reports the right
+	// geometry and grabs the root window - which the compositor never draws
+	// native Wayland surfaces into. The capture succeeds and returns nothing,
+	// which is how blank frames were streamed for weeks while every layer
+	// reported success. A failure that announces itself beats one that does not.
+	if DetectDisplayServer() == DisplayServerWayland {
+		c.logf("not falling back to X11: this is a Wayland session, where an X11 grab returns a blank screen rather than failing")
+		c.closeFrames()
+		return
+	}
+
 	if xcap, xerr := newX11Capturer(c.config); xerr == nil {
 		if err := xcap.Start(ctx); err == nil {
 			// Under a Wayland session this usually captures nothing useful:
