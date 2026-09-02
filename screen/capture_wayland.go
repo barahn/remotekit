@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"image"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +20,12 @@ import (
 
 	"github.com/godbus/dbus/v5"
 )
+
+// portalNegotiationTimeout bounds session setup. It is generous on purpose: the
+// xdg-desktop-portal flow shows a consent dialog and blocks until a person
+// clicks Share, so anything under a few seconds guarantees a timeout and a
+// silent fall back to an empty X11 grab.
+const portalNegotiationTimeout = 60 * time.Second
 
 const (
 	mutterDest            = "org.gnome.Mutter.ScreenCast"
@@ -40,8 +47,11 @@ type waylandCapturer struct {
 	session  dbus.ObjectPath
 	isMutter bool
 	nodeID   uint32
-	width    int
-	height   int
+	// sessionKind records which negotiation produced nodeID: "mutter" or
+	// "portal". They behave differently downstream, so the logs must say which.
+	sessionKind string
+	width       int
+	height      int
 
 	frames    chan *Frame
 	running   atomic.Bool
@@ -53,6 +63,13 @@ type waylandCapturer struct {
 	cmd    *exec.Cmd
 	pipeIn io.ReadCloser
 	mu     sync.Mutex
+}
+
+// logf records which capture path was taken. This file used to have no logging
+// at all, which made a black screen indistinguishable from a working capture of
+// a static desktop: the frame counter increments identically either way.
+func (c *waylandCapturer) logf(format string, args ...interface{}) {
+	log.Printf("[WaylandCapture] "+format, args...)
 }
 
 func (c *waylandCapturer) closeFrames() {
@@ -114,14 +131,24 @@ func (c *waylandCapturer) Start(ctx context.Context) error {
 	c.cancel = cancel
 
 	// Initialize portal session and PipeWire stream with a quick timeout
-	portalCtx, portalCancel := context.WithTimeout(captureCtx, 1500*time.Millisecond)
+	portalCtx, portalCancel := context.WithTimeout(captureCtx, portalNegotiationTimeout)
 	defer portalCancel()
 
 	if err := c.initPortalSession(portalCtx); err != nil || c.nodeID == 0 {
+		if err != nil {
+			c.logf("session negotiation failed: %v", err)
+		} else {
+			c.logf("session negotiation returned no PipeWire node id")
+		}
+		if errors.Is(portalCtx.Err(), context.DeadlineExceeded) {
+			c.logf("negotiation hit its %s deadline - note the portal dialog waits for a human to click Share, which takes longer than that",
+				portalNegotiationTimeout)
+		}
 		c.fallbackToRealOrSynthetic(captureCtx)
 		return nil
 	}
 
+	c.logf("capturing via %s, node id %d, %dx%d", c.sessionKind, c.nodeID, c.width, c.height)
 	go c.streamLoop(captureCtx)
 	return nil
 }
@@ -206,7 +233,13 @@ func SaveRestoreToken(token string) {
 func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
 	// 1. Try GNOME Mutter native ScreenCast first (direct Mutter Monitor recording)
 	if err := c.initMutterSession(ctx); err == nil && c.nodeID > 0 {
+		c.sessionKind = "mutter"
+		c.logf("Mutter ScreenCast negotiated, node id %d", c.nodeID)
 		return nil
+	} else if err != nil {
+		c.logf("Mutter ScreenCast unavailable (%v), falling through to xdg-desktop-portal", err)
+	} else {
+		c.logf("Mutter ScreenCast returned no node id, falling through to xdg-desktop-portal")
 	}
 
 	// 2. Try XDG Desktop Portal ScreenCast
@@ -250,6 +283,7 @@ func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
 	c.bus.Signal(sigChan)
 	defer c.bus.RemoveSignal(sigChan)
 
+	c.logf("portal Start called - waiting for the user to accept the screen-share dialog")
 	var startHandle dbus.ObjectPath
 	err = obj.CallWithContext(ctx, portalScreenCast+".Start", 0, c.session, "", startOptions).Store(&startHandle)
 	if err != nil {
@@ -378,7 +412,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 	defer c.closeFrames()
 	gstPath, err := exec.LookPath("gst-launch-1.0")
 	if err != nil {
-		// Fall back to synthetic desktop renderer if gst-launch-1.0 is not installed
+		c.logf("gst-launch-1.0 not found - rendering a synthetic desktop, NOT the real screen (install gstreamer1.0-tools and gstreamer1.0-pipewire)")
 		c.renderSyntheticFrames(ctx)
 		return
 	}
@@ -403,9 +437,11 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 		}
 	}
 
+	c.logf("starting GStreamer: %s %s", gstPath, strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, gstPath, args...) // #nosec G204 -- gstPath resolved via exec.LookPath
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
+		c.logf("could not open the GStreamer stdout pipe: %v", err)
 		c.fallbackToRealOrSynthetic(ctx)
 		return
 	}
@@ -416,6 +452,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 	c.mu.Unlock()
 
 	if err := cmd.Start(); err != nil {
+		c.logf("GStreamer failed to start: %v", err)
 		c.fallbackToRealOrSynthetic(ctx)
 		return
 	}
@@ -423,6 +460,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 	frameSize := c.width * c.height * 4
 	bufReader := bufio.NewReaderSize(stdout, frameSize*2)
 	frameBuf := make([]byte, frameSize)
+	framesDelivered := 0
 
 	targetInterval := time.Second / time.Duration(c.config.TargetFPS)
 	ticker := time.NewTicker(targetInterval)
@@ -436,11 +474,17 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 			_, err := io.ReadFull(bufReader, frameBuf)
 			if err != nil {
 				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+					c.logf("GStreamer produced no frames (%v) after %d delivered - the PipeWire node was never readable", err, framesDelivered)
 					c.fallbackToRealOrSynthetic(ctx)
 					return
 				}
 				continue
 			}
+
+			if framesDelivered == 0 {
+				c.logf("first real frame received from PipeWire (%dx%d) - this is the live screen", c.width, c.height)
+			}
+			framesDelivered++
 
 			img := &image.RGBA{
 				Pix:    make([]byte, frameSize),
@@ -469,6 +513,10 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 func (c *waylandCapturer) fallbackToRealOrSynthetic(ctx context.Context) {
 	if xcap, xerr := newX11Capturer(c.config); xerr == nil {
 		if err := xcap.Start(ctx); err == nil {
+			// Under a Wayland session this usually captures nothing useful:
+			// Xwayland does not composite the Wayland desktop into the X root
+			// window, so the grab is an empty image at the right geometry.
+			c.logf("falling back to X11 capture - under Wayland this typically yields a BLANK screen, not the desktop")
 			go func() {
 				defer c.closeFrames()
 				defer xcap.Stop()
@@ -498,6 +546,7 @@ func (c *waylandCapturer) fallbackToRealOrSynthetic(ctx context.Context) {
 }
 
 func (c *waylandCapturer) renderSyntheticFrames(ctx context.Context) {
+	c.logf("rendering SYNTHETIC frames - the viewer is not seeing the real desktop")
 	defer c.closeFrames()
 	ticker := time.NewTicker(time.Second / time.Duration(c.config.TargetFPS))
 	defer ticker.Stop()
