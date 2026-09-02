@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -393,31 +394,60 @@ func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
 	return nil
 }
 
+// parseStreamsVariant reads the PipeWire node id and geometry out of the
+// portal's `streams` result, whose signature is a(ua{sv}) - an array of
+// (node_id, properties) structs.
+//
+// The concrete Go type godbus produces for that is [][]interface{}, since it
+// represents a struct as []interface{}. The previous implementation matched
+// [][2]interface{} and []interface{} and therefore matched nothing, leaving
+// nodeID at zero after a Start the portal had answered successfully. Reflection
+// is used rather than a type switch so a different-but-equivalent shape does
+// not silently fall through again.
 func (c *waylandCapturer) parseStreamsVariant(streamsVar dbus.Variant) {
-	// D-Bus signature for streams: a(ua{sv})
-	val := streamsVar.Value()
-	switch s := val.(type) {
-	case [][2]interface{}:
-		if len(s) > 0 {
-			if id, ok := s[0][0].(uint32); ok {
-				c.nodeID = id
-			}
-			if props, ok := s[0][1].(map[string]dbus.Variant); ok {
-				c.extractDimensions(props)
-			}
-		}
-	case []interface{}:
-		for _, item := range s {
-			if pair, ok := item.([]interface{}); ok && len(pair) >= 2 {
-				if id, ok := pair[0].(uint32); ok {
-					c.nodeID = id
-				}
-				if props, ok := pair[1].(map[string]dbus.Variant); ok {
-					c.extractDimensions(props)
-				}
-			}
-		}
+	outer := reflect.ValueOf(streamsVar.Value())
+	if !isSequence(outer) || outer.Len() == 0 {
+		c.logf("portal returned a streams value this code cannot read (%T)", streamsVar.Value())
+		return
 	}
+
+	for i := 0; i < outer.Len(); i++ {
+		entry := reflect.ValueOf(deref(outer.Index(i)))
+		if !isSequence(entry) || entry.Len() < 2 {
+			continue
+		}
+
+		id, ok := deref(entry.Index(0)).(uint32)
+		if !ok {
+			continue
+		}
+		c.nodeID = id
+
+		if props, ok := deref(entry.Index(1)).(map[string]dbus.Variant); ok {
+			c.extractDimensions(props)
+		}
+		return // first stream wins; SelectSources asked for a single monitor
+	}
+
+	c.logf("portal returned %d stream(s) but none carried a usable node id", outer.Len())
+}
+
+// isSequence reports whether v is indexable. A D-Bus struct can arrive as a
+// slice or as a fixed-size array depending on how it was decoded, and checking
+// only for Slice is what let the previous parser miss the real shape.
+func isSequence(v reflect.Value) bool {
+	return v.IsValid() && (v.Kind() == reflect.Slice || v.Kind() == reflect.Array)
+}
+
+// deref unwraps interface values so reflection sees the concrete type.
+func deref(v reflect.Value) interface{} {
+	for v.Kind() == reflect.Interface {
+		v = v.Elem()
+	}
+	if !v.IsValid() {
+		return nil
+	}
+	return v.Interface()
 }
 
 func (c *waylandCapturer) extractDimensions(props map[string]dbus.Variant) {
