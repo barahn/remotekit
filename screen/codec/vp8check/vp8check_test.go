@@ -1,4 +1,4 @@
-package conformance_test
+package vp8check_test
 
 import (
 	"errors"
@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/barahn/remotekit/screen/codec/conformance"
 	"github.com/barahn/remotekit/screen/codec/ivf"
+	"github.com/barahn/remotekit/screen/codec/vp8check"
 )
 
 // Dimensions and frame count of testdata/keyframes.ivf.
@@ -19,18 +19,18 @@ const (
 )
 
 // requireTool resolves the reference decoder, skipping when it is absent unless
-// the run demands it. See conformance.RequiredEnv.
+// the run demands it. See vp8check.RequiredEnv.
 func requireTool(t *testing.T) string {
 	t.Helper()
-	path, required, err := conformance.Availability()
+	path, required, err := vp8check.Availability()
 	if err == nil {
 		return path
 	}
 	if required {
 		t.Fatalf("%s is required (%s is set) but unavailable: %v\n"+
-			"Install it with: apt-get install vpx-tools", conformance.ToolName, conformance.RequiredEnv, err)
+			"Install it with: apt-get install vpx-tools", vp8check.ToolName, vp8check.RequiredEnv, err)
 	}
-	t.Skipf("skipping conformance check: %v (set %s=1 to make this fatal)", err, conformance.RequiredEnv)
+	t.Skipf("skipping conformance check: %v (set %s=1 to make this fatal)", err, vp8check.RequiredEnv)
 	return ""
 }
 
@@ -62,7 +62,7 @@ func TestOracleAcceptsKnownGoodStream(t *testing.T) {
 		t.Fatalf("read fixture: %v", err)
 	}
 
-	frames, err := conformance.Decode(tool, data, fixtureWidth, fixtureHeight)
+	frames, err := vp8check.Decode(tool, data, fixtureWidth, fixtureHeight)
 	if err != nil {
 		t.Fatalf("reference decoder rejected a known-good stream: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestOracleAcceptsKnownGoodStream(t *testing.T) {
 
 	for i, got := range frames {
 		want := referenceFrame(i, fixtureWidth, fixtureHeight)
-		psnr, err := conformance.PSNR(got.Y, want[:fixtureWidth*fixtureHeight])
+		psnr, err := vp8check.PSNR(got.Y, want[:fixtureWidth*fixtureHeight])
 		if err != nil {
 			t.Fatalf("frame %d: PSNR: %v", i, err)
 		}
@@ -103,12 +103,12 @@ func TestOracleRejectsCorruptStream(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 
-	if _, err := conformance.Decode(tool, data, fixtureWidth, fixtureHeight); err == nil {
+	if _, err := vp8check.Decode(tool, data, fixtureWidth, fixtureHeight); err == nil {
 		t.Fatal("reference decoder accepted a corrupt stream; the oracle has no teeth")
 	} else {
-		var decErr *conformance.DecodeError
+		var decErr *vp8check.DecodeError
 		if !errors.As(err, &decErr) {
-			t.Fatalf("got %T (%v), want *conformance.DecodeError", err, err)
+			t.Fatalf("got %T (%v), want *vp8check.DecodeError", err, err)
 		}
 		t.Logf("rejected as expected: %v", decErr)
 	}
@@ -118,7 +118,7 @@ func TestPSNR(t *testing.T) {
 	t.Parallel()
 
 	identical := []byte{1, 2, 3, 4}
-	got, err := conformance.PSNR(identical, identical)
+	got, err := vp8check.PSNR(identical, identical)
 	if err != nil {
 		t.Fatalf("identical planes: %v", err)
 	}
@@ -126,17 +126,17 @@ func TestPSNR(t *testing.T) {
 		t.Errorf("identical planes: got %v, want +Inf", got)
 	}
 
-	if _, err := conformance.PSNR([]byte{1}, []byte{1, 2}); err == nil {
+	if _, err := vp8check.PSNR([]byte{1}, []byte{1, 2}); err == nil {
 		t.Error("mismatched lengths: expected an error")
 	}
-	if _, err := conformance.PSNR(nil, nil); err == nil {
+	if _, err := vp8check.PSNR(nil, nil); err == nil {
 		t.Error("empty planes: expected an error")
 	}
 
 	// A uniform off-by-one across the plane is 20*log10(255) dB.
 	a := []byte{10, 10, 10, 10}
 	b := []byte{11, 11, 11, 11}
-	got, err = conformance.PSNR(a, b)
+	got, err = vp8check.PSNR(a, b)
 	if err != nil {
 		t.Fatalf("off-by-one: %v", err)
 	}

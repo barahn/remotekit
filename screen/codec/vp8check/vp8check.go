@@ -1,4 +1,4 @@
-// Package conformance runs the libvpx reference decoder (`vpxdec`) as an
+// Package vp8check runs the libvpx reference decoder (`vpxdec`) as an
 // out-of-band oracle over VP8 encoder output.
 //
 // # Why an external decoder
@@ -16,7 +16,7 @@
 // libvpx runs as a test-time subprocess. It is never linked into the agent, and
 // nothing here is reachable from a production build. The premise protects the
 // agent's address space, not the CI pipeline.
-package conformance
+package vp8check
 
 import (
 	"bytes"
@@ -44,7 +44,7 @@ const RequiredEnv = "VP8_CONFORMANCE_REQUIRED"
 const decodeTimeout = 60 * time.Second
 
 // ErrToolMissing reports that the reference decoder is not installed.
-var ErrToolMissing = errors.New("conformance: " + ToolName + " not found in PATH")
+var ErrToolMissing = errors.New("vp8check: " + ToolName + " not found in PATH")
 
 // DecodeError is returned when the reference decoder rejects a stream. Its
 // Stderr carries the decoder's own diagnostic, which is the useful part when a
@@ -56,9 +56,9 @@ type DecodeError struct {
 
 func (e *DecodeError) Error() string {
 	if e.Stderr == "" {
-		return fmt.Sprintf("conformance: %s rejected the stream: %v", ToolName, e.Err)
+		return fmt.Sprintf("vp8check: %s rejected the stream: %v", ToolName, e.Err)
 	}
-	return fmt.Sprintf("conformance: %s rejected the stream: %v: %s", ToolName, e.Err, e.Stderr)
+	return fmt.Sprintf("vp8check: %s rejected the stream: %v: %s", ToolName, e.Err, e.Stderr)
 }
 
 func (e *DecodeError) Unwrap() error { return e.Err }
@@ -94,22 +94,22 @@ func Availability() (path string, required bool, err error) {
 // different dimensions is reported as an error rather than silently misparsed.
 func Decode(toolPath string, ivfData []byte, width, height int) ([]Frame, error) {
 	if width <= 0 || height <= 0 {
-		return nil, fmt.Errorf("conformance: invalid dimensions %dx%d", width, height)
+		return nil, fmt.Errorf("vp8check: invalid dimensions %dx%d", width, height)
 	}
 	if width%2 != 0 || height%2 != 0 {
-		return nil, fmt.Errorf("conformance: I420 requires even dimensions, got %dx%d", width, height)
+		return nil, fmt.Errorf("vp8check: I420 requires even dimensions, got %dx%d", width, height)
 	}
 
-	dir, err := os.MkdirTemp("", "vp8-conformance-")
+	dir, err := os.MkdirTemp("", "vp8check-")
 	if err != nil {
-		return nil, fmt.Errorf("conformance: temp dir: %w", err)
+		return nil, fmt.Errorf("vp8check: temp dir: %w", err)
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
 	inPath := filepath.Join(dir, "stream.ivf")
 	outPath := filepath.Join(dir, "decoded.i420")
 	if err := os.WriteFile(inPath, ivfData, 0o600); err != nil {
-		return nil, fmt.Errorf("conformance: write stream: %w", err)
+		return nil, fmt.Errorf("vp8check: write stream: %w", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), decodeTimeout)
@@ -127,7 +127,7 @@ func Decode(toolPath string, ivfData []byte, width, height int) ([]Frame, error)
 
 	raw, err := os.ReadFile(outPath) // #nosec G304 -- path constructed above inside our temp dir
 	if err != nil {
-		return nil, fmt.Errorf("conformance: read decoded output: %w", err)
+		return nil, fmt.Errorf("vp8check: read decoded output: %w", err)
 	}
 	if len(raw) == 0 {
 		return nil, &DecodeError{
@@ -166,10 +166,10 @@ func Decode(toolPath string, ivfData []byte, width, height int) ([]Frame, error)
 // as a pass rather than compare it numerically.
 func PSNR(a, b []byte) (float64, error) {
 	if len(a) != len(b) {
-		return 0, fmt.Errorf("conformance: plane lengths differ: %d vs %d", len(a), len(b))
+		return 0, fmt.Errorf("vp8check: plane lengths differ: %d vs %d", len(a), len(b))
 	}
 	if len(a) == 0 {
-		return 0, errors.New("conformance: empty plane")
+		return 0, errors.New("vp8check: empty plane")
 	}
 	var sum float64
 	for i := range a {

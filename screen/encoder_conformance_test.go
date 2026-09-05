@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/barahn/remotekit/screen"
-	"github.com/barahn/remotekit/screen/codec/conformance"
 	"github.com/barahn/remotekit/screen/codec/ivf"
+	"github.com/barahn/remotekit/screen/codec/vp8check"
 )
 
 const (
@@ -19,15 +19,15 @@ const (
 
 func requireTool(t *testing.T) string {
 	t.Helper()
-	path, required, err := conformance.Availability()
+	path, required, err := vp8check.Availability()
 	if err == nil {
 		return path
 	}
 	if required {
 		t.Fatalf("%s is required (%s is set) but unavailable: %v\n"+
-			"Install it with: apt-get install vpx-tools", conformance.ToolName, conformance.RequiredEnv, err)
+			"Install it with: apt-get install vpx-tools", vp8check.ToolName, vp8check.RequiredEnv, err)
 	}
-	t.Skipf("skipping conformance check: %v (set %s=1 to make this fatal)", err, conformance.RequiredEnv)
+	t.Skipf("skipping conformance check: %v (set %s=1 to make this fatal)", err, vp8check.RequiredEnv)
 	return ""
 }
 
@@ -73,7 +73,7 @@ func TestPlaceholderEncoderIsNotConformant(t *testing.T) {
 		t.Fatalf("Marshal: %v", err)
 	}
 
-	frames, err := conformance.Decode(tool, data, testWidth, testHeight)
+	frames, err := vp8check.Decode(tool, data, testWidth, testHeight)
 	if err == nil {
 		t.Fatalf("the reference decoder accepted %d frames from the placeholder encoder; "+
 			"if the real encoder has landed, replace this test with a positive conformance assertion",
