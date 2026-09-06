@@ -298,6 +298,16 @@ func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
 		c.logf("Mutter ScreenCast returned no node id, falling through to xdg-desktop-portal")
 	}
 
+	// initMutterSession sets c.session and c.isMutter as soon as CreateSession
+	// succeeds, before RecordMonitor and the node-id lookup that can still fail.
+	// Both fall-through paths above therefore arrive here with a live Mutter
+	// session on the compositor, and the portal path below overwrites c.session
+	// with its own handle - after which Stop() closes the portal session and
+	// never the Mutter one. GNOME Shell then holds that session, and its
+	// screen-capture grant, until this process exits. Close it before the
+	// handle is lost.
+	c.releaseMutterSession(ctx)
+
 	// 2. XDG Desktop Portal ScreenCast.
 	obj := c.bus.Object(portalDest, dbus.ObjectPath(portalPath))
 
@@ -467,6 +477,22 @@ func (c *waylandCapturer) extractDimensions(props map[string]dbus.Variant) {
 			}
 		}
 	}
+}
+
+// releaseMutterSession stops a Mutter ScreenCast session that initMutterSession
+// created but could not carry to a usable node id. It is a no-op when there is
+// nothing to release, so callers need not check first.
+func (c *waylandCapturer) releaseMutterSession(ctx context.Context) {
+	if !c.isMutter || c.session == "" {
+		return
+	}
+	stopCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	if err := c.bus.Object(mutterDest, c.session).CallWithContext(stopCtx, mutterSessionIface+".Stop", 0).Store(); err != nil {
+		c.logf("could not stop the partially negotiated Mutter session: %v", err)
+	}
+	c.session = ""
+	c.isMutter = false
 }
 
 func (c *waylandCapturer) initMutterSession(ctx context.Context) error {
