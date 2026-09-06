@@ -157,7 +157,15 @@ func (c *waylandCapturer) Start(ctx context.Context) error {
 			c.logf("negotiation hit its %s deadline - note the portal dialog waits for a human to click Share, which takes longer than that",
 				portalNegotiationTimeout)
 		}
-		c.fallbackToX11(captureCtx)
+		if !c.fallbackToX11(captureCtx) {
+			// Leave the capturer retryable and let the caller see the failure.
+			// Returning nil here handed back a closed frame channel that read
+			// as a healthy start, so pkg/tunnel never sent capture_unavailable
+			// and the operator watched a spinner forever.
+			c.running.Store(false)
+			cancel()
+			return fmt.Errorf("screen: no capture backend available on this %s session", DetectDisplayServer())
+		}
 		return nil
 	}
 
@@ -557,7 +565,9 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		c.logf("could not open the GStreamer stdout pipe: %v", err)
-		c.fallbackToX11(ctx)
+		// Mid-stream: Start has already returned, so the closed frame channel
+		// is the only signal available to the consumer.
+		_ = c.fallbackToX11(ctx)
 		return
 	}
 
@@ -568,7 +578,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 
 	if err := cmd.Start(); err != nil {
 		c.logf("GStreamer failed to start: %v", err)
-		c.fallbackToX11(ctx)
+		_ = c.fallbackToX11(ctx)
 		return
 	}
 
@@ -590,7 +600,7 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 			if err != nil {
 				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 					c.logf("GStreamer produced no frames (%v) after %d delivered - the PipeWire node was never readable", err, framesDelivered)
-					c.fallbackToX11(ctx)
+					_ = c.fallbackToX11(ctx)
 					return
 				}
 				continue
@@ -625,7 +635,12 @@ func (c *waylandCapturer) streamLoop(ctx context.Context) {
 	}
 }
 
-func (c *waylandCapturer) fallbackToX11(ctx context.Context) {
+// fallbackToX11 reports whether it established a frame source. False means the
+// frame channel has been closed and no frames will ever arrive on it, which
+// callers must not mistake for a working capture: Start returning nil in that
+// case is what let a closed channel look like a live session, so the
+// "capture unavailable" notice never reached the viewer.
+func (c *waylandCapturer) fallbackToX11(ctx context.Context) bool {
 	// Under Wayland this fallback is worse than none. Xwayland is running for
 	// X11 app compatibility, so an X11 capturer connects, reports the right
 	// geometry and grabs the root window - which the compositor never draws
@@ -635,7 +650,7 @@ func (c *waylandCapturer) fallbackToX11(ctx context.Context) {
 	if DetectDisplayServer() == DisplayServerWayland {
 		c.logf("not falling back to X11: this is a Wayland session, where an X11 grab returns a blank screen rather than failing")
 		c.closeFrames()
-		return
+		return false
 	}
 
 	if xcap, xerr := newX11Capturer(c.config); xerr == nil {
@@ -666,9 +681,10 @@ func (c *waylandCapturer) fallbackToX11(ctx context.Context) {
 					}
 				}
 			}()
-			return
+			return true
 		}
 	}
 	c.logf("no capture backend available - closing the frame channel instead of inventing frames")
 	c.closeFrames()
+	return false
 }
