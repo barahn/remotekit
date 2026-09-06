@@ -24,6 +24,7 @@ package vp8
 // Returns the processed macroblock with either inter or intra mode selected.
 func processInterMacroblock(srcY, srcU, srcV []byte, ref *refFrameBuffer,
 	mbX, mbY, mbW int, mbs []macroblock, qf QuantFactors, ctx *mbContext,
+	screenContent bool,
 ) macroblock {
 	mb := macroblock{
 		skip:    true,
@@ -33,9 +34,16 @@ func processInterMacroblock(srcY, srcU, srcV []byte, ref *refFrameBuffer,
 	// Get motion vector prediction from neighbors
 	nearestMV, _ := findNearestMV(mbs, mbX, mbY, mbW, ref.Width, ref.Height)
 
-	// Perform motion estimation
-	meResult := estimateMotion(srcY, ref.Y, ref.Width, ref.Height,
-		mbX*16, mbY*16, nearestMV)
+	// Perform motion estimation. The screen-content profile skips the search
+	// entirely and stays on ZEROMV; see estimateZeroMotion for why that is a
+	// correctness decision and not only a speed one.
+	var meResult motionEstimateResult
+	if screenContent {
+		meResult = estimateZeroMotion(srcY, ref.Y, ref.Width, ref.Height, mbX*16, mbY*16)
+	} else {
+		meResult = estimateMotion(srcY, ref.Y, ref.Width, ref.Height,
+			mbX*16, mbY*16, nearestMV)
+	}
 
 	// Compare with intra prediction cost
 	best16x16Mode, intraSAD := SelectBest16x16Mode(srcY, ctx.lumaAbove, ctx.lumaLeft, ctx.lumaTopLeft)
