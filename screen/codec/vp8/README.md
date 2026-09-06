@@ -68,6 +68,11 @@ reference is used"; and upstream's own tests carry two tautological assertions
 scoped to this directory and removed when the dead paths are deleted rather than
 merely unreachable.
 
+`gosec` is excluded for the same directory and the same reason: 53 `G115`
+findings, all deliberate `int` -> `int16` narrowing in the forward DCT and
+quantiser, where the VP8 spec bounds the values by construction. Fifty-three
+`#nosec` annotations would destroy the verbatim baseline this fork needs.
+
 ## The profile this project actually needs
 
 Screen content, not camera video: restrict inter macroblocks to `MV_ZERO` +
