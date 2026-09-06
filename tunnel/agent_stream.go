@@ -13,7 +13,6 @@ import (
 	"image/jpeg"
 	"log"
 	"net/http"
-	"os"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -233,44 +232,17 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 					}
 				}
 
-				// If native capture is unavailable (headless / display-less container), stream synthesized desktop
+				// Capture is either real or absent. It is never invented: an
+				// operator looking at a fabricated desktop has no way to tell it
+				// from the endpoint, and would act on it. See #157.
 				if framesChan == nil {
-					simChan := make(chan *screen.Frame, 2)
-					framesChan = simChan
-					simCtx, cancelSim := context.WithCancel(ctx)
-					stateMu.Lock()
-					activeCapCancel = cancelSim
-					stateMu.Unlock()
-
-					go func() {
-						defer close(simChan)
-						ticker := time.NewTicker(33 * time.Millisecond)
-						defer ticker.Stop()
-						var seq uint64
-						hostname, _ := os.Hostname()
-						if hostname == "" {
-							hostname = "endpoint"
-						}
-						for {
-							select {
-							case <-simCtx.Done():
-								return
-							case t := <-ticker.C:
-								seq++
-								img := screen.GenerateTestDesktopImage(1920, 1080, runtime.GOOS, hostname, r.creds.AgentID, seq, t.UTC(), 960, 540)
-								f := &screen.Frame{
-									Image:       img,
-									Bounds:      img.Bounds(),
-									CapturedAt:  t,
-									SequenceNum: seq,
-								}
-								select {
-								case simChan <- f:
-								default:
-								}
-							}
-						}
-					}()
+					log.Printf("[AgentStream] screen capture unavailable - notifying the viewer instead of streaming placeholder frames")
+					notice, _ := json.Marshal(map[string]string{
+						"type":   "capture_unavailable",
+						"reason": "no screen capture backend is available on this endpoint",
+					})
+					_ = safeWrite(notice)
+					continue
 				}
 
 				go func() {
