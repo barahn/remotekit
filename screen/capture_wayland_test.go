@@ -3,6 +3,7 @@
 package screen
 
 import (
+	"context"
 	"testing"
 
 	"github.com/godbus/dbus/v5"
@@ -67,5 +68,36 @@ func TestParseStreamsVariantRejectsGarbage(t *testing.T) {
 		if c.nodeID != 0 {
 			t.Errorf("value %#v should not have produced a node id, got %d", value, c.nodeID)
 		}
+	}
+}
+
+// TestFallbackToX11ReportsFailureUnderWayland pins the contract that let a
+// broken capture look healthy.
+//
+// Under Wayland this fallback refuses to grab the X root window — an Xwayland
+// grab returns a blank screen rather than failing — and closes the frame
+// channel instead. It used to return nothing, so Start returned nil and handed
+// the caller a closed channel that read as a working capture. pkg/tunnel checks
+// for a nil channel, not a closed one, so the capture_unavailable notice never
+// reached the viewer and the operator watched a spinner forever.
+func TestFallbackToX11ReportsFailureUnderWayland(t *testing.T) {
+	t.Setenv("XDG_SESSION_TYPE", "wayland")
+
+	c := &waylandCapturer{
+		config: DefaultConfig(),
+		frames: make(chan *Frame, 1),
+	}
+
+	if established := c.fallbackToX11(context.Background()); established {
+		t.Fatal("fallbackToX11 reported a working frame source under Wayland; Start would return nil and the caller would never learn capture is unavailable")
+	}
+
+	select {
+	case _, open := <-c.frames:
+		if open {
+			t.Fatal("a frame arrived on a channel that should have been closed")
+		}
+	default:
+		t.Fatal("the frame channel was left open, so a consumer would block forever instead of seeing capture end")
 	}
 }
