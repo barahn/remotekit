@@ -82,6 +82,29 @@ type motionEstimateResult struct {
 //   - predMV: predicted motion vector (from neighbors)
 //
 // Returns the best motion vector and its SAD cost.
+// estimateZeroMotion is the screen-content path: it evaluates MV (0,0) and
+// nothing else.
+//
+// Two reasons, and the second is the load-bearing one.
+//
+// Screen content is mostly static between frames - a cursor moves, one window
+// repaints, the rest is identical - so a motion search spends its time
+// confirming that the best vector is zero.
+//
+// More importantly it never produces MV_NEW, and MV_NEW is where this
+// encoder's inherited defects live: the bitstream codes only a delta against
+// the *decoder-derived* predictor, and findNearestMV is documented upstream as
+// possibly diverging from RFC 6386 section 18.2. Measured through libvpx, that
+// path reconstructs at 8-12 dB. Staying on ZEROMV designs the defect class out
+// rather than avoiding it by luck. See pkg/screen/codec/vp8/README.md.
+func estimateZeroMotion(srcY, ref []byte, refW, refH, mbX, mbY int) motionEstimateResult {
+	return motionEstimateResult{
+		mv:   zeroMV,
+		sad:  computeMCSAD16x16(srcY, ref, refW, refH, mbX, mbY, zeroMV),
+		mode: mvModeZeroMV,
+	}
+}
+
 func estimateMotion(srcY, ref []byte, refW, refH, mbX, mbY int, predMV motionVector) motionEstimateResult {
 	// Snap predicted MV to 2-pel grid (multiples of 8 qpel) so that
 	// chroma MVs (halved from luma) always land on integer pixels.

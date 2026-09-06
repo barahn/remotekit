@@ -36,12 +36,12 @@ import (
 )
 
 var (
-	ErrInvalidDimensions      = errors.New("width and height must be positive and even")
-	ErrInvalidPartitionCount  = errors.New("partition count must be 0-3 (OnePartition through EightPartitions)")
-	ErrInvalidQuantizerIndex  = errors.New("quantizer index must be 0-127")
-	ErrInvalidBitrate         = errors.New("bitrate must be positive")
+	ErrInvalidDimensions       = errors.New("width and height must be positive and even")
+	ErrInvalidPartitionCount   = errors.New("partition count must be 0-3 (OnePartition through EightPartitions)")
+	ErrInvalidQuantizerIndex   = errors.New("quantizer index must be 0-127")
+	ErrInvalidBitrate          = errors.New("bitrate must be positive")
 	ErrInvalidKeyFrameInterval = errors.New("key frame interval must be non-negative")
-	ErrInvalidLoopFilterLevel = errors.New("loop filter level must be 0-63")
+	ErrInvalidLoopFilterLevel  = errors.New("loop filter level must be 0-63")
 )
 
 // Encoder encodes raw YUV420 frames into VP8 key-frame bitstreams.
@@ -94,6 +94,10 @@ type Encoder struct {
 	coeffProbs [4][8][3][11]uint8
 	// useProbUpdates enables adaptive probability updates when beneficial.
 	useProbUpdates bool
+
+	// screenContent restricts inter macroblocks to ZEROMV, skip and intra.
+	// See SetScreenContentProfile.
+	screenContent bool
 }
 
 // NewEncoder creates a new VP8 Encoder for frames of the given dimensions
@@ -313,7 +317,7 @@ func (e *Encoder) processInterFrameMBs(frame *Frame, mbs []macroblock, mbW, mbH,
 			srcY := extractLumaBlock(frame, mbX, mbY, e.width, e.height)
 			srcU, srcV := extractChromaBlocks(frame, mbX, mbY, chromaW, chromaH)
 			ctx := e.buildMBContext(frame, mbX, mbY, mbW, mbH)
-			mbs[mbIdx] = processInterMacroblock(srcY, srcU, srcV, refBuf, mbX, mbY, mbW, mbs, qf, ctx)
+			mbs[mbIdx] = processInterMacroblock(srcY, srcU, srcV, refBuf, mbX, mbY, mbW, mbs, qf, ctx, e.screenContent)
 		}
 	}
 }
@@ -582,3 +586,22 @@ func (e *Encoder) Height() int { return e.height }
 
 // FPS returns the configured frame rate.
 func (e *Encoder) FPS() int { return e.fps }
+
+// SetScreenContentProfile restricts inter macroblocks to ZEROMV, skip and intra,
+// which suits a desktop being shared rather than camera video.
+//
+// Between two frames of a screen, most macroblocks are byte-identical: a cursor
+// moves, one window repaints, everything else is unchanged. A motion search
+// spends its time confirming that the best vector is zero, and VP8 codes an
+// unchanged macroblock in roughly one bit.
+//
+// It is also the safe path. MV_NEW codes only a delta against the predictor the
+// *decoder* derives, and this encoder's predictor is documented as possibly
+// diverging from RFC 6386 section 18.2; measured through libvpx, inter frames
+// on that path reconstruct at 8-12 dB rather than the ~39 dB key frames manage.
+// Staying on ZEROMV keeps the encoder out of that path entirely.
+//
+// Default is false, which preserves the upstream behaviour.
+func (e *Encoder) SetScreenContentProfile(enabled bool) {
+	e.screenContent = enabled
+}

@@ -168,3 +168,110 @@ func TestInterFramesAreBrokenUpstream(t *testing.T) {
 		}
 	}
 }
+
+// TestScreenContentProfileDoesNotFixInterFrames records a negative result.
+//
+// The working theory when the fork landed was that the inherited inter-frame
+// corruption lived in MV_NEW — upstream's GAPS.md §1 documents an MV predictor
+// that may diverge from RFC 6386 §18.2, and MV_NEW codes only a delta against
+// the predictor the decoder derives. Restricting inter macroblocks to ZEROMV
+// should therefore have designed the defect out.
+//
+// It does not. With SetScreenContentProfile enabled the reconstruction is
+// unchanged, to the byte: same frame sizes, same PSNR. Those macroblocks were
+// already choosing ZEROMV, so the fault lies elsewhere.
+//
+// The theory was wrong, and this test exists so it is not quietly retried.
+func TestScreenContentProfileDoesNotFixInterFrames(t *testing.T) {
+	tool := requireTool(t)
+
+	const count = 6
+	sizes := map[bool][]int{}
+	psnrs := map[bool][]float64{}
+
+	for _, screen := range []bool{false, true} {
+		enc, err := vp8.NewEncoder(confWidth, confHeight, 30)
+		if err != nil {
+			t.Fatalf("NewEncoder: %v", err)
+		}
+		enc.SetKeyFrameInterval(count)
+		enc.SetScreenContentProfile(screen)
+
+		frames := make([][]byte, 0, count)
+		for i := 0; i < count; i++ {
+			b, err := enc.Encode(sourceFrame(i))
+			if err != nil {
+				t.Fatalf("Encode frame %d: %v", i, err)
+			}
+			frames = append(frames, b)
+			sizes[screen] = append(sizes[screen], len(b))
+		}
+		for i, got := range decodeWithOracle(t, tool, frames) {
+			psnr, err := vp8check.PSNR(got.Y, sourceFrame(i)[:confWidth*confHeight])
+			if err != nil {
+				t.Fatalf("PSNR: %v", err)
+			}
+			psnrs[screen] = append(psnrs[screen], psnr)
+		}
+		t.Logf("screenContent=%-5v sizes=%v", screen, sizes[screen])
+	}
+
+	// The key frame is sound either way; the inter frames are not, either way.
+	for _, screen := range []bool{false, true} {
+		if psnrs[screen][0] < 25 {
+			t.Errorf("screenContent=%v: key frame %.2f dB, expected the key-frame path to be sound", screen, psnrs[screen][0])
+		}
+		for i := 1; i < count; i++ {
+			if psnrs[screen][i] >= 25 {
+				t.Fatalf("screenContent=%v: inter frame %d reconstructed at %.2f dB — the defect appears fixed, "+
+					"so this negative result is stale and the test should be replaced", screen, i, psnrs[screen][i])
+			}
+		}
+	}
+	t.Logf("inter PSNR without the profile: %.2f %.2f %.2f", psnrs[false][1], psnrs[false][2], psnrs[false][3])
+	t.Logf("inter PSNR with the profile:    %.2f %.2f %.2f", psnrs[true][1], psnrs[true][2], psnrs[true][3])
+}
+
+// TestBisectInterFaultWithIdenticalFrames narrows where the fault is not.
+//
+// Feeding the encoder the same frame repeatedly means every inter macroblock
+// has nothing to code. If reconstruction still drifts under those conditions,
+// the fault is not in motion vectors, mode decision or residual coding — there
+// are none of consequence. Measured: the first inter frame lands 13 dB away
+// from the key frame the decoder just produced, so the decoder is not
+// reproducing the reference at all.
+func TestBisectInterFaultWithIdenticalFrames(t *testing.T) {
+	tool := requireTool(t)
+	const count = 4
+	src := sourceFrame(0)
+
+	enc, err := vp8.NewEncoder(confWidth, confHeight, 30)
+	if err != nil {
+		t.Fatalf("NewEncoder: %v", err)
+	}
+	enc.SetKeyFrameInterval(count)
+	enc.SetScreenContentProfile(true)
+
+	frames := make([][]byte, 0, count)
+	for i := 0; i < count; i++ {
+		b, err := enc.Encode(src)
+		if err != nil {
+			t.Fatalf("Encode: %v", err)
+		}
+		frames = append(frames, b)
+	}
+	decoded := decodeWithOracle(t, tool, frames)
+
+	keyVsSource, _ := vp8check.PSNR(decoded[0].Y, src[:confWidth*confHeight])
+	if keyVsSource < 25 {
+		t.Errorf("key frame %.2f dB against an unchanging source", keyVsSource)
+	}
+	firstInterVsKey, err := vp8check.PSNR(decoded[1].Y, decoded[0].Y)
+	if err != nil {
+		t.Fatalf("PSNR: %v", err)
+	}
+	t.Logf("key frame vs source: %.2f dB | first inter frame vs decoded key frame: %.2f dB", keyVsSource, firstInterVsKey)
+	if firstInterVsKey >= 25 {
+		t.Fatalf("the first inter frame now reproduces the reference at %.2f dB — this diagnostic is stale", firstInterVsKey)
+	}
+}
