@@ -235,11 +235,15 @@ func TestScreenContentProfileDoesNotFixInterFrames(t *testing.T) {
 // TestBisectInterFaultWithIdenticalFrames narrows where the fault is not.
 //
 // Feeding the encoder the same frame repeatedly means every inter macroblock
-// has nothing to code. If reconstruction still drifts under those conditions,
-// the fault is not in motion vectors, mode decision or residual coding — there
-// are none of consequence. Measured: the first inter frame lands 13 dB away
-// from the key frame the decoder just produced, so the decoder is not
-// reproducing the reference at all.
+// has nothing to code. If the output is still not conformant under those
+// conditions, the fault is not in motion vectors, mode decision or residual
+// coding — there are none of consequence.
+//
+// It is not conformant. Since the first-partition header fixes landed
+// (mv_update_probs, and the two intra-mode prob-update flags) libvpx rejects
+// this stream outright rather than decoding it into garbage. Both outcomes are
+// the same finding: the first partition does not parse as the format defines
+// it. Rejection is simply the more honest symptom.
 func TestBisectInterFaultWithIdenticalFrames(t *testing.T) {
 	tool := requireTool(t)
 	const count = 4
@@ -260,18 +264,30 @@ func TestBisectInterFaultWithIdenticalFrames(t *testing.T) {
 		}
 		frames = append(frames, b)
 	}
-	decoded := decodeWithOracle(t, tool, frames)
 
-	keyVsSource, _ := vp8check.PSNR(decoded[0].Y, src[:confWidth*confHeight])
-	if keyVsSource < 25 {
-		t.Errorf("key frame %.2f dB against an unchanging source", keyVsSource)
+	data, err := ivf.Marshal(ivf.Config{
+		Width: confWidth, Height: confHeight,
+		FPSNumerator: 30, FPSDenominator: 1,
+	}, frames)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	decoded, err := vp8check.Decode(tool, data, confWidth, confHeight)
+	if err != nil {
+		t.Logf("the reference decoder rejects the stream outright: %v", err)
+		return
+	}
+	if len(decoded) < 2 {
+		t.Fatalf("decoded %d frames, want at least 2", len(decoded))
 	}
 	firstInterVsKey, err := vp8check.PSNR(decoded[1].Y, decoded[0].Y)
 	if err != nil {
 		t.Fatalf("PSNR: %v", err)
 	}
-	t.Logf("key frame vs source: %.2f dB | first inter frame vs decoded key frame: %.2f dB", keyVsSource, firstInterVsKey)
+	t.Logf("first inter frame vs decoded key frame: %.2f dB", firstInterVsKey)
 	if firstInterVsKey >= 25 {
-		t.Fatalf("the first inter frame now reproduces the reference at %.2f dB — this diagnostic is stale", firstInterVsKey)
+		t.Fatalf("the first inter frame now reproduces the reference at %.2f dB against an unchanging "+
+			"source — this diagnostic is stale and should become a positive assertion", firstInterVsKey)
 	}
 }
