@@ -184,6 +184,7 @@ func encodeInterFrameHeaderWithProbs(enc *boolEncoder, width, height, qi int, de
 	encodeRefFrameFlags(enc, refreshGolden)
 	encodeProbUpdates(enc, probCfg)
 	encodeInterFrameProbs(enc)
+	encodeIntraModeProbUpdates(enc)
 	encodeMVProbUpdates(enc)
 	encodeInterMBModes(enc, width, mbs)
 }
@@ -218,11 +219,40 @@ func encodeInterFrameProbs(enc *boolEncoder) {
 	enc.putLiteral(128, 8) // prob_golden
 }
 
+// mvUpdateProbs are the probabilities with which each motion-vector
+// probability-update flag is coded. They are fixed by the format, not chosen by
+// the encoder: the decoder reads these flags with exactly these values, so
+// writing them with any other probability desynchronises the arithmetic decoder
+// for the rest of the first partition — which is where every macroblock mode
+// and motion vector lives.
+//
+// Reference: RFC 6386 §17.2, vp8_mv_update_probs.
+var mvUpdateProbs = [2][19]uint8{
+	{
+		237, 246, 253, 253, 254, 254, 254, 254, 254,
+		254, 254, 254, 254, 254, 250, 250, 252, 254, 254,
+	},
+	{
+		231, 243, 245, 253, 254, 254, 254, 254, 254,
+		254, 254, 254, 254, 254, 251, 251, 254, 254, 254,
+	},
+}
+
+// encodeIntraModeProbUpdates signals that the intra mode probabilities are not
+// being updated. Both flags are mandatory in an inter frame header; omitting
+// them leaves the decoder two bits ahead of the encoder.
+//
+// Reference: RFC 6386 §9.11.
+func encodeIntraModeProbUpdates(enc *boolEncoder) {
+	enc.putBit(128, false) // intra_16x16_prob_update_flag
+	enc.putBit(128, false) // intra_chroma_prob_update_flag
+}
+
 // encodeMVProbUpdates signals no MV probability updates.
 func encodeMVProbUpdates(enc *boolEncoder) {
 	for i := 0; i < 2; i++ {
 		for j := 0; j < 19; j++ {
-			enc.putBit(128, false)
+			enc.putBit(mvUpdateProbs[i][j], false)
 		}
 	}
 }

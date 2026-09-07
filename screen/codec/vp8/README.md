@@ -81,3 +81,53 @@ and it never enters `MV_NEW` — where defects 1 and 2 both live. Dropping motio
 estimation is not a concession here; it designs the defect class out.
 
 Not done yet. This commit is the vendoring only.
+
+## Where the inter-frame fault actually is
+
+Located on 2026-09-07 by diffing the encoder's own reconstruction — the picture
+it stores as the `last` reference — against libvpx's reconstruction of the same
+bitstream, byte for byte. `TestEncoderReferenceMatchesDecoderOnKeyFrames`
+carries the measurement:
+
+| frame | Y | U | V |
+|---|---|---|---|
+| 0 (key) | **0/4096 differ** | **0/1024** | **0/1024** |
+| 1 (inter) | 3781/4096, max Δ 184 | 681/1024 | 594/1024 |
+| 2 (inter) | 3979/4096, max Δ 199 | 851/1024 | 787/1024 |
+
+Key frames are exact. Inter frames diverge in *every* plane, which places the
+fault in the **first partition** — frame header, macroblock modes, motion
+vectors — and not in residual coding, since residuals travel in their own
+partition with their own arithmetic decoder.
+
+A word on how not to read this. An earlier run of the same diff used a flat 128
+chroma plane and reported chroma matching exactly, which looked like proof that
+the fault was luma-only. It was proof of nothing: a flat plane reconstructs
+identically under any motion vector and any prediction mode. The test source now
+carries structured chroma for that reason.
+
+### Defects found, and their status
+
+| | status |
+|---|---|
+| MV probability-update flags written with probability 128 instead of `vp8_mv_update_probs` (RFC 6386 §17.2) | **fixed** |
+| `intra_16x16_prob_update_flag` and `intra_chroma_prob_update_flag` omitted entirely from the inter header (§9.11) | **fixed** |
+| `mv_ref` coded with a static 3-entry table; the format derives these probabilities per macroblock from the neighbouring motion-vector counts (`vp8_mode_contexts`, §16.3), and the tree has 5 symbols including `SPLITMV`, not 4 | open |
+| intra `y_mode` inside an inter frame coded with the key-frame *contextual* tree; inter frames use the flat `vp8_ymode_prob` | open |
+| `uv_mode` coded with the key-frame probabilities `{142, 114, 183}` in inter frames, where the format specifies `{162, 101, 204}` | open |
+| `copy_buffer_to_golden` written unconditionally; it is present only when `refresh_golden_frame` is 0 (§9.7). Latent — it only bites once golden refresh is enabled | open |
+
+The two fixed items are spec-required and were verified against RFC 6386, but
+they do not repair the inter path on their own: any one of the open items
+desynchronises the first partition by itself. The visible symptom changed rather
+than improved — libvpx now rejects a no-residual inter stream outright where it
+previously decoded it into garbage. Both are the same finding.
+
+### What this means for the estimate
+
+ADR-0005 put the restricted profile at 3–5 weeks on the premise that the
+reusable half was the key-frame path and the inter path needed only narrowing.
+The narrowing is done and the inter path is still broken. What remains is a
+rewrite of the inter mode and motion-vector layer against RFC 6386 §16–18 —
+bounded and well-specified work now that the fault is located, but a rewrite,
+not a configuration change.
