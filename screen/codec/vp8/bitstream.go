@@ -453,8 +453,17 @@ func encodeBMode(enc *boolEncoder, mode, aboveMode, leftMode intraBMode) {
 	// Get the probability row for this context.
 	// The decoder (golang.org/x/image/vp8) indexes as predProb[above][left],
 	// so we must use the same ordering: kfBModeProb[aboveMode][leftMode].
-	probs := kfBModeProb[aboveMode][leftMode]
+	//
+	// Context applies to key frames only. Inter frames code the same tree with
+	// one fixed probability row; see encodeBModeWithProbs.
+	encodeBModeWithProbs(enc, mode, kfBModeProb[aboveMode][leftMode])
+}
 
+// encodeBModeWithProbs encodes one B_PRED sub-block mode against an explicit
+// probability row, which is what separates the key-frame and inter-frame cases:
+// the tree is the same, the row is contextual in a key frame and fixed in an
+// inter frame.
+func encodeBModeWithProbs(enc *boolEncoder, mode intraBMode, probs [9]uint8) {
 	// Navigate the binary tree to encode the mode
 	switch mode {
 	case B_DC_PRED:
@@ -521,10 +530,22 @@ func encodeBMode(enc *boolEncoder, mode, aboveMode, leftMode intraBMode) {
 // encodeUVMode encodes the 8x8 chroma prediction mode using the VP8 mode tree.
 // Reference: RFC 6386 §11.2
 func encodeUVMode(enc *boolEncoder, mode chromaMode) {
-	// Key-frame uv_mode probabilities
-	const probDCPred = 142
-	const probVPred = 114
-	const probHvsT = 183
+	encodeUVModeWithProbs(enc, mode, kfUVModeProb)
+}
+
+// kfUVModeProb is the key-frame chroma mode probability row.
+// Reference: RFC 6386 §11.3, vp8_kf_uv_mode_prob.
+var kfUVModeProb = [3]uint8{142, 114, 183}
+
+// encodeUVModeWithProbs encodes the chroma prediction mode against an explicit
+// probability row. Key frames and inter frames share the tree and differ only
+// in the row — a distinction the encoder previously did not make, which meant
+// every intra macroblock inside an inter frame coded its chroma mode with the
+// key-frame probabilities the decoder was not reading with.
+func encodeUVModeWithProbs(enc *boolEncoder, mode chromaMode, probs [3]uint8) {
+	probDCPred := probs[0]
+	probVPred := probs[1]
+	probHvsT := probs[2]
 
 	if mode == DC_PRED_CHROMA {
 		enc.putBit(probDCPred, false) // DC_PRED

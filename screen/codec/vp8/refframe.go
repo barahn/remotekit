@@ -237,7 +237,7 @@ func buildReconLumaContext(ctx *mbContext, y []byte, mbX, mbY, width, height int
 		fillLeftColRecon(ctx.lumaLeftBuf[:], y, mbX*16-1, mbY*16, width, height, 16)
 		ctx.lumaLeft = ctx.lumaLeftBuf[:]
 	}
-	ctx.lumaTopLeft = computeReconTopLeft(y, mbX*16, mbY*16, width, mbX > 0 && mbY > 0)
+	ctx.lumaTopLeft = computeReconTopLeft(y, mbX*16, mbY*16, width, mbY > 0, mbX > 0)
 }
 
 // buildReconChromaContext fills the chroma neighbor context from reconstructed frame.
@@ -255,9 +255,8 @@ func buildReconChromaContext(ctx *mbContext, cb, cr []byte, mbX, mbY, chromaW, c
 		ctx.chromaLeftU = ctx.chromaLeftUBuf[:]
 		ctx.chromaLeftV = ctx.chromaLeftVBuf[:]
 	}
-	hasCorner := mbX > 0 && mbY > 0
-	ctx.chromaTopLeftU = computeReconTopLeft(cb, mbX*8, mbY*8, chromaW, hasCorner)
-	ctx.chromaTopLeftV = computeReconTopLeft(cr, mbX*8, mbY*8, chromaW, hasCorner)
+	ctx.chromaTopLeftU = computeReconTopLeft(cb, mbX*8, mbY*8, chromaW, mbY > 0, mbX > 0)
+	ctx.chromaTopLeftV = computeReconTopLeft(cr, mbX*8, mbY*8, chromaW, mbY > 0, mbX > 0)
 }
 
 // fillAboveRowRecon fills the above row buffer from the reconstructed plane.
@@ -280,12 +279,25 @@ func fillLeftColRecon(buf, src []byte, col, startRow, planeW, planeH, count int)
 	}
 }
 
-// computeReconTopLeft returns the top-left pixel or default value.
-func computeReconTopLeft(src []byte, x, y, planeW int, hasCorner bool) byte {
-	if hasCorner {
+// computeReconTopLeft returns the pixel diagonally above and to the left of a
+// macroblock, which TM_PRED and several B_PRED sub-modes read directly.
+//
+// Outside the frame the format does not use a neutral grey. The row above the
+// frame reads 127 and the column to its left reads 129, and the corner belongs
+// to whichever of the two is outside: above the first row it is 127, and to the
+// left of the first column of any later row it is 129. Answering 128 for both
+// -- as this did -- is wrong by one or two levels, which is invisible in a key
+// frame whose sub-modes happen not to read the corner and shows up as a small
+// persistent drift the moment one does.
+func computeReconTopLeft(src []byte, x, y, planeW int, hasAbove, hasLeft bool) byte {
+	switch {
+	case hasAbove && hasLeft:
 		return src[(y-1)*planeW+(x-1)]
+	case !hasAbove:
+		return 127
+	default:
+		return 129
 	}
-	return 128
 }
 
 // reconstructLuma16x16 reconstructs luma using 16x16 prediction mode.

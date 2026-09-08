@@ -31,8 +31,13 @@ func processInterMacroblock(srcY, srcU, srcV []byte, ref *refFrameBuffer,
 		isInter: false,
 	}
 
-	// Get motion vector prediction from neighbors
-	nearestMV, _ := findNearestMV(mbs, mbX, mbY, mbW, ref.Width, ref.Height)
+	// Derive the motion vector predictors exactly as the decoder will, from the
+	// same three neighbours. These are not a hint the encoder is free to
+	// improve on: the mode is coded with probabilities derived from them, and a
+	// NEWMV carries only a delta against near.best.
+	mbH := (ref.Height + 15) / 16
+	above, left, aboveLeft := collectNeighbours(mbs, mbX, mbY, mbW)
+	near := findNearMVs(above, left, aboveLeft, mbX, mbY, mbW, mbH)
 
 	// Perform motion estimation. The screen-content profile skips the search
 	// entirely and stays on ZEROMV; see estimateZeroMotion for why that is a
@@ -42,14 +47,15 @@ func processInterMacroblock(srcY, srcU, srcV []byte, ref *refFrameBuffer,
 		meResult = estimateZeroMotion(srcY, ref.Y, ref.Width, ref.Height, mbX*16, mbY*16)
 	} else {
 		meResult = estimateMotion(srcY, ref.Y, ref.Width, ref.Height,
-			mbX*16, mbY*16, nearestMV)
+			mbX*16, mbY*16, near.best)
 	}
+	meResult.mode = selectInterMode(meResult.mv, near)
 
 	// Compare with intra prediction cost
 	best16x16Mode, intraSAD := SelectBest16x16Mode(srcY, ctx.lumaAbove, ctx.lumaLeft, ctx.lumaTopLeft)
 
 	// Inter mode cost includes MV coding overhead
-	interCost := meResult.sad + mvCost(meResult.mv, nearestMV)
+	interCost := meResult.sad + mvCost(meResult.mv, near.best)
 
 	// Choose between inter and intra mode based on the estimated costs.
 	// Inter mode cost already includes motion vector coding overhead.
@@ -58,7 +64,7 @@ func processInterMacroblock(srcY, srcU, srcV []byte, ref *refFrameBuffer,
 		mb.isInter = true
 		mb.refFrame = refFrameLast
 		mb.mv = meResult.mv
-		mb.predMV = nearestMV // Store predicted MV for delta-coding in bitstream
+		mb.predMV = near.best // a NEWMV delta is coded against best, not nearest
 		mb.interMode = meResult.mode
 
 		// Compute motion-compensated prediction
@@ -188,4 +194,22 @@ func processChroma4x4WithPred(src, pred []byte, by, bx int, coeffs [][16]int16, 
 func processIntraChromaInInterFrame(srcU, srcV []byte, ctx *mbContext, mb *macroblock, qf QuantFactors) {
 	processChromaPlane(srcU, ctx.chromaAboveU, ctx.chromaLeftU, ctx.chromaTopLeftU, mb.chromaMode, mb.uCoeffs[:], &mb.skip, qf)
 	processChromaPlane(srcV, ctx.chromaAboveV, ctx.chromaLeftV, ctx.chromaTopLeftV, mb.chromaMode, mb.vCoeffs[:], &mb.skip, qf)
+}
+
+// selectInterMode names the cheapest mode that reproduces the chosen motion
+// vector. NEAREST and NEAR cost a couple of bits and no vector at all, so they
+// are preferred over NEWMV whenever they land on the same value -- but only
+// when they land on exactly the same value, since the decoder reconstructs from
+// its own predictor and not from anything the encoder wanted.
+func selectInterMode(mv motionVector, near nearMVs) interMode {
+	switch {
+	case mv == zeroMV:
+		return mvModeZeroMV
+	case mv == near.nearest:
+		return mvModeNearestMV
+	case mv == near.near:
+		return mvModeNearMV
+	default:
+		return mvModeNewMV
+	}
 }

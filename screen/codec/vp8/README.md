@@ -26,52 +26,76 @@ on this project's critical path.
 | 2 `trace_*_test.go` | **dropped** — 4 assertions, both are tracing harnesses |
 | `loop.log`, `test-output.txt` | **dropped** — build residue that was committed |
 
-## Known defects inherited from upstream
+## Defects inherited from upstream, and what became of them
 
-Documented by upstream itself in its `GAPS.md`, and confirmed during the audit
-that led to the fork:
+Upstream documented some of these itself in its `GAPS.md`; the rest surfaced
+during the audit that led to the fork and the work that followed.
 
-1. **Inter frames were never decode-validated.** Upstream's tests check the
+1. **Inter frames were never decode-validated.** Upstream's tests checked the
    frame-type bit and a minimum byte length; no decoder ever parsed the output.
-2. **MV prediction deviates from RFC 6386 §18.2.** `findNearestMV` uses a
-   weighted candidate count whose tie-breaking may not match the decoder. Since
-   `MV_NEW` encodes only a delta from the *decoder-derived* predictor, a
-   mismatch reconstructs a different motion vector.
-3. **The loop filter is advertised but inert** — `SetLoopFilterLevel` has no
-   effect; the bitstream always encodes level 0.
-4. **B_PRED is implemented but disabled.**
+   Run through libvpx, inter frames reconstructed at 8–13 dB — unrecognisable,
+   and degrading across the sequence as the drift compounded.
+2. **The mode and motion-vector layer did not implement the format.** This was
+   the cause. Detailed below.
+3. **The loop filter is advertised but inert** — `SetLoopFilterLevel` has an
+   effect on the encoder's own reconstruction but the filter itself is a
+   simplified one, and the bitstream signals the normal filter. Still open, and
+   still harmless only because the level defaults to 0. Do not raise it.
+4. **B_PRED is implemented and used** — key frames code every macroblock with
+   it, which is why the key-frame path was exact from the start while the
+   16x16-with-Y2 path went unexercised until inter frames arrived.
 
-Defects 1 and 2 are the reason `pkg/screen/codec/vp8check` — a `vpxdec`-backed
-conformance oracle — was built *before* this fork landed. Run through libvpx,
-the encoder splits cleanly in half:
+## Where the inter-frame fault was
 
-| | luma PSNR |
+Located by diffing the encoder's own reconstruction — the picture it stores as
+the `last` reference — against libvpx's reconstruction of the same bitstream,
+byte for byte. PSNR against the *source* cannot say which side of a closed loop
+is wrong; this can. Key frames matched exactly; inter frames disagreed on
+roughly 90% of every plane, which placed the fault in the first partition
+(header, modes, motion vectors) rather than in residual coding, since residuals
+travel in their own partition behind their own arithmetic decoder.
+
+A word on how not to read that diff. An early run used a flat 128 chroma plane
+and reported chroma matching exactly, which looked like proof the fault was
+luma-only. It proved nothing: a flat plane reconstructs identically under any
+motion vector and any prediction mode. The test source carries structured
+chroma for that reason.
+
+### The defects, and their fixes
+
+| | |
 |---|---|
-| key frame 0 | **39.28 dB** |
-| inter frame 1 | 11.55 dB |
-| inter frame 2 | 11.20 dB |
-| inter frame 3 | 7.84 dB |
-| inter frame 4 | 10.43 dB |
-| inter frame 5 | 12.13 dB |
+| MV probability-update flags written with probability 128 instead of `vp8_mv_update_probs` (§17.2) | fixed |
+| `intra_16x16_prob_update_flag` and `intra_chroma_prob_update_flag` omitted from the inter header (§9.11) | fixed |
+| `mv_ref` coded from a static 3-entry table, where the format derives the probabilities per macroblock from the neighbouring vote counts (`vp8_mode_contexts`, §16.3) | fixed |
+| the mode tree branching on NEARESTMV with 4 symbols, where the format branches on ZEROMV with 5 (SPLITMV is the fifth, and never emitting it does not shorten the tree) | fixed |
+| motion-vector components written column-before-row, where the decoder reads row first — and the two components use different probability tables | fixed |
+| the predictor derivation counting the above-RIGHT neighbour with a weighted-candidate scheme, where the format reads above, left and above-LEFT in a defined order (`vp8_find_near_mvs`) | fixed |
+| a NEWMV delta coded against `nearest` rather than against the derived `best` | fixed |
+| intra `y_mode` inside an inter frame coded with the key-frame *contextual* tree, whose shape differs from the flat `vp8_ymode_prob` tree inter frames use | fixed |
+| `uv_mode` coded with the key-frame probabilities `{142, 114, 183}` in inter frames, which use `{162, 101, 204}` | fixed |
+| B_PRED sub-modes inside an inter frame coded with the key frame's above/left contextual rows instead of the fixed `vp8_bmode_prob` row | fixed |
+| the out-of-frame corner pixel answered as a neutral 128, where the row above the picture reads 127 and the column to its left reads 129 | fixed |
+| `copy_buffer_to_golden` written unconditionally; §9.7 makes it present only when `refresh_golden_frame` is 0 | open, latent — bites once golden refresh is enabled |
 
-Key frames are sound. Inter frames are not slightly off — they are
-unrecognisable, and they degrade across the sequence, which is what compounding
-reconstruction drift looks like. `TestInterFramesAreBrokenUpstream` asserts that
-state on purpose, and fails loudly if it ever stops being true.
+### Where it stands
 
-`golangci-lint` corroborates three of the four defects without being asked:
-`computeFilterLimit` and `filterPlane` are unreachable, which *is* the inert
-loop filter; `copyLastToAltRef` is unreachable, which is "only the last
-reference is used"; and upstream's own tests carry two tautological assertions
-(`SA4003`) that can never fail. The package is excluded from `unused` and
-`staticcheck` in `.golangci.yml` while it is kept verbatim, with that exclusion
-scoped to this directory and removed when the dead paths are deleted rather than
-merely unreachable.
+Measured through libvpx, with `TestEncoderReferenceMatchesDecoder` asserting the
+first row and `TestInterFramesAreConformant` the second:
 
-`gosec` is excluded for the same directory and the same reason: 53 `G115`
-findings, all deliberate `int` -> `int16` narrowing in the forward DCT and
-quantiser, where the VP8 spec bounds the values by construction. Fifty-three
-`#nosec` annotations would destroy the verbatim baseline this fork needs.
+| | |
+|---|---|
+| encoder reference vs decoder reconstruction | **0 bytes differ, every plane, every frame** |
+| key frame | 39.28 dB |
+| inter frames 1–5 | 41.25, 41.15, 41.89, 41.98, 41.74 dB |
+
+Inter frames landing above the key frame is the ordinary result: at the same
+quantiser they code a smaller residual.
+
+Byte equality is the assertion that matters, and PSNR is reported alongside it
+rather than in place of it. VP8 prediction is closed-loop, so a single byte of
+disagreement compounds into every frame that follows — a stream can measure well
+on the first inter frame and still be diverging.
 
 ## The profile this project actually needs
 
@@ -82,52 +106,3 @@ estimation is not a concession here; it designs the defect class out.
 
 Not done yet. This commit is the vendoring only.
 
-## Where the inter-frame fault actually is
-
-Located on 2026-09-07 by diffing the encoder's own reconstruction — the picture
-it stores as the `last` reference — against libvpx's reconstruction of the same
-bitstream, byte for byte. `TestEncoderReferenceMatchesDecoderOnKeyFrames`
-carries the measurement:
-
-| frame | Y | U | V |
-|---|---|---|---|
-| 0 (key) | **0/4096 differ** | **0/1024** | **0/1024** |
-| 1 (inter) | 3781/4096, max Δ 184 | 681/1024 | 594/1024 |
-| 2 (inter) | 3979/4096, max Δ 199 | 851/1024 | 787/1024 |
-
-Key frames are exact. Inter frames diverge in *every* plane, which places the
-fault in the **first partition** — frame header, macroblock modes, motion
-vectors — and not in residual coding, since residuals travel in their own
-partition with their own arithmetic decoder.
-
-A word on how not to read this. An earlier run of the same diff used a flat 128
-chroma plane and reported chroma matching exactly, which looked like proof that
-the fault was luma-only. It was proof of nothing: a flat plane reconstructs
-identically under any motion vector and any prediction mode. The test source now
-carries structured chroma for that reason.
-
-### Defects found, and their status
-
-| | status |
-|---|---|
-| MV probability-update flags written with probability 128 instead of `vp8_mv_update_probs` (RFC 6386 §17.2) | **fixed** |
-| `intra_16x16_prob_update_flag` and `intra_chroma_prob_update_flag` omitted entirely from the inter header (§9.11) | **fixed** |
-| `mv_ref` coded with a static 3-entry table; the format derives these probabilities per macroblock from the neighbouring motion-vector counts (`vp8_mode_contexts`, §16.3), and the tree has 5 symbols including `SPLITMV`, not 4 | open |
-| intra `y_mode` inside an inter frame coded with the key-frame *contextual* tree; inter frames use the flat `vp8_ymode_prob` | open |
-| `uv_mode` coded with the key-frame probabilities `{142, 114, 183}` in inter frames, where the format specifies `{162, 101, 204}` | open |
-| `copy_buffer_to_golden` written unconditionally; it is present only when `refresh_golden_frame` is 0 (§9.7). Latent — it only bites once golden refresh is enabled | open |
-
-The two fixed items are spec-required and were verified against RFC 6386, but
-they do not repair the inter path on their own: any one of the open items
-desynchronises the first partition by itself. The visible symptom changed rather
-than improved — libvpx now rejects a no-residual inter stream outright where it
-previously decoded it into garbage. Both are the same finding.
-
-### What this means for the estimate
-
-ADR-0005 put the restricted profile at 3–5 weeks on the premise that the
-reusable half was the key-frame path and the inter path needed only narrowing.
-The narrowing is done and the inter path is still broken. What remains is a
-rewrite of the inter mode and motion-vector layer against RFC 6386 §16–18 —
-bounded and well-specified work now that the fault is located, but a rewrite,
-not a configuration change.

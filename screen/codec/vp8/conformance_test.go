@@ -105,25 +105,18 @@ func TestKeyFramesAreConformant(t *testing.T) {
 	}
 }
 
-// TestInterFramesAreBrokenUpstream pins the defect this fork inherited.
+// TestInterFramesAreConformant checks the half of the encoder that was broken
+// when this fork landed.
 //
-// Upstream's GAPS.md §2 records that inter-frame output is asserted only on the
-// frame-type bit and a minimum byte length — no decoder ever parsed it — and §1
-// records that MV prediction may diverge from RFC 6386 §18.2. Run through
-// libvpx, the reconstruction is not slightly off; it is unrecognisable, and it
-// degrades across the sequence, which is what compounding drift looks like:
-//
-//	key   frame 0: 39.28 dB
-//	inter frame 1: 11.55 dB
-//	inter frame 2: 11.20 dB
-//	inter frame 3:  7.84 dB
-//
-// This test asserts the broken state on purpose, so the defect cannot be
-// forgotten and so a fix is detectable. DELETE IT and restore a positive
-// assertion when the restricted profile lands — MV_ZERO + skip + intra never
-// enters MV_NEW, where both defects live, so that profile is expected to pass
-// where this does not.
-func TestInterFramesAreBrokenUpstream(t *testing.T) {
+// Upstream's inter frames decoded to between 8 and 13 dB — unrecognisable, and
+// degrading across the sequence as the drift compounded. The fault was in the
+// first partition: the mode and motion-vector layer was coding its own
+// probabilities and its own tree shapes instead of the format's, so the decoder
+// read something other than what the encoder wrote. With that layer rewritten
+// against RFC 6386 §16–18, inter frames now reconstruct above the key frame
+// they follow, which is the ordinary result — an inter frame codes a smaller
+// residual at the same quantiser.
+func TestInterFramesAreConformant(t *testing.T) {
 	tool := requireTool(t)
 
 	const count = 6
@@ -146,48 +139,35 @@ func TestInterFramesAreBrokenUpstream(t *testing.T) {
 		t.Fatalf("decoded %d frames, want %d", len(decoded), count)
 	}
 
-	// The key frame is sound; everything after it is not.
-	keyPSNR, err := vp8check.PSNR(decoded[0].Y, sourceFrame(0)[:confWidth*confHeight])
-	if err != nil {
-		t.Fatalf("key frame PSNR: %v", err)
-	}
-	if keyPSNR < 25 {
-		t.Errorf("key frame luma PSNR %.2f dB; the key-frame path is supposed to be the trustworthy half", keyPSNR)
-	}
-	t.Logf("key frame: luma PSNR %.2f dB", keyPSNR)
-
-	for i := 1; i < len(decoded); i++ {
+	for i := 0; i < len(decoded); i++ {
 		psnr, err := vp8check.PSNR(decoded[i].Y, sourceFrame(i)[:confWidth*confHeight])
 		if err != nil {
-			t.Fatalf("inter frame %d: PSNR: %v", i, err)
+			t.Fatalf("frame %d: PSNR: %v", i, err)
 		}
-		t.Logf("inter frame %d: luma PSNR %.2f dB", i, psnr)
-		if psnr >= 25 {
-			t.Fatalf("inter frame %d reconstructed faithfully at %.2f dB — the inherited defect appears fixed, "+
-				"so replace this test with a positive conformance assertion", i, psnr)
+		kind := "inter"
+		if i == 0 {
+			kind = "key"
+		}
+		t.Logf("%s frame %d: luma PSNR %.2f dB", kind, i, psnr)
+		if psnr < 30 {
+			t.Errorf("frame %d reconstructed at %.2f dB, want at least 30", i, psnr)
 		}
 	}
 }
 
-// TestScreenContentProfileDoesNotFixInterFrames records a negative result.
+// TestScreenContentProfileKeepsConformance checks that restricting inter
+// macroblocks to ZEROMV does not cost correctness, and says what it does buy.
 //
-// The working theory when the fork landed was that the inherited inter-frame
-// corruption lived in MV_NEW — upstream's GAPS.md §1 documents an MV predictor
-// that may diverge from RFC 6386 §18.2, and MV_NEW codes only a delta against
-// the predictor the decoder derives. Restricting inter macroblocks to ZEROMV
-// should therefore have designed the defect out.
-//
-// It does not. With SetScreenContentProfile enabled the reconstruction is
-// unchanged, to the byte: same frame sizes, same PSNR. Those macroblocks were
-// already choosing ZEROMV, so the fault lies elsewhere.
-//
-// The theory was wrong, and this test exists so it is not quietly retried.
-func TestScreenContentProfileDoesNotFixInterFrames(t *testing.T) {
+// The profile was built on a theory that turned out to be wrong — that the
+// inherited corruption lived in MV_NEW — and it did not fix anything. What it
+// is actually for survives that: for screen content the motion search finds
+// nothing worth coding, so skipping it produces smaller frames and costs no
+// quality. Both configurations must decode faithfully.
+func TestScreenContentProfileKeepsConformance(t *testing.T) {
 	tool := requireTool(t)
 
 	const count = 6
-	sizes := map[bool][]int{}
-	psnrs := map[bool][]float64{}
+	sizes := map[bool]int{}
 
 	for _, screen := range []bool{false, true} {
 		enc, err := vp8.NewEncoder(confWidth, confHeight, 30)
@@ -204,47 +184,28 @@ func TestScreenContentProfileDoesNotFixInterFrames(t *testing.T) {
 				t.Fatalf("Encode frame %d: %v", i, err)
 			}
 			frames = append(frames, b)
-			sizes[screen] = append(sizes[screen], len(b))
+			sizes[screen] += len(b)
 		}
 		for i, got := range decodeWithOracle(t, tool, frames) {
 			psnr, err := vp8check.PSNR(got.Y, sourceFrame(i)[:confWidth*confHeight])
 			if err != nil {
 				t.Fatalf("PSNR: %v", err)
 			}
-			psnrs[screen] = append(psnrs[screen], psnr)
-		}
-		t.Logf("screenContent=%-5v sizes=%v", screen, sizes[screen])
-	}
-
-	// The key frame is sound either way; the inter frames are not, either way.
-	for _, screen := range []bool{false, true} {
-		if psnrs[screen][0] < 25 {
-			t.Errorf("screenContent=%v: key frame %.2f dB, expected the key-frame path to be sound", screen, psnrs[screen][0])
-		}
-		for i := 1; i < count; i++ {
-			if psnrs[screen][i] >= 25 {
-				t.Fatalf("screenContent=%v: inter frame %d reconstructed at %.2f dB — the defect appears fixed, "+
-					"so this negative result is stale and the test should be replaced", screen, i, psnrs[screen][i])
+			if psnr < 30 {
+				t.Errorf("screenContent=%v: frame %d at %.2f dB, want at least 30", screen, i, psnr)
 			}
 		}
 	}
-	t.Logf("inter PSNR without the profile: %.2f %.2f %.2f", psnrs[false][1], psnrs[false][2], psnrs[false][3])
-	t.Logf("inter PSNR with the profile:    %.2f %.2f %.2f", psnrs[true][1], psnrs[true][2], psnrs[true][3])
+	t.Logf("total bytes: without the profile %d, with it %d", sizes[false], sizes[true])
 }
 
-// TestBisectInterFaultWithIdenticalFrames narrows where the fault is not.
+// TestUnchangingSourceReconstructsFaithfully is the sharpest form of the
+// inter-frame check: with nothing moving, every inter macroblock is a ZEROMV
+// copy, so the decoder must reproduce the key frame it already has.
 //
-// Feeding the encoder the same frame repeatedly means every inter macroblock
-// has nothing to code. If the output is still not conformant under those
-// conditions, the fault is not in motion vectors, mode decision or residual
-// coding — there are none of consequence.
-//
-// It is not conformant. Since the first-partition header fixes landed
-// (mv_update_probs, and the two intra-mode prob-update flags) libvpx rejects
-// this stream outright rather than decoding it into garbage. Both outcomes are
-// the same finding: the first partition does not parse as the format defines
-// it. Rejection is simply the more honest symptom.
-func TestBisectInterFaultWithIdenticalFrames(t *testing.T) {
+// This was a bisection diagnostic while the inter path was broken — it measured
+// 13 dB, which is how far the decoder was from reproducing its own reference.
+func TestUnchangingSourceReconstructsFaithfully(t *testing.T) {
 	tool := requireTool(t)
 	const count = 4
 	src := sourceFrame(0)
@@ -265,29 +226,18 @@ func TestBisectInterFaultWithIdenticalFrames(t *testing.T) {
 		frames = append(frames, b)
 	}
 
-	data, err := ivf.Marshal(ivf.Config{
-		Width: confWidth, Height: confHeight,
-		FPSNumerator: 30, FPSDenominator: 1,
-	}, frames)
-	if err != nil {
-		t.Fatalf("Marshal: %v", err)
+	decoded := decodeWithOracle(t, tool, frames)
+	if len(decoded) != count {
+		t.Fatalf("decoded %d frames, want %d", len(decoded), count)
 	}
-
-	decoded, err := vp8check.Decode(tool, data, confWidth, confHeight)
-	if err != nil {
-		t.Logf("the reference decoder rejects the stream outright: %v", err)
-		return
-	}
-	if len(decoded) < 2 {
-		t.Fatalf("decoded %d frames, want at least 2", len(decoded))
-	}
-	firstInterVsKey, err := vp8check.PSNR(decoded[1].Y, decoded[0].Y)
-	if err != nil {
-		t.Fatalf("PSNR: %v", err)
-	}
-	t.Logf("first inter frame vs decoded key frame: %.2f dB", firstInterVsKey)
-	if firstInterVsKey >= 25 {
-		t.Fatalf("the first inter frame now reproduces the reference at %.2f dB against an unchanging "+
-			"source — this diagnostic is stale and should become a positive assertion", firstInterVsKey)
+	for i := 1; i < count; i++ {
+		psnr, err := vp8check.PSNR(decoded[i].Y, decoded[0].Y)
+		if err != nil {
+			t.Fatalf("PSNR: %v", err)
+		}
+		t.Logf("inter frame %d vs the decoded key frame: %.2f dB", i, psnr)
+		if psnr < 35 {
+			t.Errorf("inter frame %d is %.2f dB from the key frame it should be reproducing", i, psnr)
+		}
 	}
 }

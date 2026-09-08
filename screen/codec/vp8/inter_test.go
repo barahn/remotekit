@@ -227,23 +227,35 @@ func TestMotionCompensate8x8(t *testing.T) {
 	}
 }
 
-// TestFindNearestMV tests motion vector prediction from neighbors.
-func TestFindNearestMV(t *testing.T) {
-	mbW := 4
-	mbs := make([]macroblock, 16)
+// TestFindNearMVs checks the motion-vector predictor derivation against the
+// case the format's own text turns on: a left neighbour carrying a vector.
+//
+// It replaces a test of findNearestMV, a weighted-candidate scheme that also
+// counted the above-RIGHT neighbour. That scheme guessed reasonable predictors
+// and disagreed with the decoder, which is the only disagreement that matters.
+func TestFindNearMVs(t *testing.T) {
+	const mbW, mbH = 4, 4
+	mbs := make([]macroblock, mbW*mbH)
 
-	// Set up left neighbor with MV
-	mbs[1*mbW+0] = macroblock{
-		isInter: true,
-		mv:      motionVector{dx: 8, dy: 4},
+	mbs[1*mbW+0] = macroblock{isInter: true, mv: motionVector{dx: 8, dy: 4}}
+
+	above, left, aboveLeft := collectNeighbours(mbs, 1, 1, mbW)
+	near := findNearMVs(above, left, aboveLeft, 1, 1, mbW, mbH)
+
+	want := motionVector{dx: 8, dy: 4}
+	if near.nearest != want {
+		t.Errorf("nearest = %v, want %v", near.nearest, want)
 	}
-
-	// Query MB at (1, 1) - left neighbor has MV(8, 4)
-	// Frame is 4*16=64 × 4*16=64 pixels (4×4 macroblock grid)
-	nearest, _ := findNearestMV(mbs, 1, 1, mbW, 64, 64)
-
-	if nearest.dx != 8 || nearest.dy != 4 {
-		t.Errorf("expected nearest=(%d,%d), got (%d,%d)", 8, 4, nearest.dx, nearest.dy)
+	// The left neighbour votes 2 and nothing votes for intra, so its vector
+	// also becomes the vector a NEWMV delta is coded against.
+	if near.best != want {
+		t.Errorf("best = %v, want %v", near.best, want)
+	}
+	if near.counts[cntNearest] != 2 {
+		t.Errorf("nearest count = %d, want 2", near.counts[cntNearest])
+	}
+	if near.counts[cntSplit] != 0 {
+		t.Errorf("split count = %d, want 0 (this encoder emits no SPLITMV)", near.counts[cntSplit])
 	}
 }
 
