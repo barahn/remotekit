@@ -271,13 +271,16 @@ func build4x4TopLeft(by, bx int, ctx *mbContext, recon []byte) byte {
 		if ctx.lumaAbove != nil && bx > 0 {
 			return ctx.lumaAbove[bx*4-1]
 		}
-		return 128
+		// Outside the frame above: the row above the picture reads 127, not a
+		// neutral 128. See computeTopLeft.
+		return 127
 	}
 	if bx == 0 {
 		if ctx.lumaLeft != nil {
 			return ctx.lumaLeft[by*4-1]
 		}
-		return 128
+		// Outside the frame to the left: 129.
+		return 129
 	}
 	return recon[(by*4-1)*16+(bx*4-1)]
 }

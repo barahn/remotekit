@@ -164,6 +164,13 @@ func (e *Encoder) SetKeyFrameInterval(interval int) {
 }
 
 // SetLoopFilterLevel configures the loop filter strength (0–63).
+//
+// Do not raise it above 0 yet. The header signals the normal filter while the
+// encoder applies a simplified one to its own reference, so a non-zero level
+// makes the two reconstructions diverge and the divergence compounds. The
+// default is 0, where both sides filter nothing and therefore agree. This is
+// the one inherited defect the conformance tests do not currently cover,
+// because they exercise the default.
 // The loop filter reduces blocking artifacts in reconstructed frames used
 // as reference for inter-frame prediction. Level 0 disables the filter.
 // A moderate level (e.g., 20–40) is recommended for inter-frame encoding.
@@ -527,7 +534,7 @@ func buildLumaContext(ctx *mbContext, y []byte, mbX, mbY, width, height int) {
 		fillLeftCol(ctx.lumaLeftBuf[:], y, mbX*16-1, mbY*16, width, height, 16)
 		ctx.lumaLeft = ctx.lumaLeftBuf[:]
 	}
-	ctx.lumaTopLeft = computeTopLeft(y, mbX*16, mbY*16, width, mbX > 0 && mbY > 0)
+	ctx.lumaTopLeft = computeTopLeft(y, mbX*16, mbY*16, width, mbY > 0, mbX > 0)
 }
 
 // buildChromaContext fills the chroma neighbor context from the source frame.
@@ -545,9 +552,8 @@ func buildChromaContext(ctx *mbContext, cb, cr []byte, mbX, mbY, chromaW, chroma
 		ctx.chromaLeftU = ctx.chromaLeftUBuf[:]
 		ctx.chromaLeftV = ctx.chromaLeftVBuf[:]
 	}
-	hasCorner := mbX > 0 && mbY > 0
-	ctx.chromaTopLeftU = computeTopLeft(cb, mbX*8, mbY*8, chromaW, hasCorner)
-	ctx.chromaTopLeftV = computeTopLeft(cr, mbX*8, mbY*8, chromaW, hasCorner)
+	ctx.chromaTopLeftU = computeTopLeft(cb, mbX*8, mbY*8, chromaW, mbY > 0, mbX > 0)
+	ctx.chromaTopLeftV = computeTopLeft(cr, mbX*8, mbY*8, chromaW, mbY > 0, mbX > 0)
 }
 
 // fillAboveRow fills the above row buffer from the source plane.
@@ -570,12 +576,25 @@ func fillLeftCol(buf, src []byte, col, startRow, planeW, planeH, count int) {
 	}
 }
 
-// computeTopLeft returns the top-left pixel or default value.
-func computeTopLeft(src []byte, x, y, planeW int, hasCorner bool) byte {
-	if hasCorner {
+// computeTopLeft returns the pixel diagonally above and to the left of a
+// macroblock, which TM_PRED and several B_PRED sub-modes read directly.
+//
+// Outside the frame the format does not use a neutral grey. The row above the
+// frame reads 127 and the column to its left reads 129, and the corner belongs
+// to whichever of the two is outside: above the first row it is 127, and to the
+// left of the first column of any later row it is 129. Answering 128 for both
+// -- as this did -- is wrong by one or two levels, which is invisible in a key
+// frame whose sub-modes happen not to read the corner and shows up as a small
+// persistent drift the moment one does.
+func computeTopLeft(src []byte, x, y, planeW int, hasAbove, hasLeft bool) byte {
+	switch {
+	case hasAbove && hasLeft:
 		return src[(y-1)*planeW+(x-1)]
+	case !hasAbove:
+		return 127
+	default:
+		return 129
 	}
-	return 128
 }
 
 // Width returns the configured frame width in pixels.

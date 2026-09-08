@@ -67,15 +67,15 @@ func rdDiff(a, b []byte) (differing, maxAbs int) {
 	return
 }
 
-// TestEncoderReferenceMatchesDecoderOnKeyFrames pins down which half of the
-// encoder is trustworthy, by the strictest test available: byte equality
-// against libvpx's reconstruction of the same bitstream.
+// TestEncoderReferenceMatchesDecoder is the strictest check available: byte
+// equality between the picture the encoder keeps as its reference and the
+// picture libvpx reconstructs from the same bitstream.
 //
-// Key frames pass it exactly. Inter frames do not — every plane diverges,
-// which places the fault in the first partition (frame header, macroblock
-// modes and motion vectors) rather than in residual coding, since the residual
-// travels in its own partition with its own arithmetic decoder.
-func TestEncoderReferenceMatchesDecoderOnKeyFrames(t *testing.T) {
+// It has to hold for every frame. VP8 prediction is closed-loop, so a single
+// byte of disagreement compounds into the next frame and the next. While the
+// inter path was broken this test's inter frames disagreed on roughly 90% of
+// their bytes; they now agree on all of them.
+func TestEncoderReferenceMatchesDecoder(t *testing.T) {
 	tool, required, err := vp8check.Availability()
 	if err != nil {
 		if required {
@@ -131,27 +131,20 @@ func TestEncoderReferenceMatchesDecoderOnKeyFrames(t *testing.T) {
 			{"U", encRecon[i].Cb, decoded[i].U},
 			{"V", encRecon[i].Cr, decoded[i].V},
 		}
-		anyDiff := false
 		for _, p := range planes {
 			differing, maxAbs := rdDiff(p.enc, p.dec)
-			if differing != 0 {
-				anyDiff = true
-			}
 			kind := "inter"
 			if isKey {
 				kind = "key"
 			}
 			t.Logf("frame %d (%-5s) plane %s: %d/%d bytes differ, max |delta| = %d",
 				i, kind, p.name, differing, len(p.enc), maxAbs)
-			if isKey && differing != 0 {
-				t.Errorf("frame %d plane %s: the encoder's reference disagrees with the decoder on a KEY frame "+
-					"(%d bytes, max |delta| %d) — the key-frame path is supposed to be the exact half",
-					i, p.name, differing, maxAbs)
+			if differing != 0 {
+				t.Errorf("frame %d (%s) plane %s: the encoder's reference disagrees with the decoder "+
+					"on %d of %d bytes (max |delta| %d) — the prediction loop is open, and the error "+
+					"will compound into every frame that follows",
+					i, kind, p.name, differing, len(p.enc), maxAbs)
 			}
-		}
-		if !isKey && !anyDiff {
-			t.Fatalf("frame %d: the encoder's reference now matches the decoder exactly — the inter-frame "+
-				"defect appears fixed, so replace this diagnostic with a positive conformance assertion", i)
 		}
 	}
 }
