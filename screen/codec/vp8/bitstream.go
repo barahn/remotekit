@@ -126,8 +126,8 @@ func encodeFrameHeaderWithProbs(enc *boolEncoder, width, height, qi int, deltas 
 
 	// mb_no_skip_coeff (1 bit): 1 → emit prob_skip_false
 	enc.putBit(128, true)
-	// prob_skip_false (8 bits): set high so most MBs are marked as skip
-	enc.putLiteral(255, 8)
+	skipProb := skipProbability(mbs)
+	enc.putLiteral(uint32(skipProb), 8)
 
 	// Calculate MB grid dimensions
 	mbW := (width + 15) / 16
@@ -147,10 +147,10 @@ func encodeFrameHeaderWithProbs(enc *boolEncoder, width, height, qi int, deltas 
 			leftBModes = [4]intraBMode{B_DC_PRED, B_DC_PRED, B_DC_PRED, B_DC_PRED}
 		}
 
-		// coeff_skip (1 bit, prob = prob_skip_false = 255):
-		// A value of 1 (true) means the macroblock has no non-zero DCT
-		// coefficients and the residual partition is not read for this MB.
-		enc.putBit(255, mb.skip)
+		// coeff_skip (1 bit): a value of 1 means the macroblock has no
+		// non-zero DCT coefficients and the residual partition is not read
+		// for it.
+		enc.putBit(skipProb, mb.skip)
 
 		// Encode intra_mb_mode (y_mode) using the mode tree from RFC 6386 §11.2.
 		// Tree structure:
@@ -927,4 +927,37 @@ func minInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// skipProbability returns prob_skip_false: the probability, out of 256, with
+// which the per-macroblock skip flag reads as *not* skipped.
+//
+// It has to be measured from the frame, not fixed. This was hardcoded to 255,
+// which says almost nothing is skipped -- so every macroblock that actually was
+// skipped cost a full 8 bits to say so. On a 640x480 screen where a small
+// region changed, that alone was around 1200 bytes per frame, and it made inter
+// frames larger than the key frames they were supposed to replace. Screen
+// content is the case where nearly every macroblock skips, which is exactly the
+// case the fixed value priced worst.
+//
+// The value is clamped away from both extremes: 0 would make a non-skipped
+// macroblock unencodable, and 256 does not fit the field.
+func skipProbability(mbs []macroblock) uint8 {
+	if len(mbs) == 0 {
+		return 128
+	}
+	notSkipped := 0
+	for i := range mbs {
+		if !mbs[i].skip {
+			notSkipped++
+		}
+	}
+	p := notSkipped * 256 / len(mbs)
+	if p < 1 {
+		p = 1
+	}
+	if p > 255 {
+		p = 255
+	}
+	return uint8(p)
 }

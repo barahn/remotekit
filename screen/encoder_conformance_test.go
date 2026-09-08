@@ -31,53 +31,97 @@ func requireTool(t *testing.T) string {
 	return ""
 }
 
-func testFrame(t *testing.T) *screen.Frame {
-	t.Helper()
+// testFrame draws a pattern with a bar that walks right, so that consecutive
+// frames differ enough for the differ to pass them through and little enough
+// that inter coding has something to exploit.
+func testFrame(idx int) *screen.Frame {
 	img := image.NewRGBA(image.Rect(0, 0, testWidth, testHeight))
 	draw.Draw(img, img.Bounds(), &image.Uniform{color.RGBA{R: 40, G: 90, B: 160, A: 255}}, image.Point{}, draw.Src)
+	bar := image.Rect(idx*3, 0, idx*3+8, testHeight)
+	draw.Draw(img, bar, &image.Uniform{color.RGBA{R: 230, G: 220, B: 60, A: 255}}, image.Point{}, draw.Src)
 	return &screen.Frame{
 		Image:        img,
 		Bounds:       img.Bounds(),
 		CapturedAt:   time.Now(),
-		SequenceNum:  1,
+		SequenceNum:  uint64(idx),
 		DisplayIndex: 0,
 	}
 }
 
-// TestPlaceholderEncoderIsNotConformant holds the KNOWN LIMITATION documented on
-// screen.VP8Encoder as an executable fact: its output is a VP8 key frame header
-// glued to a JPEG payload, and no VP8 decoder can read it.
+// TestEncoderProducesConformantStream decodes the production encoder's output
+// with libvpx and checks it reconstructs the frames that went in.
 //
-// This test asserts the current, broken behaviour on purpose. It exists so that
-// the oracle is already wired to the production encoder path when the real
-// encoder lands, and so the placeholder cannot be quietly shipped. DELETE IT and
-// replace it with a positive conformance assertion as part of that change — see
-// docs/reports/chirp-separation-plan.md, Track 3.
-func TestPlaceholderEncoderIsNotConformant(t *testing.T) {
+// It replaces TestPlaceholderEncoderIsNotConformant, which asserted the
+// opposite on purpose: the encoder used to emit a VP8 key frame header glued to
+// a JPEG payload, and that test existed so the placeholder could not be shipped
+// quietly. The placeholder is gone, so the assertion inverts.
+func TestEncoderProducesConformantStream(t *testing.T) {
 	tool := requireTool(t)
 
 	enc := screen.NewVP8Encoder(30, 70)
-	sample, err := enc.Encode(testFrame(t))
-	if err != nil {
-		t.Fatalf("Encode: %v", err)
+
+	const count = 6
+	var samples [][]byte
+	var sources []*screen.Frame
+	for i := 0; i < count; i++ {
+		f := testFrame(i)
+		sample, err := enc.Encode(f)
+		if err != nil {
+			t.Fatalf("Encode frame %d: %v", i, err)
+		}
+		if sample == nil {
+			// The rate limiter dropped it; give it room and retry once.
+			time.Sleep(40 * time.Millisecond)
+			if sample, err = enc.Encode(f); err != nil {
+				t.Fatalf("Encode frame %d: %v", i, err)
+			}
+		}
+		if sample == nil {
+			t.Fatalf("frame %d produced no sample despite changing", i)
+		}
+		samples = append(samples, sample)
+		sources = append(sources, f)
 	}
-	if len(sample) == 0 {
-		t.Fatal("Encode returned no sample")
+
+	if samples[0][0]&1 != 0 {
+		t.Fatal("the first sample is not a key frame; a viewer would have nothing to start from")
+	}
+	inter := 0
+	for _, s := range samples[1:] {
+		if s[0]&1 == 1 {
+			inter++
+		}
+	}
+	if inter == 0 {
+		t.Fatal("every sample is a key frame; the inter path is not being exercised at all")
 	}
 
 	data, err := ivf.Marshal(ivf.Config{
 		Width: testWidth, Height: testHeight,
 		FPSNumerator: 30, FPSDenominator: 1,
-	}, [][]byte{sample})
+	}, samples)
 	if err != nil {
 		t.Fatalf("Marshal: %v", err)
 	}
 
-	frames, err := vp8check.Decode(tool, data, testWidth, testHeight)
-	if err == nil {
-		t.Fatalf("the reference decoder accepted %d frames from the placeholder encoder; "+
-			"if the real encoder has landed, replace this test with a positive conformance assertion",
-			len(frames))
+	decoded, err := vp8check.Decode(tool, data, testWidth, testHeight)
+	if err != nil {
+		t.Fatalf("the reference decoder rejected the production encoder's output: %v", err)
 	}
-	t.Logf("placeholder rejected as expected: %v", err)
+	if len(decoded) != len(samples) {
+		t.Fatalf("decoded %d frames, want %d", len(decoded), len(samples))
+	}
+
+	for i, got := range decoded {
+		want := make([]byte, testWidth*testHeight*3/2)
+		screen.RGBAToI420ForTest(want, sources[i].Image, testWidth, testHeight)
+		psnr, err := vp8check.PSNR(got.Y, want[:testWidth*testHeight])
+		if err != nil {
+			t.Fatalf("frame %d: PSNR: %v", i, err)
+		}
+		t.Logf("frame %d: luma PSNR %.2f dB", i, psnr)
+		if psnr < 30 {
+			t.Errorf("frame %d reconstructed at %.2f dB, want at least 30", i, psnr)
+		}
+	}
 }

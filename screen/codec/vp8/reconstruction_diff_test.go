@@ -148,3 +148,88 @@ func TestEncoderReferenceMatchesDecoder(t *testing.T) {
 		}
 	}
 }
+
+// TestDirtyMapKeepsReconstructionExact checks the fast path the screen encoder
+// relies on: macroblocks reported as unchanged are coded as skipped ZEROMV
+// references without any analysis, and the result must still match libvpx byte
+// for byte.
+//
+// The risk this guards against is specific. A skipped macroblock reconstructs
+// to whatever the reference holds, so if the encoder's reference and the
+// decoder's ever part company, a skip freezes the difference in place instead
+// of coding over it — and it stays frozen until the next key frame.
+func TestDirtyMapKeepsReconstructionExact(t *testing.T) {
+	tool, required, err := vp8check.Availability()
+	if err != nil {
+		if required {
+			t.Fatalf("%s is required but unavailable: %v", vp8check.ToolName, err)
+		}
+		t.Skipf("skipping: %v", err)
+	}
+
+	const count = 4
+	enc, err := NewEncoder(rdW, rdH, 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enc.SetKeyFrameInterval(count)
+
+	mbW, mbH := rdW/16, rdH/16
+	var frames [][]byte
+	var encRecon [][]byte
+	for i := 0; i < count; i++ {
+		if i > 0 {
+			// Only the leftmost column of macroblocks is reported as changed.
+			// The source changes there and nowhere else, so this is the truth
+			// rather than a convenient lie.
+			dirty := make([]bool, mbW*mbH)
+			for y := 0; y < mbH; y++ {
+				dirty[y*mbW] = true
+			}
+			enc.SetDirtyMacroblocks(dirty)
+		}
+		b, err := enc.Encode(dirtySource(i))
+		if err != nil {
+			t.Fatalf("Encode frame %d: %v", i, err)
+		}
+		frames = append(frames, b)
+		encRecon = append(encRecon, append([]byte(nil), enc.refFrames.last.Y...))
+	}
+
+	data, err := ivf.Marshal(ivf.Config{
+		Width: rdW, Height: rdH, FPSNumerator: 30, FPSDenominator: 1,
+	}, frames)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := vp8check.Decode(tool, data, rdW, rdH)
+	if err != nil {
+		t.Fatalf("the reference decoder rejected the output: %v", err)
+	}
+
+	for i := range decoded {
+		differing, maxAbs := rdDiff(encRecon[i], decoded[i].Y)
+		if differing != 0 {
+			t.Errorf("frame %d: %d/%d luma bytes differ (max |delta| %d) with the dirty map in use",
+				i, differing, len(encRecon[i]), maxAbs)
+		}
+	}
+}
+
+// dirtySource changes only the leftmost 16 pixels between frames.
+func dirtySource(idx int) []byte {
+	buf := make([]byte, 0, rdW*rdH*3/2)
+	for y := 0; y < rdH; y++ {
+		for x := 0; x < rdW; x++ {
+			v := (x/8+y/8)%2*90 + 60
+			if x < 16 {
+				v = 40 + idx*30
+			}
+			buf = append(buf, byte(v))
+		}
+	}
+	for i := 0; i < rdW*rdH/2; i++ {
+		buf = append(buf, 128)
+	}
+	return buf
+}
