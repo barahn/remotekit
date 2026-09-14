@@ -1,6 +1,11 @@
 package screen
 
-import "image"
+import (
+	"image"
+	"runtime"
+	"sync"
+	"sync/atomic"
+)
 
 // rgbaToI420 converts an RGBA image into the planar I420 buffer the VP8 encoder
 // expects: a full-resolution luma plane followed by two half-resolution chroma
@@ -27,16 +32,21 @@ func rgbaToI420(dst []byte, img *image.RGBA, width, height int) {
 		return int(img.Pix[i]), int(img.Pix[i+1]), int(img.Pix[i+2])
 	}
 
-	for y := 0; y < height; y++ {
-		row := y * width
+	// Two source rows per unit of work: the chroma pass reads a 2x2
+	// neighbourhood, so pairing the rows keeps each unit self-contained and
+	// every write lands in a range no other unit touches.
+	forEachRowPair(height, width*height, func(y int) {
+		row0 := y * width
+		row1 := row0 + width
 		for x := 0; x < width; x++ {
 			r, g, bl := at(x, y)
 			// Y = 0.257R + 0.504G + 0.098B + 16, in 16.8 fixed point.
-			yPlane[row+x] = clampByte((66*r + 129*g + 25*bl + 128 + 4096) >> 8)
-		}
-	}
+			yPlane[row0+x] = clampByte((66*r + 129*g + 25*bl + 128 + 4096) >> 8)
 
-	for y := 0; y < height; y += 2 {
+			r, g, bl = at(x, y+1)
+			yPlane[row1+x] = clampByte((66*r + 129*g + 25*bl + 128 + 4096) >> 8)
+		}
+
 		for x := 0; x < width; x += 2 {
 			r0, g0, b0 := at(x, y)
 			r1, g1, b1 := at(x+1, y)
@@ -50,7 +60,51 @@ func rgbaToI420(dst []byte, img *image.RGBA, width, height int) {
 			uPlane[i] = clampByte((-38*r - 74*g + 112*bl + 128 + 32768) >> 8)
 			vPlane[i] = clampByte((112*r - 94*g - 18*bl + 128 + 32768) >> 8)
 		}
+	})
+}
+
+// parallelPixelThreshold is the pixel count below which the conversion stays on
+// one goroutine. Around 720p and up it pays for itself; below that the
+// scheduling costs more than it saves.
+var parallelPixelThreshold = 512 * 512
+
+// forEachRowPair runs fn for each even source row, in parallel above a size
+// worth splitting.
+//
+// The conversion is a pure function of the source image, and each unit writes
+// only the two luma rows and the one chroma row derived from its own pair, so
+// the output does not depend on the order the units complete in.
+func forEachRowPair(height, pixels int, fn func(y int)) {
+	pairs := height / 2
+	workers := runtime.GOMAXPROCS(0)
+	if workers > pairs {
+		workers = pairs
 	}
+	if workers < 2 || pixels < parallelPixelThreshold {
+		for y := 0; y+1 < height; y += 2 {
+			fn(y)
+		}
+		return
+	}
+
+	var next atomic.Int64
+	next.Store(-1)
+
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		go func() {
+			defer wg.Done()
+			for {
+				p := int(next.Add(1))
+				if p >= pairs {
+					return
+				}
+				fn(p * 2)
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func clampByte(v int) byte {

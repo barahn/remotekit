@@ -311,7 +311,9 @@ func (e *Encoder) processAllMacroblocks(frame *Frame, isKeyFrame bool, qf QuantF
 
 // processKeyFrameMBs processes macroblocks for a key frame (intra only).
 func (e *Encoder) processKeyFrameMBs(frame *Frame, mbs []macroblock, mbW, mbH, chromaW, chromaH int, qf QuantFactors) {
-	for mbY := 0; mbY < mbH; mbY++ {
+	// Parallel across rows: see forEachRow for why this pass may be and the
+	// inter-frame pass may not.
+	forEachRow(mbH, mbW*mbH, func(mbY int) {
 		for mbX := 0; mbX < mbW; mbX++ {
 			mbIdx := mbY*mbW + mbX
 			srcY := extractLumaBlock(frame, mbX, mbY, e.width, e.height)
@@ -319,7 +321,7 @@ func (e *Encoder) processKeyFrameMBs(frame *Frame, mbs []macroblock, mbW, mbH, c
 			ctx := e.buildMBContext(frame, mbX, mbY, mbW, mbH)
 			mbs[mbIdx] = processMacroblock(srcY, srcU, srcV, ctx, qf)
 		}
-	}
+	})
 }
 
 // processInterFrameMBs processes macroblocks for an inter frame (with motion estimation).
