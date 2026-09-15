@@ -435,11 +435,70 @@ func reconstructInterMB(recon *refFrameBuffer, mb *macroblock, mbX, mbY, width, 
 		return
 	}
 
+	// A skipped macroblock carries no coefficients, so its reconstruction is
+	// exactly its prediction. With a zero motion vector the prediction is the
+	// co-located block of the reference, which makes the whole macroblock a
+	// straight copy -- no dequantisation, no inverse transforms, no per-4x4
+	// loop over blocks that are all zero.
+	//
+	// This is the overwhelming majority of macroblocks in a screen stream, and
+	// it was previously costing the full transform path: inverse-DCT'ing blocks
+	// of zeros and adding them to a prediction they could not change. At 1080p
+	// that was two thirds of the time spent on an inter frame.
+	if mb.skip && mb.mv == zeroMV && !hasNonZeroCoeffs(mb.y2Coeffs[:]) {
+		copyMacroblockFromRef(recon, refBuf, mbX, mbY, width, height, chromaW)
+		return
+	}
+
 	// Reconstruct luma with motion compensation
 	reconstructInterLuma(recon, mb, refBuf, mbX, mbY, width, height, qf)
 
 	// Reconstruct chroma with halved MV
 	reconstructInterChroma(recon, mb, refBuf, mbX, mbY, width, height, chromaW, qf)
+}
+
+// copyMacroblockFromRef copies one macroblock's three planes straight across
+// from the reference frame, row by row.
+//
+// Both buffers have the same geometry, so this is a run of memmoves rather than
+// the clamped per-pixel copy motion compensation needs for vectors that point
+// outside the frame -- a zero vector never does.
+func copyMacroblockFromRef(recon, refBuf *refFrameBuffer, mbX, mbY, width, height, chromaW int) {
+	x0, y0 := mbX*16, mbY*16
+	for row := 0; row < 16; row++ {
+		y := y0 + row
+		if y >= height {
+			break
+		}
+		w := 16
+		if x0+w > width {
+			w = width - x0
+		}
+		if w <= 0 {
+			break
+		}
+		off := y*width + x0
+		copy(recon.Y[off:off+w], refBuf.Y[off:off+w])
+	}
+
+	chromaH := height / 2
+	cx0, cy0 := mbX*8, mbY*8
+	for row := 0; row < 8; row++ {
+		y := cy0 + row
+		if y >= chromaH {
+			break
+		}
+		w := 8
+		if cx0+w > chromaW {
+			w = chromaW - cx0
+		}
+		if w <= 0 {
+			break
+		}
+		off := y*chromaW + cx0
+		copy(recon.Cb[off:off+w], refBuf.Cb[off:off+w])
+		copy(recon.Cr[off:off+w], refBuf.Cr[off:off+w])
+	}
 }
 
 // reconstructInterLuma reconstructs luma blocks using motion-compensated prediction.

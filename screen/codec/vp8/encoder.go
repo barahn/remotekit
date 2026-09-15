@@ -98,6 +98,10 @@ type Encoder struct {
 	// screenContent restricts inter macroblocks to ZEROMV, skip and intra.
 	// See SetScreenContentProfile.
 	screenContent bool
+	// dirtyMap marks which macroblocks changed since the previous frame, in
+	// raster order. It is advisory input from the caller, consumed by the next
+	// Encode and then cleared.
+	dirtyMap []bool
 }
 
 // NewEncoder creates a new VP8 Encoder for frames of the given dimensions
@@ -279,6 +283,9 @@ func (e *Encoder) Encode(yuv []byte) ([]byte, error) {
 	isKeyFrame := e.shouldEncodeKeyFrame()
 	qf := GetQuantFactors(e.qi, e.y1DCDelta, e.y2DCDelta, e.y2ACDelta, e.uvDCDelta, e.uvACDelta)
 	mbs := e.processAllMacroblocks(frame, isKeyFrame, qf)
+	// The map describes one frame only. Keeping it would apply last frame's
+	// notion of what changed to the next one.
+	e.dirtyMap = nil
 
 	if isKeyFrame || !e.refFrames.hasReference(refFrameLast) {
 		return e.encodeKeyFrame(mbs, qf, frame)
@@ -304,7 +311,9 @@ func (e *Encoder) processAllMacroblocks(frame *Frame, isKeyFrame bool, qf QuantF
 
 // processKeyFrameMBs processes macroblocks for a key frame (intra only).
 func (e *Encoder) processKeyFrameMBs(frame *Frame, mbs []macroblock, mbW, mbH, chromaW, chromaH int, qf QuantFactors) {
-	for mbY := 0; mbY < mbH; mbY++ {
+	// Parallel across rows: see forEachRow for why this pass may be and the
+	// inter-frame pass may not.
+	forEachRow(mbH, mbW*mbH, func(mbY int) {
 		for mbX := 0; mbX < mbW; mbX++ {
 			mbIdx := mbY*mbW + mbX
 			srcY := extractLumaBlock(frame, mbX, mbY, e.width, e.height)
@@ -312,20 +321,41 @@ func (e *Encoder) processKeyFrameMBs(frame *Frame, mbs []macroblock, mbW, mbH, c
 			ctx := e.buildMBContext(frame, mbX, mbY, mbW, mbH)
 			mbs[mbIdx] = processMacroblock(srcY, srcU, srcV, ctx, qf)
 		}
-	}
+	})
 }
 
 // processInterFrameMBs processes macroblocks for an inter frame (with motion estimation).
 func (e *Encoder) processInterFrameMBs(frame *Frame, mbs []macroblock, mbW, mbH, chromaW, chromaH int, qf QuantFactors) {
 	refBuf := e.refFrames.getRef(refFrameLast)
+	dirty := e.dirtyMap
+	if len(dirty) != len(mbs) {
+		dirty = nil
+	}
 	for mbY := 0; mbY < mbH; mbY++ {
 		for mbX := 0; mbX < mbW; mbX++ {
 			mbIdx := mbY*mbW + mbX
+			if dirty != nil && !dirty[mbIdx] {
+				mbs[mbIdx] = unchangedMacroblock()
+				continue
+			}
 			srcY := extractLumaBlock(frame, mbX, mbY, e.width, e.height)
 			srcU, srcV := extractChromaBlocks(frame, mbX, mbY, chromaW, chromaH)
 			ctx := e.buildMBContext(frame, mbX, mbY, mbW, mbH)
 			mbs[mbIdx] = processInterMacroblock(srcY, srcU, srcV, refBuf, mbX, mbY, mbW, mbs, qf, ctx, e.screenContent)
 		}
+	}
+}
+
+// unchangedMacroblock is a skipped ZEROMV reference to the last frame: the
+// cheapest macroblock VP8 can express, and an exact copy of what the decoder
+// already holds.
+func unchangedMacroblock() macroblock {
+	return macroblock{
+		skip:      true,
+		isInter:   true,
+		refFrame:  refFrameLast,
+		mv:        zeroMV,
+		interMode: mvModeZeroMV,
 	}
 }
 
@@ -621,6 +651,26 @@ func (e *Encoder) FPS() int { return e.fps }
 // Staying on ZEROMV keeps the encoder out of that path entirely.
 //
 // Default is false, which preserves the upstream behaviour.
+// SetDirtyMacroblocks tells the encoder which macroblocks changed since the
+// previous frame, in raster order, for the next Encode call only.
+//
+// A macroblock the caller reports as clean is coded as a skipped ZEROMV
+// reference to the last frame without any analysis: no motion search, no mode
+// decision, no transform. That is not an approximation. The source pixels are
+// unchanged, so copying the previous reconstruction is what the encoder would
+// have chosen anyway; the difference is that it costs nothing to decide. Any
+// quantisation error already present is carried forward rather than compounded,
+// and the periodic key frame discards it.
+//
+// Passing a map of the wrong length, or none at all, means every macroblock is
+// analysed. That is the safe direction: a caller that gets its bookkeeping
+// wrong loses speed, not correctness. A caller that wrongly reports a *changed*
+// macroblock as clean would freeze it on screen until the next key frame, so
+// callers should mark a macroblock dirty whenever they are unsure.
+func (e *Encoder) SetDirtyMacroblocks(dirty []bool) {
+	e.dirtyMap = dirty
+}
+
 func (e *Encoder) SetScreenContentProfile(enabled bool) {
 	e.screenContent = enabled
 }

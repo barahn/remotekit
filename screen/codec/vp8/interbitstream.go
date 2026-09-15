@@ -180,10 +180,11 @@ func encodeInterFrameHeaderWithProbs(enc *boolEncoder, width, height, qi int, de
 	encodeCommonFrameHeader(enc, qi, deltas, partCount, loopFilter)
 	encodeRefFrameFlags(enc, refreshGolden)
 	encodeProbUpdates(enc, probCfg)
-	encodeInterFrameProbs(enc)
+	probs := measureFrameProbs(mbs)
+	encodeInterFrameProbs(enc, probs)
 	encodeIntraModeProbUpdates(enc)
 	encodeMVProbUpdates(enc)
-	encodeInterMBModes(enc, width, height, mbs)
+	encodeInterMBModes(enc, width, height, mbs, probs)
 }
 
 // encodeRefFrameFlags encodes reference frame refresh and copy flags.
@@ -212,20 +213,67 @@ func encodeProbUpdates(enc *boolEncoder, probCfg *ProbConfig) {
 // macroblock layer cannot drift apart: a value changed in one place and not the
 // other desynchronises the decoder without changing anything the encoder can
 // see for itself.
-const (
-	probSkipFalse uint8 = 255
-	probIntra     uint8 = 63
-	probLast      uint8 = 128
-	probGolden    uint8 = 128
-)
+// frameProbs are the per-frame probabilities the inter header signals and the
+// macroblock layer then codes with. They are measured from the frame rather
+// than fixed, for the same reason prob_skip_false is: a probability that does
+// not describe the frame does not merely compress worse, it prices the common
+// case at its worst. With every macroblock inter-coded against the last
+// reference -- the normal state of a screen stream -- fixed values spent about
+// 1.4 bits per macroblock saying so, which is 200 bytes a frame at 640x480
+// before any picture content is coded at all.
+type frameProbs struct {
+	skip   uint8
+	intra  uint8
+	last   uint8
+	golden uint8
+}
+
+// measureFrameProbs derives the header probabilities from the macroblocks the
+// frame actually contains.
+//
+// Each is the probability, out of 256, that the corresponding flag reads as
+// zero: prob_intra that a macroblock is intra, prob_last that an inter
+// macroblock references the last frame, prob_golden that a non-last reference
+// is golden rather than altref. All are clamped away from 0 and 256, since
+// either extreme makes the opposite case unencodable.
+func measureFrameProbs(mbs []macroblock) frameProbs {
+	p := frameProbs{skip: skipProbability(mbs), intra: 128, last: 128, golden: 128}
+	if len(mbs) == 0 {
+		return p
+	}
+
+	intra, inter, last, golden := 0, 0, 0, 0
+	for i := range mbs {
+		if !mbs[i].isInter {
+			intra++
+			continue
+		}
+		inter++
+		switch mbs[i].refFrame {
+		case refFrameLast:
+			last++
+		case refFrameGolden:
+			golden++
+		}
+	}
+
+	p.intra = clampProb(uint32(intra * 256 / len(mbs)))
+	if inter > 0 {
+		p.last = clampProb(uint32(last * 256 / inter))
+		if notLast := inter - last; notLast > 0 {
+			p.golden = clampProb(uint32(golden * 256 / notLast))
+		}
+	}
+	return p
+}
 
 // encodeInterFrameProbs encodes the inter-frame specific probability values.
-func encodeInterFrameProbs(enc *boolEncoder) {
+func encodeInterFrameProbs(enc *boolEncoder, p frameProbs) {
 	enc.putBit(128, true) // mb_no_skip_coeff
-	enc.putLiteral(uint32(probSkipFalse), 8)
-	enc.putLiteral(uint32(probIntra), 8)
-	enc.putLiteral(uint32(probLast), 8)
-	enc.putLiteral(uint32(probGolden), 8)
+	enc.putLiteral(uint32(p.skip), 8)
+	enc.putLiteral(uint32(p.intra), 8)
+	enc.putLiteral(uint32(p.last), 8)
+	enc.putLiteral(uint32(p.golden), 8)
 }
 
 // mvUpdateProbs are the probabilities with which each motion-vector
@@ -271,7 +319,7 @@ func encodeMVProbUpdates(enc *boolEncoder) {
 // Every macroblock's mode is coded with probabilities derived from its already
 // coded neighbours, so this walks the frame in the same raster order the
 // decoder does and derives the same predictors from the same three neighbours.
-func encodeInterMBModes(enc *boolEncoder, width, height int, mbs []macroblock) {
+func encodeInterMBModes(enc *boolEncoder, width, height int, mbs []macroblock, probs frameProbs) {
 	mbW := (width + 15) / 16
 	mbH := (height + 15) / 16
 
@@ -280,11 +328,11 @@ func encodeInterMBModes(enc *boolEncoder, width, height int, mbs []macroblock) {
 		mbX := mbIdx % mbW
 		mbY := mbIdx / mbW
 
-		enc.putBit(probSkipFalse, mb.skip)
+		enc.putBit(probs.skip, mb.skip)
 
 		above, left, aboveLeft := collectNeighbours(mbs, mbX, mbY, mbW)
 		near := findNearMVs(above, left, aboveLeft, mbX, mbY, mbW, mbH)
-		encodeInterMBMode(enc, mb, near, probIntra, probLast, probGolden)
+		encodeInterMBMode(enc, mb, near, probs.intra, probs.last, probs.golden)
 	}
 }
 

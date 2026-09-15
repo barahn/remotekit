@@ -7,9 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"image"
-	"image/color"
-	"image/draw"
 	"image/jpeg"
 	"log"
 	"net/http"
@@ -506,48 +503,6 @@ func (r *AgentStreamRunner) handleInputPayload(payload map[string]interface{}) {
 			})
 		}
 	}
-}
-
-// BuildVP8Sample constructs a valid VP8 keyframe uncompressed payload from RGBA screen frame.
-func BuildVP8Sample(frame *screen.Frame) []byte {
-	width := uint16(1920)
-	height := uint16(1080)
-
-	if frame != nil && frame.Image != nil {
-		bounds := frame.Image.Bounds()
-		if bounds.Dx() > 0 && bounds.Dx() <= 65535 && bounds.Dy() > 0 && bounds.Dy() <= 65535 {
-			width = uint16(bounds.Dx())  // #nosec G115 -- bounds checked
-			height = uint16(bounds.Dy()) // #nosec G115 -- bounds checked
-		}
-	}
-
-	// Minimal VP8 Keyframe Header (10 bytes)
-	// Frame Tag: 3 bytes (Keyframe = 0, Version = 0, ShowFrame = 1, PartSize = 0)
-	// Start Code: 0x9D 0x01 0x2A
-	// Width (14 bits) + Scale (2 bits), Height (14 bits) + Scale (2 bits)
-	header := make([]byte, 10)
-	header[0] = 0x10 // Keyframe, ShowFrame
-	header[1] = 0x00
-	header[2] = 0x00
-	header[3] = 0x9D
-	header[4] = 0x01
-	header[5] = 0x2A
-	header[6] = byte(width & 0xFF)
-	header[7] = byte((width >> 8) & 0x3F)
-	header[8] = byte(height & 0xFF)
-	header[9] = byte((height >> 8) & 0x3F)
-
-	// Encode RGBA image as JPEG payload or YUV420 sample
-	var payloadBuf bytes.Buffer
-	if frame != nil && frame.Image != nil {
-		_ = jpeg.Encode(&payloadBuf, frame.Image, &jpeg.Options{Quality: 70})
-	} else {
-		img := image.NewRGBA(image.Rect(0, 0, int(width), int(height)))
-		draw.Draw(img, img.Bounds(), &image.Uniform{color.RGBA{R: 22, G: 27, B: 34, A: 255}}, image.Point{}, draw.Src)
-		_ = jpeg.Encode(&payloadBuf, img, &jpeg.Options{Quality: 50})
-	}
-
-	return append(header, payloadBuf.Bytes()...)
 }
 
 func executePowerAction(action string) {
