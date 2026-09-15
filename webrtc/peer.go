@@ -241,6 +241,17 @@ func (ps *PeerSession) dispatchRTCP(packets []rtcp.Packet) {
 	fn()
 }
 
+// IsConnected reports whether the peer connection has completed ICE and is
+// carrying media.
+//
+// A convenience over ConnectionState for callers deciding whether the WebRTC
+// path is actually delivering — it saves them importing pion just to name one
+// enum value. Only "connected" counts: "connecting" and "disconnected" both
+// mean frames sent now would go nowhere.
+func (ps *PeerSession) IsConnected() bool {
+	return ps.ConnectionState() == webrtc.PeerConnectionStateConnected
+}
+
 // WriteVideoSample pushes an encoded frame sample (e.g., VP8 frame) to the video track.
 func (ps *PeerSession) WriteVideoSample(sampleData []byte, duration time.Duration) error {
 	if ps == nil {
