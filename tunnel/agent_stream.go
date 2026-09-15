@@ -7,9 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"image"
-	"image/color"
-	"image/draw"
 	"image/jpeg"
 	"log"
 	"net/http"
@@ -99,6 +96,12 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 	// safeWrite calls below) that already reaches every connection in the room; this map
 	// only tracks the SDP offer/answer/ICE bookkeeping.
 	peers := make(map[string]*webrtc.PeerSession)
+	// One encoder for the session, not one per viewer. VP8 is a chain of
+	// predictions, so every viewer has to receive the same bitstream from the
+	// same reference frames; encoding separately per viewer would cost N times
+	// the CPU to produce N identical streams. A viewer joining mid-session is
+	// served by forcing a key frame, which is what videoEncoder.Reset does.
+	videoEncoder := screen.NewVP8Encoder(30, 70)
 	var capturer screen.Capturer
 	var activeCapCancel context.CancelFunc
 	var writeMu sync.Mutex
@@ -182,6 +185,25 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				peer, err := webrtc.NewPeerSession(webrtc.DefaultPeerConfig())
 				if err == nil {
 					peers[viewerID] = peer
+
+					// The track has to exist before the answer is built, or the
+					// answer carries no video and the browser waits forever for
+					// a stream that was never offered back.
+					if tErr := peer.CreateVideoTrack("barahn-screen", "screen"); tErr != nil {
+						log.Printf("[AgentStream] video track unavailable for viewer %s, falling back to WebSocket frames: %v\n", viewerID, tErr)
+					} else {
+						// A receiver that cannot decode asks for an intra frame.
+						// Reset is the right answer to that: it forces a key
+						// frame and clears the frame differ, which matters
+						// because a differ seeing no change would suppress the
+						// frame entirely and leave the request unanswered.
+						peer.OnKeyFrameRequest(videoEncoder.Reset)
+					}
+
+					// This viewer has no reference frames yet, so whatever it
+					// receives first must be a key frame.
+					videoEncoder.Reset()
+
 					peer.OnICECandidate(func(candJSON string) {
 						candMsg := map[string]interface{}{
 							"type":       "candidate",
@@ -252,33 +274,79 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 						}
 					}()
 					frameCount := 0
+					lastSample := time.Time{}
 					for frame := range framesChan {
 						frameCount++
 
 						if ctx.Err() != nil {
 							return
 						}
-						// Direct high-quality JPEG streaming over WebSocket
-						if frame != nil && frame.Image != nil {
-							if frameCount == 1 && r.injector != nil {
-								r.injector.SetScreenBounds(frame.Image.Bounds())
-							}
-							var buf bytes.Buffer
-							if err := jpeg.Encode(&buf, frame.Image, &jpeg.Options{Quality: 60}); err == nil {
-								b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
-								frameMsg := map[string]interface{}{
-									"type":       "frame",
-									"session_id": r.creds.AgentID,
-									"data":       b64,
-								}
-								data, _ := json.Marshal(frameMsg)
-								if err := safeWrite(data); err != nil {
-									return // WebSocket closed
-								}
+						if frame == nil || frame.Image == nil {
+							continue
+						}
+						if frameCount == 1 && r.injector != nil {
+							r.injector.SetScreenBounds(frame.Image.Bounds())
+						}
 
-								if frameCount%30 == 1 {
-									log.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
+						// Which viewers are actually reachable over WebRTC right
+						// now. Anything else still needs the WebSocket frames.
+						stateMu.RLock()
+						live := make([]*webrtc.PeerSession, 0, len(peers))
+						for _, p := range peers {
+							if p.IsConnected() {
+								live = append(live, p)
+							}
+						}
+						stateMu.RUnlock()
+
+						if len(live) > 0 {
+							// VP8 over WebRTC. The encoder skips frames that
+							// carry no visual change, which is most of them on a
+							// desktop, and returns nil for those.
+							sample, encErr := videoEncoder.Encode(frame)
+							if encErr != nil {
+								log.Printf("[AgentStream] VP8 encode failed, falling back to WebSocket frames: %v\n", encErr)
+							} else if len(sample) > 0 {
+								now := time.Now()
+								duration := 33 * time.Millisecond
+								if !lastSample.IsZero() {
+									duration = now.Sub(lastSample)
 								}
+								lastSample = now
+								for _, p := range live {
+									if wErr := p.WriteVideoSample(sample, duration); wErr != nil {
+										log.Printf("[AgentStream] dropping a frame for one viewer: %v\n", wErr)
+									}
+								}
+								if frameCount%150 == 1 {
+									log.Printf("[AgentStream] VP8 frame #%d (%dx%d, %d bytes) to %d viewer(s)\n",
+										frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(sample), len(live))
+								}
+							}
+							// Both paths are never run for the same frame: at
+							// 1080p that would be a VP8 encode and a JPEG encode
+							// inside one 33ms budget, and neither would fit.
+							continue
+						}
+
+						// No WebRTC viewer is connected -- either negotiation has
+						// not finished yet or it failed. JPEG over the WebSocket
+						// keeps the session usable meanwhile.
+						var buf bytes.Buffer
+						if err := jpeg.Encode(&buf, frame.Image, &jpeg.Options{Quality: 60}); err == nil {
+							b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
+							frameMsg := map[string]interface{}{
+								"type":       "frame",
+								"session_id": r.creds.AgentID,
+								"data":       b64,
+							}
+							data, _ := json.Marshal(frameMsg)
+							if err := safeWrite(data); err != nil {
+								return // WebSocket closed
+							}
+
+							if frameCount%30 == 1 {
+								log.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
 							}
 						}
 					}
@@ -506,48 +574,6 @@ func (r *AgentStreamRunner) handleInputPayload(payload map[string]interface{}) {
 			})
 		}
 	}
-}
-
-// BuildVP8Sample constructs a valid VP8 keyframe uncompressed payload from RGBA screen frame.
-func BuildVP8Sample(frame *screen.Frame) []byte {
-	width := uint16(1920)
-	height := uint16(1080)
-
-	if frame != nil && frame.Image != nil {
-		bounds := frame.Image.Bounds()
-		if bounds.Dx() > 0 && bounds.Dx() <= 65535 && bounds.Dy() > 0 && bounds.Dy() <= 65535 {
-			width = uint16(bounds.Dx())  // #nosec G115 -- bounds checked
-			height = uint16(bounds.Dy()) // #nosec G115 -- bounds checked
-		}
-	}
-
-	// Minimal VP8 Keyframe Header (10 bytes)
-	// Frame Tag: 3 bytes (Keyframe = 0, Version = 0, ShowFrame = 1, PartSize = 0)
-	// Start Code: 0x9D 0x01 0x2A
-	// Width (14 bits) + Scale (2 bits), Height (14 bits) + Scale (2 bits)
-	header := make([]byte, 10)
-	header[0] = 0x10 // Keyframe, ShowFrame
-	header[1] = 0x00
-	header[2] = 0x00
-	header[3] = 0x9D
-	header[4] = 0x01
-	header[5] = 0x2A
-	header[6] = byte(width & 0xFF)
-	header[7] = byte((width >> 8) & 0x3F)
-	header[8] = byte(height & 0xFF)
-	header[9] = byte((height >> 8) & 0x3F)
-
-	// Encode RGBA image as JPEG payload or YUV420 sample
-	var payloadBuf bytes.Buffer
-	if frame != nil && frame.Image != nil {
-		_ = jpeg.Encode(&payloadBuf, frame.Image, &jpeg.Options{Quality: 70})
-	} else {
-		img := image.NewRGBA(image.Rect(0, 0, int(width), int(height)))
-		draw.Draw(img, img.Bounds(), &image.Uniform{color.RGBA{R: 22, G: 27, B: 34, A: 255}}, image.Point{}, draw.Src)
-		_ = jpeg.Encode(&payloadBuf, img, &jpeg.Options{Quality: 50})
-	}
-
-	return append(header, payloadBuf.Bytes()...)
 }
 
 func executePowerAction(action string) {

@@ -7,9 +7,20 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 )
+
+// defaultKeyFrameRequestInterval is the shortest gap between two honoured
+// key-frame requests.
+//
+// Receivers do not send one request and wait. A browser that has lost a frame
+// sends PLIs repeatedly until it sees an intra frame, so honouring each one
+// would encode a burst of full refreshes -- the most expensive frame there is,
+// several times over, exactly when the connection is already struggling. One
+// request is served and the rest are absorbed until the next window.
+const defaultKeyFrameRequestInterval = 500 * time.Millisecond
 
 // PeerConfig configures a WebRTC PeerConnection session.
 type PeerConfig struct {
@@ -43,6 +54,12 @@ type PeerSession struct {
 	closed     bool
 
 	onCandidate func(candidateJSON string)
+
+	// onKeyFrameRequest is invoked when the receiver asks for an intra frame.
+	onKeyFrameRequest func()
+	// keyFrameRequestInterval and lastKeyFrameRequest coalesce request bursts.
+	keyFrameRequestInterval time.Duration
+	lastKeyFrameRequest     time.Time
 }
 
 // NewPeerSession creates and initializes a new WebRTC PeerSession.
@@ -132,18 +149,107 @@ func (ps *PeerSession) CreateVideoTrack(streamID, trackID string) error {
 		return fmt.Errorf("webrtc: failed to add track to PeerConnection: %w", err)
 	}
 
-	// Read RTCP packets sent back by browser/receiver (keyframe requests, etc.)
-	go func() {
-		buf := make([]byte, 1500)
-		for {
-			if _, _, readErr := sender.Read(buf); readErr != nil {
-				return
-			}
-		}
-	}()
+	go ps.readRTCP(sender)
 
 	ps.videoTrack = track
 	return nil
+}
+
+// OnKeyFrameRequest registers a callback invoked when the receiver asks for an
+// intra frame -- a browser that has lost data and cannot decode until it gets a
+// fresh starting point.
+//
+// Without this the stream recovers only when the encoder's periodic key frame
+// comes round, which at a 300-frame interval is up to ten seconds of a frozen
+// or smeared picture. With it, recovery is one frame.
+//
+// The callback runs on the RTCP reader's goroutine and must not block: encode
+// asynchronously, or set a flag the encoder reads. Requests arriving inside
+// SetKeyFrameRequestInterval of an honoured one are dropped rather than queued.
+func (ps *PeerSession) OnKeyFrameRequest(fn func()) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	ps.onKeyFrameRequest = fn
+}
+
+// SetKeyFrameRequestInterval overrides how often key-frame requests are
+// honoured. Zero restores the default.
+func (ps *PeerSession) SetKeyFrameRequestInterval(d time.Duration) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	ps.keyFrameRequestInterval = d
+}
+
+// readRTCP consumes the receiver's RTCP feedback for as long as the sender
+// lives.
+//
+// Reading it is not optional even when nothing acts on it: the packets are
+// what drive the interceptor chain's own bookkeeping, and a sender whose RTCP
+// is never read eventually stalls. This used to read and discard; now the
+// packets are parsed and the ones that mean "I cannot decode, send me a fresh
+// frame" are acted on.
+func (ps *PeerSession) readRTCP(sender *webrtc.RTPSender) {
+	buf := make([]byte, 1500)
+	for {
+		n, _, err := sender.Read(buf)
+		if err != nil {
+			return // the sender is closed; nothing further will arrive
+		}
+		packets, err := rtcp.Unmarshal(buf[:n])
+		if err != nil {
+			// A malformed or unrecognised report is not worth tearing the
+			// reader down for -- the next one is along in a moment.
+			continue
+		}
+		ps.dispatchRTCP(packets)
+	}
+}
+
+// dispatchRTCP acts on a batch of received RTCP packets.
+//
+// Split out from the read loop so the decision -- which packets mean "send a
+// key frame", and how bursts are coalesced -- can be tested without a live
+// PeerConnection.
+func (ps *PeerSession) dispatchRTCP(packets []rtcp.Packet) {
+	wantsKeyFrame := false
+	for _, pkt := range packets {
+		switch pkt.(type) {
+		case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
+			wantsKeyFrame = true
+		}
+	}
+	if !wantsKeyFrame {
+		return
+	}
+
+	ps.mu.Lock()
+	fn := ps.onKeyFrameRequest
+	interval := ps.keyFrameRequestInterval
+	if interval <= 0 {
+		interval = defaultKeyFrameRequestInterval
+	}
+	now := time.Now()
+	tooSoon := !ps.lastKeyFrameRequest.IsZero() && now.Sub(ps.lastKeyFrameRequest) < interval
+	if !tooSoon {
+		ps.lastKeyFrameRequest = now
+	}
+	ps.mu.Unlock()
+
+	if fn == nil || tooSoon {
+		return
+	}
+	fn()
+}
+
+// IsConnected reports whether the peer connection has completed ICE and is
+// carrying media.
+//
+// A convenience over ConnectionState for callers deciding whether the WebRTC
+// path is actually delivering — it saves them importing pion just to name one
+// enum value. Only "connected" counts: "connecting" and "disconnected" both
+// mean frames sent now would go nowhere.
+func (ps *PeerSession) IsConnected() bool {
+	return ps.ConnectionState() == webrtc.PeerConnectionStateConnected
 }
 
 // WriteVideoSample pushes an encoded frame sample (e.g., VP8 frame) to the video track.
