@@ -198,11 +198,21 @@ func reconstructFrame(recon *refFrameBuffer, mbs []macroblock, qf QuantFactors,
 	}
 }
 
-// reconstructIntraMB reconstructs a single intra-predicted macroblock.
+// reconstructIntraMB reconstructs a single intra-predicted macroblock, deriving
+// the neighbour context from the reconstruction itself.
 func reconstructIntraMB(recon *refFrameBuffer, mb *macroblock, mbX, mbY, width, height, chromaW int, qf QuantFactors) {
-	// Build neighbor context from reconstructed frame
 	ctx := buildReconContext(recon, mbX, mbY, width, height, chromaW)
+	reconstructIntraMBWithContext(recon, mb, ctx, mbX, mbY, width, chromaW, qf)
+}
 
+// reconstructIntraMBWithContext reconstructs an intra macroblock against a
+// context the caller already has.
+//
+// The encoder analyses and reconstructs each macroblock in one step so that both
+// use the SAME context — the one derived from the reconstruction. Building it
+// twice would risk the two drifting apart, which is the defect this structure
+// exists to remove.
+func reconstructIntraMBWithContext(recon *refFrameBuffer, mb *macroblock, ctx *mbContext, mbX, mbY, width, chromaW int, qf QuantFactors) {
 	// Reconstruct luma
 	if mb.lumaMode == B_PRED {
 		reconstructLumaBPred(recon, mb, ctx, mbX, mbY, width, qf)

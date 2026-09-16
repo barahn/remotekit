@@ -282,50 +282,60 @@ func (e *Encoder) Encode(yuv []byte) ([]byte, error) {
 
 	isKeyFrame := e.shouldEncodeKeyFrame()
 	qf := GetQuantFactors(e.qi, e.y1DCDelta, e.y2DCDelta, e.y2ACDelta, e.uvDCDelta, e.uvACDelta)
-	mbs := e.processAllMacroblocks(frame, isKeyFrame, qf)
+	mbs, recon := e.processAllMacroblocks(frame, isKeyFrame, qf)
 	// The map describes one frame only. Keeping it would apply last frame's
 	// notion of what changed to the next one.
 	e.dirtyMap = nil
 
 	if isKeyFrame || !e.refFrames.hasReference(refFrameLast) {
-		return e.encodeKeyFrame(mbs, qf, frame)
+		return e.encodeKeyFrame(mbs, recon)
 	}
-	return e.encodeInterFrame(mbs, qf, frame)
+	return e.encodeInterFrame(mbs, recon)
 }
 
 // processAllMacroblocks processes all macroblocks in the frame.
-func (e *Encoder) processAllMacroblocks(frame *Frame, isKeyFrame bool, qf QuantFactors) []macroblock {
+func (e *Encoder) processAllMacroblocks(frame *Frame, isKeyFrame bool, qf QuantFactors) ([]macroblock, refFrameBuffer) {
 	mbW := (e.width + 15) / 16
 	mbH := (e.height + 15) / 16
 	chromaW := e.width / 2
 	chromaH := e.height / 2
 	mbs := make([]macroblock, mbW*mbH)
 
+	// The reconstruction is built here, macroblock by macroblock, rather than
+	// in a second pass. Prediction has to see the pixels a decoder will see:
+	// residuals computed against the source frame's neighbours cannot correct
+	// an error they were never told about, and the error then compounds along
+	// the row. Closing that loop means a macroblock cannot be analysed until
+	// its neighbours are reconstructed, which is why this is serial.
+	recon := e.refFrames.allocBuffer()
+	recon.valid = true
+
 	if isKeyFrame || !e.refFrames.hasReference(refFrameLast) {
-		e.processKeyFrameMBs(frame, mbs, mbW, mbH, chromaW, chromaH, qf)
+		e.processKeyFrameMBs(frame, mbs, &recon, mbW, mbH, chromaW, chromaH, qf)
 	} else {
-		e.processInterFrameMBs(frame, mbs, mbW, mbH, chromaW, chromaH, qf)
+		e.processInterFrameMBs(frame, mbs, &recon, mbW, mbH, chromaW, chromaH, qf)
 	}
-	return mbs
+	return mbs, recon
 }
 
-// processKeyFrameMBs processes macroblocks for a key frame (intra only).
-func (e *Encoder) processKeyFrameMBs(frame *Frame, mbs []macroblock, mbW, mbH, chromaW, chromaH int, qf QuantFactors) {
-	// Parallel across rows: see forEachRow for why this pass may be and the
-	// inter-frame pass may not.
-	forEachRow(mbH, mbW*mbH, func(mbY int) {
+// processKeyFrameMBs analyses and reconstructs macroblocks for a key frame.
+func (e *Encoder) processKeyFrameMBs(frame *Frame, mbs []macroblock, recon *refFrameBuffer, mbW, mbH, chromaW, chromaH int, qf QuantFactors) {
+	for mbY := 0; mbY < mbH; mbY++ {
 		for mbX := 0; mbX < mbW; mbX++ {
 			mbIdx := mbY*mbW + mbX
 			srcY := extractLumaBlock(frame, mbX, mbY, e.width, e.height)
 			srcU, srcV := extractChromaBlocks(frame, mbX, mbY, chromaW, chromaH)
-			ctx := e.buildMBContext(frame, mbX, mbY, mbW, mbH)
+
+			// From the reconstruction, not the source: see processAllMacroblocks.
+			ctx := buildReconContext(recon, mbX, mbY, e.width, e.height, chromaW)
 			mbs[mbIdx] = processMacroblock(srcY, srcU, srcV, ctx, qf)
+			reconstructIntraMBWithContext(recon, &mbs[mbIdx], ctx, mbX, mbY, e.width, chromaW, qf)
 		}
-	})
+	}
 }
 
-// processInterFrameMBs processes macroblocks for an inter frame (with motion estimation).
-func (e *Encoder) processInterFrameMBs(frame *Frame, mbs []macroblock, mbW, mbH, chromaW, chromaH int, qf QuantFactors) {
+// processInterFrameMBs analyses and reconstructs macroblocks for an inter frame.
+func (e *Encoder) processInterFrameMBs(frame *Frame, mbs []macroblock, recon *refFrameBuffer, mbW, mbH, chromaW, chromaH int, qf QuantFactors) {
 	refBuf := e.refFrames.getRef(refFrameLast)
 	dirty := e.dirtyMap
 	if len(dirty) != len(mbs) {
@@ -336,12 +346,19 @@ func (e *Encoder) processInterFrameMBs(frame *Frame, mbs []macroblock, mbW, mbH,
 			mbIdx := mbY*mbW + mbX
 			if dirty != nil && !dirty[mbIdx] {
 				mbs[mbIdx] = unchangedMacroblock()
+				reconstructInterMB(recon, &mbs[mbIdx], mbX, mbY, e.width, e.height, chromaW, qf, e.refFrames)
 				continue
 			}
 			srcY := extractLumaBlock(frame, mbX, mbY, e.width, e.height)
 			srcU, srcV := extractChromaBlocks(frame, mbX, mbY, chromaW, chromaH)
-			ctx := e.buildMBContext(frame, mbX, mbY, mbW, mbH)
+			ctx := buildReconContext(recon, mbX, mbY, e.width, e.height, chromaW)
 			mbs[mbIdx] = processInterMacroblock(srcY, srcU, srcV, refBuf, mbX, mbY, mbW, mbs, qf, ctx, e.screenContent)
+
+			if mbs[mbIdx].isInter {
+				reconstructInterMB(recon, &mbs[mbIdx], mbX, mbY, e.width, e.height, chromaW, qf, e.refFrames)
+			} else {
+				reconstructIntraMBWithContext(recon, &mbs[mbIdx], ctx, mbX, mbY, e.width, chromaW, qf)
+			}
 		}
 	}
 }
@@ -360,13 +377,13 @@ func unchangedMacroblock() macroblock {
 }
 
 // encodeKeyFrame builds and returns the key frame bitstream.
-func (e *Encoder) encodeKeyFrame(mbs []macroblock, qf QuantFactors, frame *Frame) ([]byte, error) {
+func (e *Encoder) encodeKeyFrame(mbs []macroblock, recon refFrameBuffer) ([]byte, error) {
 	result, err := e.buildKeyFrameBitstream(mbs)
 	if err != nil {
 		return nil, err
 	}
 
-	e.reconstructAndStore(mbs, qf, frame, true, true)
+	e.reconstructAndStore(recon, true, true)
 	e.frameCount = 1
 	e.forceNextKeyFrame = false
 
@@ -394,7 +411,7 @@ func (e *Encoder) buildKeyFrameBitstream(mbs []macroblock) ([]byte, error) {
 }
 
 // encodeInterFrame builds and returns the inter frame bitstream.
-func (e *Encoder) encodeInterFrame(mbs []macroblock, qf QuantFactors, frame *Frame) ([]byte, error) {
+func (e *Encoder) encodeInterFrame(mbs []macroblock, recon refFrameBuffer) ([]byte, error) {
 	refreshGolden := e.shouldUpdateGolden()
 
 	result, err := e.buildInterFrameBitstream(mbs, refreshGolden)
@@ -402,7 +419,7 @@ func (e *Encoder) encodeInterFrame(mbs []macroblock, qf QuantFactors, frame *Fra
 		return nil, err
 	}
 
-	e.reconstructAndStore(mbs, qf, frame, false, refreshGolden)
+	e.reconstructAndStore(recon, false, refreshGolden)
 	e.frameCount++
 
 	return result, nil
@@ -466,12 +483,7 @@ func (e *Encoder) shouldEncodeKeyFrame() bool {
 // reconstructAndStore reconstructs the encoded frame and stores it as a reference.
 // For key frames, golden is also updated. For inter frames, golden is updated
 // based on the refreshGolden parameter (which must match what was signaled in the bitstream).
-func (e *Encoder) reconstructAndStore(mbs []macroblock, qf QuantFactors, frame *Frame, isKeyFrame, refreshGolden bool) {
-	recon := e.refFrames.allocBuffer()
-	recon.valid = true
-
-	reconstructFrame(&recon, mbs, qf, e.refFrames, frame)
-
+func (e *Encoder) reconstructAndStore(recon refFrameBuffer, isKeyFrame, refreshGolden bool) {
 	// Apply loop filter to reconstructed reference frame if enabled.
 	// The loop filter level is encoded in the frame header, ensuring
 	// encoder and decoder apply the same filtering to reference frames.

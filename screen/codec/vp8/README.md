@@ -107,48 +107,49 @@ estimation is not a concession here; it designs the defect class out.
 Not done yet. This commit is the vendoring only.
 
 
-## The quality floor: prediction is open-loop
+## Prediction is closed-loop
 
-Separate from the conformance defects above, and not fixed. Measured on a frame
-captured from a real 1920x1080 desktop:
+Each macroblock is analysed against the reconstruction of its neighbours and
+reconstructed immediately, before the next one is analysed. Residuals are
+therefore computed against the same prediction the decoder will add them to.
 
-| quantiser | real capture | synthetic content |
+It was not always so, and the difference is not subtle. Predicting from the
+SOURCE frame's neighbours means a residual cannot correct an error it was never
+told about, so each macroblock passes a little more of it along. Following one
+macroblock row of a real screen capture, on a source that is a constant 34, the
+drift was one level per macroblock and monotonic: -14 at macroblock 40, -22 at
+48, -30 at 56. H_PRED showed it worst, replicating the left column across
+sixteen pixels; those macroblocks were 3% of the frame and 38% of its error.
+
+Measured on a 1920x1080 capture, encoder reconstruction against the source:
+
+| quantiser | open loop | closed loop | bytes (closed) |
+|---|---|---|---|
+| qi=0 | 39.0 dB | **60.3 dB** | 396160 |
+| qi=8 | 38.9 dB | **53.1 dB** | 216294 |
+| qi=24 | 32.8 dB | **45.9 dB** | 130604 |
+| qi=48 | 30.2 dB | **40.9 dB** | 91854 |
+
+Thirteen decibels at qi=24 for 3% more bytes. Open-loop quality barely responded
+to the quantiser at all — 0.1 dB from qi=0 to qi=8, where the step doubles —
+because quantisation was never what limited it.
+
+### What it costs
+
+A macroblock cannot be analysed until its neighbours are reconstructed, so the
+intra analysis pass is serial. The row-parallel key-frame pass that gave a 2.6x
+speedup depended on the open loop, and is gone with it:
+
+| | parallel, open loop | serial, closed loop |
 |---|---|---|
-| qi=0 | 39.0 dB | 63.6 dB |
-| qi=8 | 38.9 dB | 54.7 dB |
-| qi=24 | 32.8 dB | 36.7 dB |
+| key frame, 1080p, end to end | 55 ms | 127 ms |
+| inter frame, steady state | 8.0 ms | 8.6 ms |
 
-Real content barely responds to the quantiser: 0.1 dB between qi=0 and qi=8,
-where the quantiser step doubles. Quantisation is not what limits it.
+The steady state barely moves, which is the number that matters for a 30fps
+stream: 8.6 ms against a 33.3 ms budget. Key frames cost what they cost, and a
+periodic full refresh is a visible hitch again — roughly four dropped frames
+every ten seconds at a 300-frame interval.
 
-`processKeyFrameMBs` builds each macroblock's neighbour context from the
-**source** frame, so residuals are computed against a prediction made from
-original pixels — while `reconstructFrame`, and every decoder, add those
-residuals to a prediction made from **reconstructed** pixels. The residual
-cannot correct an error it was not computed against, so each macroblock hands a
-little more of it to the next. Following one macroblock row of the capture, on a
-source that is a constant 34:
-
-```
-mb 40  recon 20  drift -14
-mb 48  recon 12  drift -22
-mb 56  recon  4  drift -30
-```
-
-One level per macroblock, monotonic. H_PRED shows it worst because it replicates
-the left column across all sixteen pixels; the macroblocks carrying it are 3% of
-the frame and 38% of its error.
-
-This is a quality defect, not a conformance one. Encoder and decoder agree on
-the result — they agree on a worse picture than the bitrate paid for.
-
-**It has no synthetic reproducer yet.** Every pattern tried either picks a
-different mode or skips its H_PRED macroblocks, and a skipped macroblock has no
-residual to be wrong. The measurement above is from a real capture, repeatable
-with `VP8_REAL_CAPTURE=1` and `TestRealCaptureConformance`.
-
-The fix is closed-loop prediction: reconstruct each macroblock before analysing
-the next. That makes the intra analysis serial, which is exactly the property
-the row-parallel key-frame pass added for speed depends on. The 2.6x key-frame
-speedup and this defect are the same design decision, so it is a trade to make
-deliberately rather than a bug to swat.
+Getting the speed back means wavefront parallelism, where a macroblock starts as
+soon as its above-right neighbour is done rather than waiting for the whole row.
+That is a real piece of work and nobody has done it.
