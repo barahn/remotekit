@@ -102,6 +102,11 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 	// the CPU to produce N identical streams. A viewer joining mid-session is
 	// served by forcing a key frame, which is what videoEncoder.Reset does.
 	videoEncoder := screen.NewVP8Encoder(30, 70)
+	// Viewers that have reported decoding the WebRTC stream. A peer being
+	// connected only means the transport came up; it says nothing about whether
+	// the browser can read what is being sent. Until a viewer confirms, the
+	// JPEG fallback keeps feeding it -- see the video_ok case below.
+	videoConfirmed := make(map[string]bool)
 	var capturer screen.Capturer
 	var activeCapCancel context.CancelFunc
 	var writeMu sync.Mutex
@@ -201,7 +206,9 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 					}
 
 					// This viewer has no reference frames yet, so whatever it
-					// receives first must be a key frame.
+					// receives first must be a key frame. And it has not yet
+					// shown it can decode anything, so it starts unconfirmed.
+					delete(videoConfirmed, viewerID)
 					videoEncoder.Reset()
 
 					peer.OnICECandidate(func(candJSON string) {
@@ -288,13 +295,20 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 							r.injector.SetScreenBounds(frame.Image.Bounds())
 						}
 
-						// Which viewers are actually reachable over WebRTC right
-						// now. Anything else still needs the WebSocket frames.
+						// Which viewers are reachable over WebRTC right now, and
+						// which of those have shown they can decode what is being
+						// sent. A connected peer is not yet a served viewer.
 						stateMu.RLock()
 						live := make([]*webrtc.PeerSession, 0, len(peers))
-						for _, p := range peers {
-							if p.IsConnected() {
-								live = append(live, p)
+						unconfirmed := 0
+						for id, p := range peers {
+							if !p.IsConnected() {
+								unconfirmed++
+								continue
+							}
+							live = append(live, p)
+							if !videoConfirmed[id] {
+								unconfirmed++
 							}
 						}
 						stateMu.RUnlock()
@@ -323,10 +337,22 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 										frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(sample), len(live))
 								}
 							}
-							// Both paths are never run for the same frame: at
-							// 1080p that would be a VP8 encode and a JPEG encode
-							// inside one 33ms budget, and neither would fit.
-							continue
+							if unconfirmed == 0 {
+								// Every viewer is being served by WebRTC. The
+								// JPEG path stops here: at 1080p, running both
+								// for one frame is a VP8 encode plus a JPEG
+								// encode inside a 33ms budget, and neither fits.
+								continue
+							}
+							// Some viewer is not confirmed yet -- still
+							// negotiating, or unable to decode this codec. It
+							// gets JPEG, but at a third of the rate, so the
+							// probation window costs bandwidth and a lower frame
+							// rate rather than blowing the frame budget. A
+							// viewer that never confirms simply stays here.
+							if frameCount%3 != 0 {
+								continue
+							}
 						}
 
 						// No WebRTC viewer is connected -- either negotiation has
@@ -352,6 +378,22 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 					}
 				}()
 			}
+
+		case "video_ok", "video_stalled":
+			// The viewer reports whether it is actually rendering decoded video.
+			// This is the only evidence the agent has that the codec it is
+			// sending is one this browser can read, so it is what gates turning
+			// the JPEG fallback off -- not the ICE connection state.
+			viewerID, _ := signal["viewer_id"].(string)
+			stateMu.Lock()
+			if msgType == "video_ok" {
+				videoConfirmed[viewerID] = true
+				log.Printf("[AgentStream] viewer %s is decoding WebRTC video; stopping its JPEG fallback\n", viewerID)
+			} else {
+				delete(videoConfirmed, viewerID)
+				log.Printf("[AgentStream] viewer %s reports stalled video; resuming the JPEG fallback\n", viewerID)
+			}
+			stateMu.Unlock()
 
 		case "candidate":
 			cand, _ := signal["candidate"].(string)

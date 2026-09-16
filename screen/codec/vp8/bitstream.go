@@ -171,9 +171,12 @@ func encodeFrameHeaderWithProbs(enc *boolEncoder, width, height, qi int, deltas 
 				leftBModes[i] = mb.bModes[i*4+3] // blocks 3, 7, 11, 15
 			}
 		} else {
-			// For 16x16 modes, decoder uses B_DC_PRED as context
-			aboveBModes[mbX] = [4]intraBMode{B_DC_PRED, B_DC_PRED, B_DC_PRED, B_DC_PRED}
-			leftBModes = [4]intraBMode{B_DC_PRED, B_DC_PRED, B_DC_PRED, B_DC_PRED}
+			// A 16x16 macroblock contributes its OWN mode to the sub-block
+			// context of its neighbours, mapped into the sub-block mode space.
+			// It does not contribute B_DC_PRED unless that is what it used.
+			ctx := bModeForLumaMode(mb.lumaMode)
+			aboveBModes[mbX] = [4]intraBMode{ctx, ctx, ctx, ctx}
+			leftBModes = [4]intraBMode{ctx, ctx, ctx, ctx}
 		}
 
 		// Encode uv_mode (chroma mode) using the chroma mode tree.
@@ -858,7 +861,7 @@ func (ctx *residualContext) encodeMacroblock(provider tokenEncoderProvider, mb m
 	te := provider.GetTokenEncoder(mbY)
 
 	if mb.skip {
-		ctx.clearContext(mbX)
+		ctx.clearContext(&mb, mbX)
 		return
 	}
 
@@ -873,14 +876,30 @@ func (ctx *residualContext) resetLeftContext() {
 	ctx.leftNzMaskUV = 0
 }
 
-// clearContext clears all context for a skipped macroblock.
-func (ctx *residualContext) clearContext(mbX int) {
-	ctx.leftNzY16 = 0
-	ctx.upNzY16[mbX] = 0
+// clearContext clears the non-zero contexts for a skipped macroblock.
+//
+// The Y2 context is the exception. A skipped macroblock sends no coefficients,
+// so its luma and chroma contexts go to zero — but the Y2 context is cleared
+// only for a macroblock that HAS a Y2 block, which means anything other than
+// B_PRED (and SPLITMV, which this encoder never emits). For a skipped B_PRED
+// macroblock the Y2 context is left exactly as it was, because there was no Y2
+// block to say anything about it.
+//
+// Clearing it unconditionally desynchronises the decoder's context from the
+// encoder's, and every later block is then read with the wrong probability row.
+//
+// Reference: RFC 6386 §13.1; any conformant decoder shows the shape directly —
+// the skip branch clears nzY16 only when the macroblock uses a 16x16 mode.
+func (ctx *residualContext) clearContext(mb *macroblock, mbX int) {
 	ctx.leftNzMaskY = 0
 	ctx.upNzMaskY[mbX] = 0
 	ctx.leftNzMaskUV = 0
 	ctx.upNzMaskUV[mbX] = 0
+
+	if mb.lumaMode != B_PRED {
+		ctx.leftNzY16 = 0
+		ctx.upNzY16[mbX] = 0
+	}
 }
 
 // encodeY2Block encodes the Y2 block for 16x16 modes.
@@ -891,10 +910,18 @@ func (ctx *residualContext) encodeY2Block(te *TokenEncoder, mb *macroblock, mbX 
 		nzVal := boolToUint8(nz)
 		ctx.leftNzY16 = nzVal
 		ctx.upNzY16[mbX] = nzVal
-	} else {
-		ctx.leftNzY16 = 0
-		ctx.upNzY16[mbX] = 0
 	}
+	// A B_PRED macroblock has no Y2 block, so it says nothing about the Y2
+	// context and must leave it exactly as it found it. Zeroing it here — which
+	// this encoder did — hands the next 16x16 macroblock a context the decoder
+	// never saw, and the two then read the Y2 block with different
+	// probabilities. The bit counts differ, the token partition desynchronises
+	// from that macroblock onward, and the frame still parses: what comes out
+	// is simply a different picture.
+	//
+	// The same rule governs skipped macroblocks in clearContext, which is where
+	// it was noticed first. A macroblock touches the Y2 context only if it
+	// carries a Y2 block.
 }
 
 // encodeLumaAndChroma encodes luma and chroma blocks.
@@ -960,4 +987,34 @@ func skipProbability(mbs []macroblock) uint8 {
 		p = 255
 	}
 	return uint8(p)
+}
+
+// bModeForLumaMode maps a 16x16 luma mode into the sub-block mode space, which
+// is how a 16x16 macroblock enters the B_PRED context of its neighbours.
+//
+// Getting this wrong is silent and expensive. A key frame's sub-block modes are
+// coded with kfBModeProb[above][left], so a neighbour reported as B_DC_PRED
+// when it was really V_PRED selects a different probability row, the decoder
+// consumes a different number of bits, and the first partition desynchronises
+// from that macroblock onward — taking every mode and motion vector after it.
+//
+// This encoder previously returned B_DC_PRED for every 16x16 mode, with a
+// comment asserting that was what the decoder did. It is not: see
+// parsePredModeY16 in any conformant decoder, which stores the mode it just
+// read into the neighbour context. The defect stayed hidden because the
+// conformance suite's source pattern makes the mode decision choose B_PRED for
+// every macroblock, so no 16x16 macroblock was ever a neighbour of anything.
+//
+// Reference: RFC 6386 §11.3.
+func bModeForLumaMode(mode intraMode) intraBMode {
+	switch mode {
+	case V_PRED:
+		return B_VE_PRED
+	case H_PRED:
+		return B_HE_PRED
+	case TM_PRED:
+		return B_TM_PRED
+	default: // DC_PRED
+		return B_DC_PRED
+	}
 }
