@@ -23,12 +23,19 @@ import (
 // container and the screen does not. Nothing about the captured picture is
 // logged: only frame sizes, PSNR and byte counts.
 //
-// Measured on a 3840x2160 X11 desktop on 2026-09-15: libvpx accepts the stream,
-// and reconstructs it at 12.91 dB against a source the encoder's own
-// reconstruction hits 29.59 dB on. The two reconstructions differ on 8225694 of
-// 8294400 luma bytes while the mode layer stays in sync for all 32400
-// macroblocks — so a residual-layer defect, distinct from the mode-context one
-// fixed alongside this.
+// Measured on this machine's 1920x1080 X11 desktop on 2026-09-16, eight frames:
+// libvpx accepts the stream and reconstructs every frame at 18.92 dB, with
+// 2007995 of 2073600 luma bytes differing from the source. The encoder's own
+// reconstruction is far better, so the two disagree; the mode layer meanwhile
+// stays in sync for every macroblock and the frames parse cleanly. That makes
+// it a residual-layer defect, distinct from the mode-context one fixed
+// alongside this.
+//
+// An earlier run of this test reported 3840x2160 and correspondingly worse
+// numbers. The display is FullHD, so those figures described something this
+// machine does not have; they are not repeatable and should not be quoted. The
+// conclusion survives the correction — the defect reproduces at the real
+// resolution — but the magnitudes in that first report do not.
 func TestRealCaptureConformance(t *testing.T) {
 	if os.Getenv("VP8_REAL_CAPTURE") == "" {
 		t.Skip("set VP8_REAL_CAPTURE=1 to capture this machine's screen")
