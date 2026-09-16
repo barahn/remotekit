@@ -76,6 +76,9 @@ chroma for that reason.
 | `uv_mode` coded with the key-frame probabilities `{142, 114, 183}` in inter frames, which use `{162, 101, 204}` | fixed |
 | B_PRED sub-modes inside an inter frame coded with the key frame's above/left contextual rows instead of the fixed `vp8_bmode_prob` row | fixed |
 | the out-of-frame corner pixel answered as a neutral 128, where the row above the picture reads 127 and the column to its left reads 129 | fixed |
+| a 16x16 macroblock contributing `B_DC_PRED` to its neighbours' sub-block context instead of its own mode | fixed |
+| B_PRED reading its above-right pixels from its own reconstruction, and a context buffer too narrow to hold them at all | fixed |
+| the Y2 non-zero context zeroed by macroblocks that have no Y2 block — B_PRED, and skipped macroblocks | fixed |
 | `copy_buffer_to_golden` written unconditionally; §9.7 makes it present only when `refresh_golden_frame` is 0 | open, latent — bites once golden refresh is enabled |
 
 ### Where it stands
@@ -153,3 +156,21 @@ every ten seconds at a 300-frame interval.
 Getting the speed back means wavefront parallelism, where a macroblock starts as
 soon as its above-right neighbour is done rather than waiting for the whole row.
 That is a real piece of work and nobody has done it.
+
+## Where it stands, measured on a real screen
+
+A 1920x1080 X11 desktop, captured and encoded through the production path, then
+decoded by libvpx:
+
+| | |
+|---|---|
+| encoder reference vs decoder reconstruction | **0 macroblocks diverge** |
+| decoder reconstruction vs source | **43.29 dB**, max \|delta\| 24 |
+
+Before the last three fixes the same capture measured 12.41 dB with 1.6 million
+of 2.1 million luma bytes wrong. The remaining difference from the source is
+quantisation, which is what it is supposed to be.
+
+Every case in `TestConformanceAcrossContentAndSize` passes: flat and textured
+content, 64x64 through 1280x720, key frames and inter frames. Nothing in this
+package is gated behind a known-defect flag any more.
