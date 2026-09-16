@@ -63,9 +63,12 @@ type macroblock struct {
 // mbContext holds the neighbor context needed for macroblock prediction.
 type mbContext struct {
 	// Luma neighbors — fixed-size backing arrays to avoid per-MB heap allocations.
-	lumaAboveBuf [16]byte
+	// lumaAboveBuf holds the 16 pixels above the macroblock plus the 4 above
+	// and to the right of it, which B_PRED sub-blocks in the rightmost column
+	// predict from.
+	lumaAboveBuf [20]byte
 	lumaLeftBuf  [16]byte
-	lumaAbove    []byte // 16 pixels above (nil if not available, else slice of lumaAboveBuf)
+	lumaAbove    []byte // 20 pixels: 16 above, then 4 above-right (nil if not available)
 	lumaLeft     []byte // 16 pixels to the left (nil if not available, else slice of lumaLeftBuf)
 	lumaTopLeft  byte   // pixel at (-1, -1)
 
@@ -295,7 +298,25 @@ func build4x4Above(above []byte, by, bx int, ctx *mbContext, recon []byte) {
 	for i := 0; i < 4; i++ {
 		above[1+i] = recon[(by*4-1)*16+bx*4+i]
 	}
-	// Extra pixels: from right neighbor block's top row or extend
+	// The four above-right pixels.
+	//
+	// For the rightmost sub-block column they do NOT come from this
+	// macroblock's own reconstruction, and they are not a replication of the
+	// last above pixel either: every sub-block row reads the same four pixels,
+	// taken from the row above the MACROBLOCK. The sub-block to the above-right
+	// of rows 1 to 3 has not been reconstructed yet in raster order, so the
+	// format reaches over it to the row above instead — one of VP8's genuinely
+	// surprising rules, and one this encoder did not implement.
+	if bx == 3 {
+		if ctx.lumaAbove != nil {
+			copy(above[5:9], ctx.lumaAbove[16:20])
+		} else {
+			for i := 0; i < 4; i++ {
+				above[5+i] = 127
+			}
+		}
+		return
+	}
 	if bx < 3 {
 		for i := 0; i < 4; i++ {
 			above[5+i] = recon[(by*4-1)*16+(bx+1)*4+i]
@@ -315,20 +336,12 @@ func build4x4AboveFromMBContext(above []byte, bx int, ctx *mbContext) {
 		}
 		return
 	}
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 8; i++ {
 		col := bx*4 + i
 		if col < len(ctx.lumaAbove) {
 			above[1+i] = ctx.lumaAbove[col]
 		} else {
-			above[1+i] = 128
-		}
-	}
-	for i := 0; i < 4; i++ {
-		col := bx*4 + 4 + i
-		if col < len(ctx.lumaAbove) {
-			above[5+i] = ctx.lumaAbove[col]
-		} else {
-			above[5+i] = above[4]
+			above[1+i] = ctx.lumaAbove[len(ctx.lumaAbove)-1]
 		}
 	}
 }

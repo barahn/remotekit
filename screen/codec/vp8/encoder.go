@@ -557,7 +557,7 @@ func (e *Encoder) buildMBContext(frame *Frame, mbX, mbY, mbW, mbH int) *mbContex
 // buildLumaContext fills the luma neighbor context from the source frame.
 func buildLumaContext(ctx *mbContext, y []byte, mbX, mbY, width, height int) {
 	if mbY > 0 {
-		fillAboveRow(ctx.lumaAboveBuf[:], y, mbX*16, (mbY*16-1)*width, width, 16)
+		fillAboveRow(ctx.lumaAboveBuf[:], y, mbX*16, (mbY*16-1)*width, width, 20)
 		ctx.lumaAbove = ctx.lumaAboveBuf[:]
 	}
 	if mbX > 0 {
@@ -588,11 +588,19 @@ func buildChromaContext(ctx *mbContext, cb, cr []byte, mbX, mbY, chromaW, chroma
 
 // fillAboveRow fills the above row buffer from the source plane.
 func fillAboveRow(buf, src []byte, startCol, rowOffset, planeW, count int) {
+	last := byte(127)
 	for i := 0; i < count; i++ {
 		col := startCol + i
 		if col < planeW {
 			buf[i] = src[rowOffset+col]
+			last = buf[i]
+			continue
 		}
+		// Past the right edge of the frame. This is the above-right of the last
+		// macroblock in a row, and the format replicates the last pixel of the
+		// row above rather than reading beyond it. Leaving the previous
+		// macroblock's values here instead is a silent mismatch.
+		buf[i] = last
 	}
 }
 
