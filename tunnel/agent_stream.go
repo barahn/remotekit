@@ -96,6 +96,17 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 	// safeWrite calls below) that already reaches every connection in the room; this map
 	// only tracks the SDP offer/answer/ICE bookkeeping.
 	peers := make(map[string]*webrtc.PeerSession)
+	// One encoder for the session, not one per viewer. VP8 is a chain of
+	// predictions, so every viewer has to receive the same bitstream from the
+	// same reference frames; encoding separately per viewer would cost N times
+	// the CPU to produce N identical streams. A viewer joining mid-session is
+	// served by forcing a key frame, which is what videoEncoder.Reset does.
+	videoEncoder := screen.NewVP8Encoder(30, 70)
+	// Viewers that have reported decoding the WebRTC stream. A peer being
+	// connected only means the transport came up; it says nothing about whether
+	// the browser can read what is being sent. Until a viewer confirms, the
+	// JPEG fallback keeps feeding it -- see the video_ok case below.
+	videoConfirmed := make(map[string]bool)
 	var capturer screen.Capturer
 	var activeCapCancel context.CancelFunc
 	var writeMu sync.Mutex
@@ -179,6 +190,27 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				peer, err := webrtc.NewPeerSession(webrtc.DefaultPeerConfig())
 				if err == nil {
 					peers[viewerID] = peer
+
+					// The track has to exist before the answer is built, or the
+					// answer carries no video and the browser waits forever for
+					// a stream that was never offered back.
+					if tErr := peer.CreateVideoTrack("barahn-screen", "screen"); tErr != nil {
+						log.Printf("[AgentStream] video track unavailable for viewer %s, falling back to WebSocket frames: %v\n", viewerID, tErr)
+					} else {
+						// A receiver that cannot decode asks for an intra frame.
+						// Reset is the right answer to that: it forces a key
+						// frame and clears the frame differ, which matters
+						// because a differ seeing no change would suppress the
+						// frame entirely and leave the request unanswered.
+						peer.OnKeyFrameRequest(videoEncoder.Reset)
+					}
+
+					// This viewer has no reference frames yet, so whatever it
+					// receives first must be a key frame. And it has not yet
+					// shown it can decode anything, so it starts unconfirmed.
+					delete(videoConfirmed, viewerID)
+					videoEncoder.Reset()
+
 					peer.OnICECandidate(func(candJSON string) {
 						candMsg := map[string]interface{}{
 							"type":       "candidate",
@@ -249,38 +281,119 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 						}
 					}()
 					frameCount := 0
+					lastSample := time.Time{}
 					for frame := range framesChan {
 						frameCount++
 
 						if ctx.Err() != nil {
 							return
 						}
-						// Direct high-quality JPEG streaming over WebSocket
-						if frame != nil && frame.Image != nil {
-							if frameCount == 1 && r.injector != nil {
-								r.injector.SetScreenBounds(frame.Image.Bounds())
-							}
-							var buf bytes.Buffer
-							if err := jpeg.Encode(&buf, frame.Image, &jpeg.Options{Quality: 60}); err == nil {
-								b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
-								frameMsg := map[string]interface{}{
-									"type":       "frame",
-									"session_id": r.creds.AgentID,
-									"data":       b64,
-								}
-								data, _ := json.Marshal(frameMsg)
-								if err := safeWrite(data); err != nil {
-									return // WebSocket closed
-								}
+						if frame == nil || frame.Image == nil {
+							continue
+						}
+						if frameCount == 1 && r.injector != nil {
+							r.injector.SetScreenBounds(frame.Image.Bounds())
+						}
 
-								if frameCount%30 == 1 {
-									log.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
+						// Which viewers are reachable over WebRTC right now, and
+						// which of those have shown they can decode what is being
+						// sent. A connected peer is not yet a served viewer.
+						stateMu.RLock()
+						live := make([]*webrtc.PeerSession, 0, len(peers))
+						unconfirmed := 0
+						for id, p := range peers {
+							if !p.IsConnected() {
+								unconfirmed++
+								continue
+							}
+							live = append(live, p)
+							if !videoConfirmed[id] {
+								unconfirmed++
+							}
+						}
+						stateMu.RUnlock()
+
+						if len(live) > 0 {
+							// VP8 over WebRTC. The encoder skips frames that
+							// carry no visual change, which is most of them on a
+							// desktop, and returns nil for those.
+							sample, encErr := videoEncoder.Encode(frame)
+							if encErr != nil {
+								log.Printf("[AgentStream] VP8 encode failed, falling back to WebSocket frames: %v\n", encErr)
+							} else if len(sample) > 0 {
+								now := time.Now()
+								duration := 33 * time.Millisecond
+								if !lastSample.IsZero() {
+									duration = now.Sub(lastSample)
 								}
+								lastSample = now
+								for _, p := range live {
+									if wErr := p.WriteVideoSample(sample, duration); wErr != nil {
+										log.Printf("[AgentStream] dropping a frame for one viewer: %v\n", wErr)
+									}
+								}
+								if frameCount%150 == 1 {
+									log.Printf("[AgentStream] VP8 frame #%d (%dx%d, %d bytes) to %d viewer(s)\n",
+										frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(sample), len(live))
+								}
+							}
+							if unconfirmed == 0 {
+								// Every viewer is being served by WebRTC. The
+								// JPEG path stops here: at 1080p, running both
+								// for one frame is a VP8 encode plus a JPEG
+								// encode inside a 33ms budget, and neither fits.
+								continue
+							}
+							// Some viewer is not confirmed yet -- still
+							// negotiating, or unable to decode this codec. It
+							// gets JPEG, but at a third of the rate, so the
+							// probation window costs bandwidth and a lower frame
+							// rate rather than blowing the frame budget. A
+							// viewer that never confirms simply stays here.
+							if frameCount%3 != 0 {
+								continue
+							}
+						}
+
+						// No WebRTC viewer is connected -- either negotiation has
+						// not finished yet or it failed. JPEG over the WebSocket
+						// keeps the session usable meanwhile.
+						var buf bytes.Buffer
+						if err := jpeg.Encode(&buf, frame.Image, &jpeg.Options{Quality: 60}); err == nil {
+							b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
+							frameMsg := map[string]interface{}{
+								"type":       "frame",
+								"session_id": r.creds.AgentID,
+								"data":       b64,
+							}
+							data, _ := json.Marshal(frameMsg)
+							if err := safeWrite(data); err != nil {
+								return // WebSocket closed
+							}
+
+							if frameCount%30 == 1 {
+								log.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
 							}
 						}
 					}
 				}()
 			}
+
+		case "video_ok", "video_stalled":
+			// The viewer reports whether it is actually rendering decoded video.
+			// This is the only evidence the agent has that the codec it is
+			// sending is one this browser can read, so it is what gates turning
+			// the JPEG fallback off -- not the ICE connection state.
+			viewerID, _ := signal["viewer_id"].(string)
+			stateMu.Lock()
+			if msgType == "video_ok" {
+				videoConfirmed[viewerID] = true
+				log.Printf("[AgentStream] viewer %s is decoding WebRTC video; stopping its JPEG fallback\n", viewerID)
+			} else {
+				delete(videoConfirmed, viewerID)
+				log.Printf("[AgentStream] viewer %s reports stalled video; resuming the JPEG fallback\n", viewerID)
+			}
+			stateMu.Unlock()
 
 		case "candidate":
 			cand, _ := signal["candidate"].(string)
