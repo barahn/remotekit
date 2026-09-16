@@ -910,10 +910,18 @@ func (ctx *residualContext) encodeY2Block(te *TokenEncoder, mb *macroblock, mbX 
 		nzVal := boolToUint8(nz)
 		ctx.leftNzY16 = nzVal
 		ctx.upNzY16[mbX] = nzVal
-	} else {
-		ctx.leftNzY16 = 0
-		ctx.upNzY16[mbX] = 0
 	}
+	// A B_PRED macroblock has no Y2 block, so it says nothing about the Y2
+	// context and must leave it exactly as it found it. Zeroing it here — which
+	// this encoder did — hands the next 16x16 macroblock a context the decoder
+	// never saw, and the two then read the Y2 block with different
+	// probabilities. The bit counts differ, the token partition desynchronises
+	// from that macroblock onward, and the frame still parses: what comes out
+	// is simply a different picture.
+	//
+	// The same rule governs skipped macroblocks in clearContext, which is where
+	// it was noticed first. A macroblock touches the Y2 context only if it
+	// carries a Y2 block.
 }
 
 // encodeLumaAndChroma encodes luma and chroma blocks.

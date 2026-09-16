@@ -2,29 +2,25 @@ package vp8
 
 import (
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/barahn/remotekit/screen/codec/ivf"
 	"github.com/barahn/remotekit/screen/codec/vp8check"
 )
 
-// runKnownDefect gates the part of this test that still fails.
-const runKnownDefect = "VP8_RUN_KNOWN_DEFECT"
-
 // TestConformanceAcrossContentAndSize decodes content the rest of the suite
-// never produces, at sizes it never reaches.
+// never produced, at sizes it never reached.
 //
-// Every other byte-exact test in this package encodes one 64x64 source pattern,
-// and that pattern makes the mode decision choose B_PRED for every macroblock.
-// Flat regions choose 16x16 modes instead — which is most of a real desktop, and
-// which went entirely untested. Nothing larger than 64x64 had ever been decoded
-// through libvpx either: the 1080p benchmarks measure speed and decode nothing.
+// Every byte-exact test in this package used to encode one 64x64 source
+// pattern, and that pattern makes the mode decision choose B_PRED for every
+// macroblock. Flat regions choose 16x16 modes instead — which is most of a real
+// desktop, and which went entirely untested. Nothing larger than 64x64 had ever
+// been decoded through libvpx either: the benchmarks measure speed and decode
+// nothing.
 //
-// The flat cases pass now, at every size. The textured cases still fail on their
-// INTER frames, with small scattered reconstruction differences rather than the
-// desynchronisation flat content hit — a separate defect, gated behind
-// VP8_RUN_KNOWN_DEFECT=1 until it is found.
+// Four defects hid in that gap, all of them silent — the bitstream stayed
+// parseable and the picture was simply wrong. Every case here passes now, and
+// the test is kept so the gap cannot reopen.
 func TestConformanceAcrossContentAndSize(t *testing.T) {
 	tool, _, err := vp8check.Availability()
 	if err != nil {
@@ -40,9 +36,6 @@ func TestConformanceAcrossContentAndSize(t *testing.T) {
 	for name, src := range sources {
 		for _, size := range sizes {
 			t.Run(fmt.Sprintf("%s/%dx%d", name, size.w, size.h), func(t *testing.T) {
-				if name == "textured" && os.Getenv(runKnownDefect) == "" {
-					t.Skipf("known defect on inter frames with this content; set %s=1 to run", runKnownDefect)
-				}
 				enc, err := NewEncoder(size.w, size.h, 30)
 				if err != nil {
 					t.Fatal(err)
