@@ -106,3 +106,49 @@ estimation is not a concession here; it designs the defect class out.
 
 Not done yet. This commit is the vendoring only.
 
+
+## The quality floor: prediction is open-loop
+
+Separate from the conformance defects above, and not fixed. Measured on a frame
+captured from a real 1920x1080 desktop:
+
+| quantiser | real capture | synthetic content |
+|---|---|---|
+| qi=0 | 39.0 dB | 63.6 dB |
+| qi=8 | 38.9 dB | 54.7 dB |
+| qi=24 | 32.8 dB | 36.7 dB |
+
+Real content barely responds to the quantiser: 0.1 dB between qi=0 and qi=8,
+where the quantiser step doubles. Quantisation is not what limits it.
+
+`processKeyFrameMBs` builds each macroblock's neighbour context from the
+**source** frame, so residuals are computed against a prediction made from
+original pixels — while `reconstructFrame`, and every decoder, add those
+residuals to a prediction made from **reconstructed** pixels. The residual
+cannot correct an error it was not computed against, so each macroblock hands a
+little more of it to the next. Following one macroblock row of the capture, on a
+source that is a constant 34:
+
+```
+mb 40  recon 20  drift -14
+mb 48  recon 12  drift -22
+mb 56  recon  4  drift -30
+```
+
+One level per macroblock, monotonic. H_PRED shows it worst because it replicates
+the left column across all sixteen pixels; the macroblocks carrying it are 3% of
+the frame and 38% of its error.
+
+This is a quality defect, not a conformance one. Encoder and decoder agree on
+the result — they agree on a worse picture than the bitrate paid for.
+
+**It has no synthetic reproducer yet.** Every pattern tried either picks a
+different mode or skips its H_PRED macroblocks, and a skipped macroblock has no
+residual to be wrong. The measurement above is from a real capture, repeatable
+with `VP8_REAL_CAPTURE=1` and `TestRealCaptureConformance`.
+
+The fix is closed-loop prediction: reconstruct each macroblock before analysing
+the next. That makes the intra analysis serial, which is exactly the property
+the row-parallel key-frame pass added for speed depends on. The 2.6x key-frame
+speedup and this defect are the same design decision, so it is a trade to make
+deliberately rather than a bug to swat.
