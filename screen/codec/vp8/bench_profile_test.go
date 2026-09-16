@@ -60,3 +60,25 @@ func BenchmarkInterFrame1080p(b *testing.B) {
 		}
 	}
 }
+
+// benchFrame draws text-like screen content with a region that moves between
+// frames, so both the key-frame and inter-frame paths get real work.
+func benchFrame(w, h, idx int) []byte {
+	buf := make([]byte, w*h*3/2)
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			v := 240
+			if (x/12+y/16)%3 == 0 && x%12 < 6 && y%16 < 7 {
+				v = 30
+			}
+			if x >= idx*4 && x < idx*4+24 && y < 32 {
+				v = 120
+			}
+			buf[y*w+x] = byte(v)
+		}
+	}
+	for i := w * h; i < len(buf); i++ {
+		buf[i] = byte(100 + (i % 40))
+	}
+	return buf
+}

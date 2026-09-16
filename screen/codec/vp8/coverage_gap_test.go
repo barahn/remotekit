@@ -9,31 +9,23 @@ import (
 	"github.com/barahn/remotekit/screen/codec/vp8check"
 )
 
-// runGapTest is the environment variable that turns the known-defect test
-// below into a failure instead of a skip.
-const runGapTest = "VP8_RUN_KNOWN_DEFECT"
+// runKnownDefect gates the part of this test that still fails.
+const runKnownDefect = "VP8_RUN_KNOWN_DEFECT"
 
-// TestConformanceAcrossContentAndSize is a FAILING test, skipped by default.
+// TestConformanceAcrossContentAndSize decodes content the rest of the suite
+// never produces, at sizes it never reaches.
 //
-// Every other conformance test in this package encodes one 64x64 source
-// pattern. That pattern is byte-exact against libvpx, and this one records what
-// happens with any other: the encoder's reconstruction and the decoder's part
-// company on most of the frame, at every size tried, with the screen-content
-// profile both on and off. Flat content is worse still — at 128x128 and above
-// libvpx rejects the stream outright rather than decoding it wrongly.
+// Every other byte-exact test in this package encodes one 64x64 source pattern,
+// and that pattern makes the mode decision choose B_PRED for every macroblock.
+// Flat regions choose 16x16 modes instead — which is most of a real desktop, and
+// which went entirely untested. Nothing larger than 64x64 had ever been decoded
+// through libvpx either: the 1080p benchmarks measure speed and decode nothing.
 //
-// The encoder's own reconstruction stays good (46-57 dB against the source), so
-// this is a bitstream defect, not a bad mode decision: the decoder is being told
-// something other than what the encoder did.
-//
-// It is skipped rather than deleted because it is the honest state of the
-// encoder, and skipped rather than failing because leaving CI red would block
-// unrelated work. Set VP8_RUN_KNOWN_DEFECT=1 to run it. Delete the skip when
-// the defect is fixed.
+// The flat cases pass now, at every size. The textured cases still fail on their
+// INTER frames, with small scattered reconstruction differences rather than the
+// desynchronisation flat content hit — a separate defect, gated behind
+// VP8_RUN_KNOWN_DEFECT=1 until it is found.
 func TestConformanceAcrossContentAndSize(t *testing.T) {
-	if os.Getenv(runGapTest) == "" {
-		t.Skipf("skipping known-defect test; set %s=1 to run it", runGapTest)
-	}
 	tool, _, err := vp8check.Availability()
 	if err != nil {
 		t.Skipf("skipping: %v", err)
@@ -48,6 +40,9 @@ func TestConformanceAcrossContentAndSize(t *testing.T) {
 	for name, src := range sources {
 		for _, size := range sizes {
 			t.Run(fmt.Sprintf("%s/%dx%d", name, size.w, size.h), func(t *testing.T) {
+				if name == "textured" && os.Getenv(runKnownDefect) == "" {
+					t.Skipf("known defect on inter frames with this content; set %s=1 to run", runKnownDefect)
+				}
 				enc, err := NewEncoder(size.w, size.h, 30)
 				if err != nil {
 					t.Fatal(err)
