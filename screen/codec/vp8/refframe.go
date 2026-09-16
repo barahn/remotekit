@@ -198,11 +198,21 @@ func reconstructFrame(recon *refFrameBuffer, mbs []macroblock, qf QuantFactors,
 	}
 }
 
-// reconstructIntraMB reconstructs a single intra-predicted macroblock.
+// reconstructIntraMB reconstructs a single intra-predicted macroblock, deriving
+// the neighbour context from the reconstruction itself.
 func reconstructIntraMB(recon *refFrameBuffer, mb *macroblock, mbX, mbY, width, height, chromaW int, qf QuantFactors) {
-	// Build neighbor context from reconstructed frame
 	ctx := buildReconContext(recon, mbX, mbY, width, height, chromaW)
+	reconstructIntraMBWithContext(recon, mb, ctx, mbX, mbY, width, chromaW, qf)
+}
 
+// reconstructIntraMBWithContext reconstructs an intra macroblock against a
+// context the caller already has.
+//
+// The encoder analyses and reconstructs each macroblock in one step so that both
+// use the SAME context — the one derived from the reconstruction. Building it
+// twice would risk the two drifting apart, which is the defect this structure
+// exists to remove.
+func reconstructIntraMBWithContext(recon *refFrameBuffer, mb *macroblock, ctx *mbContext, mbX, mbY, width, chromaW int, qf QuantFactors) {
 	// Reconstruct luma
 	if mb.lumaMode == B_PRED {
 		reconstructLumaBPred(recon, mb, ctx, mbX, mbY, width, qf)
@@ -230,7 +240,7 @@ func buildReconContext(recon *refFrameBuffer, mbX, mbY, width, height, chromaW i
 func buildReconLumaContext(ctx *mbContext, y []byte, mbX, mbY, width, height int) {
 	if mbY > 0 {
 		aboveRow := (mbY*16 - 1) * width
-		fillAboveRowRecon(ctx.lumaAboveBuf[:], y, mbX*16, aboveRow, width, 16)
+		fillAboveRowRecon(ctx.lumaAboveBuf[:], y, mbX*16, aboveRow, width, 20)
 		ctx.lumaAbove = ctx.lumaAboveBuf[:]
 	}
 	if mbX > 0 {
@@ -261,11 +271,19 @@ func buildReconChromaContext(ctx *mbContext, cb, cr []byte, mbX, mbY, chromaW, c
 
 // fillAboveRowRecon fills the above row buffer from the reconstructed plane.
 func fillAboveRowRecon(buf, src []byte, startCol, rowOffset, planeW, count int) {
+	last := byte(127)
 	for i := 0; i < count; i++ {
 		col := startCol + i
 		if col < planeW {
 			buf[i] = src[rowOffset+col]
+			last = buf[i]
+			continue
 		}
+		// Past the right edge of the frame. This is the above-right of the last
+		// macroblock in a row, and the format replicates the last pixel of the
+		// row above rather than reading beyond it. Leaving the previous
+		// macroblock's values here instead is a silent mismatch.
+		buf[i] = last
 	}
 }
 
