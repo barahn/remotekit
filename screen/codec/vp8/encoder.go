@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
+// Forked from github.com/opd-ai/vp8 (MIT); see LICENSE.upstream.
+
 // Package vp8 provides a pure-Go VP8 encoder supporting both key frames
 // (I-frames) and inter frames (P-frames) with motion estimation.
 //

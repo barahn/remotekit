@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
+// Forked from github.com/opd-ai/vp8 (MIT); see LICENSE.upstream.
+
 package vp8
 
 // intraBMode represents the VP8 intra prediction sub-mode for 4×4 luma blocks.

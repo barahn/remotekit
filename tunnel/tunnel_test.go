@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
+
 package tunnel_test
 
 import (
@@ -13,38 +16,20 @@ import (
 	"testing"
 	"time"
 
-	"github.com/barahn/barahn/internal/storage"
 	"github.com/barahn/remotekit/tunnel"
 )
 
 func TestTunnel_EnrollmentAndReverseStream(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test_tunnel.db")
-	store, err := storage.NewSQLiteStore(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create test db: %v", err)
-	}
-	defer store.Close()
 
-	ctx := context.Background()
-
-	// Seed user & pairing code
-	user := &storage.User{ID: "admin-1", Username: "admin", PasswordHash: "x", Role: storage.RoleAdmin, TOTPSecret: "SEC"}
-	_ = store.CreateUser(ctx, user)
-
+	// Seed pairing code
+	store := tunnel.NewMemStore()
 	rawPairingCode := "PAIR1234"
 	codeHash := hex.EncodeToString(sha256.New().Sum([]byte(rawPairingCode)))
-	pc := &storage.PairingCode{
+	store.SeedPairingCode(codeHash, tunnel.PairingCode{
 		ID:        "pc-99",
-		CodeHash:  codeHash,
-		Role:      storage.RoleOperator,
-		Used:      false,
 		ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
-		CreatedBy: user.ID,
-	}
-	if err := store.CreatePairingCode(ctx, pc); err != nil {
-		t.Fatalf("Failed to create pairing code: %v", err)
-	}
+	})
 
 	tunnelServer := tunnel.NewTunnelServer(store)
 	mux := http.NewServeMux()
@@ -128,28 +113,14 @@ func TestTunnel_EnrollmentAndReverseStream(t *testing.T) {
 
 func TestTunnel_TLSVerification_UntrustedCertFails(t *testing.T) {
 	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "tls_test.db")
-	store, err := storage.NewSQLiteStore(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create test db: %v", err)
-	}
-	defer store.Close()
 
-	ctx := context.Background()
-	user := &storage.User{ID: "admin-tls", Username: "admin", PasswordHash: "x", Role: storage.RoleAdmin}
-	_ = store.CreateUser(ctx, user)
-
+	store := tunnel.NewMemStore()
 	rawPairingCode := "TLSCODE1"
 	codeHash := hex.EncodeToString(sha256.New().Sum([]byte(rawPairingCode)))
-	pc := &storage.PairingCode{
+	store.SeedPairingCode(codeHash, tunnel.PairingCode{
 		ID:        "pc-tls",
-		CodeHash:  codeHash,
-		Role:      storage.RoleOperator,
-		Used:      false,
 		ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
-		CreatedBy: user.ID,
-	}
-	_ = store.CreatePairingCode(ctx, pc)
+	})
 
 	tunnelServer := tunnel.NewTunnelServer(store)
 	mux := http.NewServeMux()
@@ -163,7 +134,7 @@ func TestTunnel_TLSVerification_UntrustedCertFails(t *testing.T) {
 	savePath := filepath.Join(tmpDir, "agent_tls.pem")
 
 	// Case 1: Default TLS verification ON (insecureSkipVerify = false) -> MUST FAIL on untrusted cert
-	_, err = tunnel.Enroll(tlsServer.URL, rawPairingCode, "tls-host", "linux", "amd64", "pubkey-tls", savePath, false)
+	_, err := tunnel.Enroll(tlsServer.URL, rawPairingCode, "tls-host", "linux", "amd64", "pubkey-tls", savePath, false)
 	if err == nil {
 		t.Fatalf("Expected Enroll to fail due to untrusted TLS certificate when insecureSkipVerify is false, but it succeeded")
 	}

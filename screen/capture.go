@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
+
 // Package screen provides platform-agnostic screen capture capabilities.
 //
 // The Capturer interface abstracts platform-specific screen capture

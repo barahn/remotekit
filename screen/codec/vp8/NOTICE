@@ -1,0 +1,24 @@
+VP8 encoder — licensing provenance
+==================================
+
+This package began as a fork of github.com/opd-ai/vp8, which is published under
+the MIT License. The upstream text is preserved verbatim in LICENSE.upstream
+and must be retained in any redistribution of this package or derivative works.
+
+The fork, together with all modifications made by Fabrintek Engenharia Digital
+Ltda, is distributed under the Apache License, Version 2.0.
+
+The MIT License permits sublicensing, so redistributing this derivative work
+under Apache-2.0 is allowed provided the upstream copyright notice and
+permission notice are retained — which is what LICENSE.upstream does. The
+relicensing applies to this fork only; it does not change the terms on which
+upstream opd-ai/vp8 is offered, and it does not purport to relicense upstream's
+own copyright.
+
+Apache-2.0 was chosen over MIT for this fork because it carries an express
+patent grant and a patent-retaliation clause, which matter for a video codec
+implementation.
+
+Fixes to this encoder that are generic rather than specific to this project
+should be offered back to opd-ai/vp8 as pull requests, under that project's MIT
+terms.

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
+
 //go:build linux
 
 // X11 screen capture implementation using pure Go xgb/shm for

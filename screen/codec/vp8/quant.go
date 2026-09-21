@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
+// Forked from github.com/opd-ai/vp8 (MIT); see LICENSE.upstream.
+
 package vp8
 
 // RFC 6386 §14.1 — Dequantization tables

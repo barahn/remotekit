@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
+
 // Package webrtc provides WebRTC peer connection management, SDP/ICE signaling,
 // and embedded STUN/TURN relay server capabilities for Barahn remote sessions.
 package webrtc

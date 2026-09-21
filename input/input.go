@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
+
 // Package input provides cross-platform remote mouse and keyboard event injection.
 package input
 

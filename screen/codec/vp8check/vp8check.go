@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
+
 // Package vp8check runs the libvpx reference decoder (`vpxdec`) as an
 // out-of-band oracle over VP8 encoder output.
 //

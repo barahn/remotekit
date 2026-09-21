@@ -1,25 +1,18 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
+
 package tunnel
 
 import (
 	"net"
-	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/barahn/barahn/internal/storage"
 	"github.com/hashicorp/yamux"
 )
 
 func TestTunnelServer_Multiplexing(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "server_test.db")
-	store, err := storage.NewSQLiteStore(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create test db: %v", err)
-	}
-	defer store.Close()
-
-	ts := NewTunnelServer(store)
+	ts := NewTunnelServer(NewMemStore())
 
 	clientConn, serverConn := net.Pipe()
 
@@ -112,18 +105,10 @@ func TestTunnelServer_Multiplexing(t *testing.T) {
 }
 
 func TestTunnelServer_OpenReverseStream_Offline(t *testing.T) {
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "server_test.db")
-	store, err := storage.NewSQLiteStore(dbPath)
-	if err != nil {
-		t.Fatalf("Failed to create test db: %v", err)
-	}
-	defer store.Close()
-
-	ts := NewTunnelServer(store)
+	ts := NewTunnelServer(NewMemStore())
 	agentID := "offline-agent"
 
-	_, err = ts.OpenReverseStream(agentID, 22)
+	_, err := ts.OpenReverseStream(agentID, 22)
 	if err == nil {
 		t.Errorf("Expected error for offline agent, got nil")
 	}

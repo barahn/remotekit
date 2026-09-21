@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
+
 package tunnel
 
 import (
@@ -13,7 +16,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/barahn/barahn/internal/storage"
 	"github.com/barahn/remotekit/heartbeat"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -26,19 +28,19 @@ var upgrader = websocket.Upgrader{
 }
 
 type TunnelServer struct {
-	store      storage.Store
+	store      AgentStore
 	sessions   map[string]*yamux.Session
 	sessionsMu sync.RWMutex
 	chirpMon   *heartbeat.ServerMonitor
 }
 
-func NewTunnelServer(store storage.Store) *TunnelServer {
+func NewTunnelServer(store AgentStore) *TunnelServer {
 	ts := &TunnelServer{
 		store:    store,
 		sessions: make(map[string]*yamux.Session),
 	}
 	ts.chirpMon = heartbeat.NewServerMonitor(3, func(ctx context.Context, agentID string) error {
-		return store.UpdateAgentStatus(ctx, agentID, storage.StatusOffline)
+		return store.SetAgentOffline(ctx, agentID)
 	})
 
 	// Background ticker to automatically mark stale agents offline every 10 seconds
@@ -46,7 +48,7 @@ func NewTunnelServer(store storage.Store) *TunnelServer {
 		ticker := time.NewTicker(10 * time.Second)
 		for range ticker.C {
 			cutoff := time.Now().UTC().Add(-30 * time.Second)
-			_ = store.CleanStaleAgentStatuses(context.Background(), cutoff)
+			_ = store.CleanStaleAgents(context.Background(), cutoff)
 		}
 	}()
 
@@ -123,14 +125,13 @@ func (ts *TunnelServer) HandlePairing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agent := &storage.Agent{
+	agent := AgentRegistration{
 		ID:            uuid.New().String(),
 		Hostname:      req.Hostname,
 		OS:            req.OS,
 		Arch:          req.Arch,
 		PublicKey:     req.PublicKey,
 		PairingCodeID: pc.ID,
-		Status:        storage.StatusOnline,
 	}
 
 	if err := ts.store.CreateAgent(ctx, agent); err != nil {
@@ -211,7 +212,7 @@ func (ts *TunnelServer) HandleConnect(w http.ResponseWriter, r *http.Request) {
 	ts.sessions[agentID] = session
 	ts.sessionsMu.Unlock()
 
-	_ = ts.store.UpdateAgentStatus(ctx, agentID, storage.StatusOnline)
+	_ = ts.store.SetAgentOnline(ctx, agentID)
 
 	// Keep-alive stream loop
 	go ts.handleAgentControlStream(ctx, agentID, session)
@@ -223,7 +224,7 @@ func (ts *TunnelServer) handleAgentControlStream(ctx context.Context, agentID st
 		delete(ts.sessions, agentID)
 		ts.sessionsMu.Unlock()
 		_ = session.Close()
-		_ = ts.store.UpdateAgentStatus(context.Background(), agentID, storage.StatusOffline)
+		_ = ts.store.SetAgentOffline(context.Background(), agentID)
 	}()
 
 	for {
@@ -237,7 +238,7 @@ func (ts *TunnelServer) handleAgentControlStream(ctx context.Context, agentID st
 			var msg heartbeat.ChirpMessage
 			if err := json.NewDecoder(s).Decode(&msg); err == nil {
 				now := time.Now().UTC()
-				_ = ts.store.UpdateAgentChirp(context.Background(), agentID, now)
+				_ = ts.store.RecordAgentChirp(context.Background(), agentID, now)
 			}
 		}(stream)
 	}

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
+
 // Package ivf writes the IVF container format.
 //
 // IVF exists in this tree for exactly one reason: `vpxdec`, the libvpx
