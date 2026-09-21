@@ -13,13 +13,10 @@ import (
 	"image/jpeg"
 	"log"
 	"net/http"
-	"os/exec"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/barahn/remotekit/bark"
 	"github.com/barahn/remotekit/clipboard"
 	"github.com/barahn/remotekit/input"
 	"github.com/barahn/remotekit/screen"
@@ -32,6 +29,9 @@ type AgentStreamRunner struct {
 	creds              *AgentCredentials
 	insecureSkipVerify bool
 	injector           input.Injector
+	// handlers holds message types layered on top of the core session by a
+	// consumer; see Handle.
+	handlers map[string]MessageHandler
 }
 
 func NewAgentStreamRunner(creds *AgentCredentials, insecureSkipVerify bool) *AgentStreamRunner {
@@ -117,7 +117,6 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 	clipMgr := clipboard.NewManager()
 	clipWatcher := clipboard.NewWatcher(clipMgr, 500*time.Millisecond)
 	transferMgr, _ := transfer.NewManager("")
-	scriptRunner := NewScriptRunner()
 
 	safeWrite := func(data []byte) error {
 		writeMu.Lock()
@@ -430,51 +429,6 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			focused, _ := signal["focused"].(bool)
 			log.Printf("[AgentStream] Session focus state changed: focused=%v\n", focused)
 
-		case "script_exec_req":
-			execID, _ := signal["execution_id"].(string)
-			interpreter, _ := signal["interpreter"].(string)
-			scriptBody, _ := signal["script_body"].(string)
-			timeoutSec, _ := signal["timeout_seconds"].(float64)
-			workingDir, _ := signal["working_dir"].(string)
-
-			if execID != "" && scriptBody != "" {
-				go func() {
-					req := bark.ScriptExecutionRequest{
-						ExecutionID:    execID,
-						Interpreter:    interpreter,
-						ScriptBody:     scriptBody,
-						TimeoutSeconds: int(timeoutSec),
-						WorkingDir:     workingDir,
-					}
-					res := scriptRunner.Execute(ctx, req, func(chunk bark.ScriptExecutionChunk) {
-						chunkMsg, _ := json.Marshal(map[string]interface{}{
-							"type":         "script_exec_chunk",
-							"session_id":   r.creds.AgentID,
-							"execution_id": chunk.ExecutionID,
-							"stream":       chunk.Stream,
-							"data":         chunk.Data,
-							"index":        chunk.Index,
-						})
-						_ = safeWrite(chunkMsg)
-					})
-
-					resMsg, _ := json.Marshal(map[string]interface{}{
-						"type":                  "script_exec_res",
-						"session_id":            r.creds.AgentID,
-						"execution_id":          res.ExecutionID,
-						"exit_code":             res.ExitCode,
-						"execution_duration_ms": res.ExecutionDurationMS,
-						"error":                 res.Error,
-					})
-					_ = safeWrite(resMsg)
-				}()
-			}
-
-		case "power":
-			action, _ := signal["action"].(string)
-			log.Printf("[AgentStream] Received remote power instruction: %s\n", action)
-			go executePowerAction(action)
-
 		case "clipboard":
 			text, _ := signal["text"].(string)
 			if text != "" {
@@ -530,6 +484,13 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 					"error":       errStr,
 				})
 				_ = safeWrite(resMsg)
+			}
+
+		default:
+			// Anything the core does not implement itself belongs to whoever
+			// layered it on top -- see Handle.
+			if h, ok := r.handlers[msgType]; ok {
+				h(ctx, r.creds.AgentID, signal, safeWrite)
 			}
 
 		case "close":
@@ -617,41 +578,6 @@ func (r *AgentStreamRunner) handleInputPayload(payload map[string]interface{}) {
 				Shift: boolPayload(payload, "shift"),
 				Meta:  boolPayload(payload, "meta"),
 			})
-		}
-	}
-}
-
-func executePowerAction(action string) {
-	switch action {
-	case "reboot":
-		if runtime.GOOS == "windows" {
-			_ = exec.Command("shutdown", "/r", "/t", "0").Run()
-		} else {
-			if err := exec.Command("systemctl", "reboot").Run(); err != nil {
-				if err := exec.Command("loginctl", "reboot").Run(); err != nil {
-					_ = exec.Command("shutdown", "-r", "now").Run()
-				}
-			}
-		}
-	case "shutdown", "poweroff":
-		if runtime.GOOS == "windows" {
-			_ = exec.Command("shutdown", "/s", "/t", "0").Run()
-		} else {
-			if err := exec.Command("systemctl", "poweroff").Run(); err != nil {
-				if err := exec.Command("loginctl", "poweroff").Run(); err != nil {
-					_ = exec.Command("shutdown", "-h", "now").Run()
-				}
-			}
-		}
-	case "lock":
-		if runtime.GOOS == "windows" {
-			_ = exec.Command("rundll32.exe", "user32.dll,LockWorkStation").Run()
-		} else {
-			if err := exec.Command("loginctl", "lock-session").Run(); err != nil {
-				if err := exec.Command("gnome-screensaver-command", "-l").Run(); err != nil {
-					_ = exec.Command("xdg-screensaver", "lock").Run()
-				}
-			}
 		}
 	}
 }

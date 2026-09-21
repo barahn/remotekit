@@ -12,19 +12,15 @@ import (
 type MessageType string
 
 const (
-	TypeChirpMessage           MessageType = "chirp"
-	TypeSessionMessage         MessageType = "session"
-	TypeInputEvent             MessageType = "input"
-	TypeFileChunk              MessageType = "file_chunk"
-	TypeChatMessage            MessageType = "chat"
-	TypeScriptExecutionRequest MessageType = "script_exec_req"
-	TypeScriptExecutionChunk   MessageType = "script_exec_chunk"
-	TypeScriptExecutionResult  MessageType = "script_exec_res"
-	TypeFocusStateMessage      MessageType = "focus_state"
-	TypePowerActionMessage     MessageType = "power"
-	TypeConsentRequest         MessageType = "consent_req"
-	TypeConsentResponse        MessageType = "consent_res"
-	TypeChirpSessionState      MessageType = "chirp_state"
+	TypeChirpMessage      MessageType = "chirp"
+	TypeSessionMessage    MessageType = "session"
+	TypeInputEvent        MessageType = "input"
+	TypeFileChunk         MessageType = "file_chunk"
+	TypeChatMessage       MessageType = "chat"
+	TypeFocusStateMessage MessageType = "focus_state"
+	TypeConsentRequest    MessageType = "consent_req"
+	TypeConsentResponse   MessageType = "consent_res"
+	TypeChirpSessionState MessageType = "chirp_state"
 )
 
 // Envelope is the top-level wire format for Yamux Bark multiplexed streams.
@@ -80,40 +76,10 @@ type ChatMessage struct {
 	Timestamp time.Time `json:"timestamp"`
 }
 
-// ScriptExecutionRequest represents a background script execution command (Issue #60).
-type ScriptExecutionRequest struct {
-	ExecutionID    string `json:"execution_id"`
-	Interpreter    string `json:"interpreter"` // "powershell", "cmd", "bash", "sh"
-	ScriptBody     string `json:"script_body"`
-	TimeoutSeconds int    `json:"timeout_seconds"`
-	WorkingDir     string `json:"working_dir,omitempty"`
-}
-
-// ScriptExecutionChunk represents streamed stdout/stderr output from a running script.
-type ScriptExecutionChunk struct {
-	ExecutionID string `json:"execution_id"`
-	Stream      string `json:"stream"` // "stdout" or "stderr"
-	Data        string `json:"data"`
-	Index       int    `json:"index"`
-}
-
-// ScriptExecutionResult represents the final completion result of a script.
-type ScriptExecutionResult struct {
-	ExecutionID         string `json:"execution_id"`
-	ExitCode            int    `json:"exit_code"`
-	ExecutionDurationMS int64  `json:"execution_duration_ms"`
-	Error               string `json:"error,omitempty"`
-}
-
 // FocusStateMessage represents session focus synchronization events (Issue #61).
 type FocusStateMessage struct {
 	SessionID string `json:"session_id"`
 	Focused   bool   `json:"focused"`
-}
-
-// PowerActionMessage represents remote workstation power instructions.
-type PowerActionMessage struct {
-	Action string `json:"action"` // "lock", "reboot", "shutdown"
 }
 
 // ConsentRequestPayload represents an authorization request sent to the end-user (Issue #12).

@@ -43,26 +43,6 @@ func TestBark_EnvelopeEncoding(t *testing.T) {
 	}
 }
 
-func TestBark_ScriptExecutionTypes(t *testing.T) {
-	req := &bark.ScriptExecutionRequest{
-		ExecutionID:    "exec-99",
-		Interpreter:    "powershell",
-		ScriptBody:     "Get-Process | Select-Object -First 5",
-		TimeoutSeconds: 30,
-	}
-
-	envBytes, err := bark.EncodeEnvelope(bark.TypeScriptExecutionRequest, "agent-1", req)
-	if err != nil {
-		t.Fatalf("EncodeEnvelope failed: %v", err)
-	}
-
-	var env bark.Envelope
-	_ = json.Unmarshal(envBytes, &env)
-	if env.Type != bark.TypeScriptExecutionRequest {
-		t.Fatalf("Expected type %s, got %s", bark.TypeScriptExecutionRequest, env.Type)
-	}
-}
-
 func TestBark_ChirpConsentTypes(t *testing.T) {
 	req := &bark.ConsentRequestPayload{
 		SessionID:            "sess-chirp-1",
