@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build, Test & SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: '1.26'
+
+      - name: Build & Vet
+        run: |
+          go build ./...
+          go vet ./...
+
+      # Capture, input and tray are per-platform implementations that Linux-only
+      # compilation never touches. Cross-compiling costs seconds and stops a
+      # syntax error on the Windows or macOS paths from passing green.
+      - name: Cross-compile Check (Windows / macOS)
+        env:
+          CGO_ENABLED: 0
+        run: |
+          GOOS=windows GOARCH=amd64 go build ./...
+          GOOS=darwin GOARCH=amd64 go build ./...
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.13.2
+          install-mode: goinstall
+          skip-cache: true
+
+      # screen and input guard their capture and injection tests on DISPLAY and
+      # skip without one. A virtual framebuffer executes them. This covers the
+      # X11 paths; it does not cover Wayland, whose portal and PipeWire
+      # negotiation a framebuffer cannot stand in for.
+      - name: Install Xvfb
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends xvfb
+
+      # The VP8 conformance oracle shells out to libvpx's reference decoder to
+      # check that encoder output is a bitstream a real decoder accepts.
+      # golang.org/x/image/vp8 cannot stand in for it: that decoder handles key
+      # frames only, so it cannot see the inter-frame path at all. libvpx runs
+      # as a test-time subprocess and is never linked in, so the zero-CGo
+      # premise is untouched.
+      - name: Install libvpx tools (VP8 conformance oracle)
+        run: sudo apt-get install -y --no-install-recommends vpx-tools
+
+      - name: Test
+        env:
+          # Turns a missing vpxdec into a test failure instead of a skip. A
+          # conformance gate that silently skips is how an encoder ends up with
+          # an inter-frame path no test ever decoded.
+          VP8_CONFORMANCE_REQUIRED: '1'
+        run: xvfb-run -a go test -race -coverprofile=coverage.out ./...
+
+      # screen/codec/vp8 is excluded for its 53 deliberate int->int16 narrowings
+      # in the forward DCT and quantiser, where the VP8 spec bounds the values by
+      # construction. Annotating them with 53 #nosec comments would destroy the
+      # baseline the fork needs to diff against upstream.
+      - name: SAST (gosec)
+        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.22.1 -exclude-dir=screen/codec/vp8 ./...
+
+      - name: Vulnerability Check (govulncheck)
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
