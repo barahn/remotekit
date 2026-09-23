@@ -30,7 +30,7 @@ func TestVideoTrackDeliversSamples(t *testing.T) {
 	if err != nil {
 		t.Fatalf("sender: %v", err)
 	}
-	defer sender.Close()
+	defer func() { _ = sender.Close() }()
 
 	if err := sender.CreateVideoTrack("barahn-screen", "screen"); err != nil {
 		t.Fatalf("CreateVideoTrack: %v", err)
@@ -42,7 +42,7 @@ func TestVideoTrackDeliversSamples(t *testing.T) {
 	if err != nil {
 		t.Fatalf("receiver: %v", err)
 	}
-	defer receiver.Close()
+	defer func() { _ = receiver.Close() }()
 	if _, err := receiver.pc.AddTransceiverFromKind(pion.RTPCodecTypeVideo,
 		pion.RTPTransceiverInit{Direction: pion.RTPTransceiverDirectionRecvonly}); err != nil {
 		t.Fatalf("AddTransceiver: %v", err)

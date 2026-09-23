@@ -18,7 +18,7 @@ func TestTunnelClient_HandleReverseStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to listen on local mock port: %v", err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	port := listener.Addr().(*net.TCPAddr).Port
 
@@ -27,7 +27,7 @@ func TestTunnelClient_HandleReverseStream(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		buf := make([]byte, 64)
 		n, _ := conn.Read(buf)
@@ -38,29 +38,29 @@ func TestTunnelClient_HandleReverseStream(t *testing.T) {
 
 	// 2. Setup Yamux over an in-memory pipe
 	p1, p2 := net.Pipe()
-	defer p1.Close()
-	defer p2.Close()
+	defer func() { _ = p1.Close() }()
+	defer func() { _ = p2.Close() }()
 
 	// Server side yamux
 	serverSession, err := yamux.Server(p1, nil)
 	if err != nil {
 		t.Fatalf("yamux.Server failed: %v", err)
 	}
-	defer serverSession.Close()
+	defer func() { _ = serverSession.Close() }()
 
 	// Client side yamux
 	clientSession, err := yamux.Client(p2, nil)
 	if err != nil {
 		t.Fatalf("yamux.Client failed: %v", err)
 	}
-	defer clientSession.Close()
+	defer func() { _ = clientSession.Close() }()
 
 	// 3. Open a stream from the server (simulating OpenReverseStream)
 	stream, err := serverSession.OpenStream()
 	if err != nil {
 		t.Fatalf("server open stream failed: %v", err)
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	// Accept the stream on the client side
 	clientStream, err := clientSession.AcceptStream()
@@ -102,28 +102,28 @@ func TestTunnelClient_HandleReverseStream(t *testing.T) {
 func TestTunnelClient_HandleReverseStream_InvalidPort(t *testing.T) {
 	// Setup Yamux over an in-memory pipe
 	p1, p2 := net.Pipe()
-	defer p1.Close()
-	defer p2.Close()
+	defer func() { _ = p1.Close() }()
+	defer func() { _ = p2.Close() }()
 
 	// Server side yamux
 	serverSession, err := yamux.Server(p1, nil)
 	if err != nil {
 		t.Fatalf("yamux.Server failed: %v", err)
 	}
-	defer serverSession.Close()
+	defer func() { _ = serverSession.Close() }()
 
 	// Client side yamux
 	clientSession, err := yamux.Client(p2, nil)
 	if err != nil {
 		t.Fatalf("yamux.Client failed: %v", err)
 	}
-	defer clientSession.Close()
+	defer func() { _ = clientSession.Close() }()
 
 	stream, err := serverSession.OpenStream()
 	if err != nil {
 		t.Fatalf("server open stream failed: %v", err)
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	clientStream, err := clientSession.AcceptStream()
 	if err != nil {
@@ -154,26 +154,26 @@ func TestTunnelClient_HandleReverseStream_InvalidPort(t *testing.T) {
 
 func TestTunnelClient_HandleReverseStream_DialFailure(t *testing.T) {
 	p1, p2 := net.Pipe()
-	defer p1.Close()
-	defer p2.Close()
+	defer func() { _ = p1.Close() }()
+	defer func() { _ = p2.Close() }()
 
 	serverSession, err := yamux.Server(p1, nil)
 	if err != nil {
 		t.Fatalf("yamux.Server failed: %v", err)
 	}
-	defer serverSession.Close()
+	defer func() { _ = serverSession.Close() }()
 
 	clientSession, err := yamux.Client(p2, nil)
 	if err != nil {
 		t.Fatalf("yamux.Client failed: %v", err)
 	}
-	defer clientSession.Close()
+	defer func() { _ = clientSession.Close() }()
 
 	stream, err := serverSession.OpenStream()
 	if err != nil {
 		t.Fatalf("server open stream failed: %v", err)
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	clientStream, err := clientSession.AcceptStream()
 	if err != nil {
@@ -194,7 +194,7 @@ func TestTunnelClient_HandleReverseStream_DialFailure(t *testing.T) {
 		t.Fatalf("failed to listen on local mock port: %v", err)
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
+	_ = listener.Close()
 
 	portLine := fmt.Sprintf("%d\n", port)
 	_, err = stream.Write([]byte(portLine))

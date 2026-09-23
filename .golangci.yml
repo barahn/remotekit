@@ -1,0 +1,25 @@
+# golangci-lint v2 configuration.
+#
+# Without a config file the CI run used the v2 defaults, which flagged the
+# vendored VP8 encoder as heavily as first-party code. See the exclusion below.
+version: "2"
+
+linters:
+  exclusions:
+    rules:
+      # screen/codec/vp8 is a fork of github.com/opd-ai/vp8 (MIT), vendored
+      # whole so that upstream fixes can still be merged in. It therefore
+      # carries encoder paths remotekit does not call -- inter-frame header
+      # writing, the loop filter, reference-frame reconstruction -- which
+      # `unused` reports by the dozen. Deleting them would buy a clean lint run
+      # at the price of a permanent diff against upstream, so the tree is
+      # linted as what it is: third-party code.
+      #
+      # This is scoped to the vendored tree only. Everything else in the
+      # repository, including the first-party screen/ code that drives the
+      # encoder, is linted normally.
+      - path: ^screen/codec/vp8/
+        linters:
+          - errcheck
+          - staticcheck
+          - unused

@@ -109,7 +109,7 @@ func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath st
 	if err != nil {
 		return nil, fmt.Errorf("failed to send pairing request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)

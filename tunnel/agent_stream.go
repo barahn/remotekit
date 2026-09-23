@@ -486,13 +486,6 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				_ = safeWrite(resMsg)
 			}
 
-		default:
-			// Anything the core does not implement itself belongs to whoever
-			// layered it on top -- see Handle.
-			if h, ok := r.handlers[msgType]; ok {
-				h(ctx, r.creds.AgentID, signal, safeWrite)
-			}
-
 		case "close":
 			stateMu.Lock()
 			for id, peer := range peers {
@@ -508,6 +501,13 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				activeCapCancel = nil
 			}
 			stateMu.Unlock()
+
+		default:
+			// Anything the core does not implement itself belongs to whoever
+			// layered it on top -- see Handle.
+			if h, ok := r.handlers[msgType]; ok {
+				h(ctx, r.creds.AgentID, signal, safeWrite)
+			}
 		}
 	}
 }
