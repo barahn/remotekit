@@ -5,8 +5,7 @@ package tunnel
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -113,7 +112,7 @@ func (ts *TunnelServer) HandlePairing(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	codeHash := hex.EncodeToString(sha256.New().Sum([]byte(req.PairingCode)))
+	codeHash := HashCredential(req.PairingCode)
 	pc, err := ts.store.GetPairingCodeByHash(ctx, codeHash)
 	if err != nil || pc.Used || time.Now().After(pc.ExpiresAt) {
 		http.Error(w, "Invalid, expired, or already used pairing code", http.StatusUnauthorized)
@@ -134,13 +133,24 @@ func (ts *TunnelServer) HandlePairing(w http.ResponseWriter, r *http.Request) {
 		PairingCodeID: pc.ID,
 	}
 
+	// The reconnection credential is random, and only its hash is stored.
+	//
+	// It used to be derived from the agent id and its public key, both of
+	// which the server itself hands out, so anyone holding them could mint the
+	// token and connect as that agent. The derivation also called
+	// sha256.New().Sum(data), which appends the digest to data rather than
+	// hashing it, so the "hash" was the plaintext with a constant suffix.
+	credToken, err := newAgentToken()
+	if err != nil {
+		http.Error(w, "Failed to issue agent credential", http.StatusInternalServerError)
+		return
+	}
+	agent.TokenHash = HashCredential(credToken)
+
 	if err := ts.store.CreateAgent(ctx, agent); err != nil {
 		http.Error(w, "Failed to register agent", http.StatusInternalServerError)
 		return
 	}
-
-	// Generate persistent agent credential token
-	credToken := hex.EncodeToString(sha256.New().Sum([]byte(agent.ID + ":" + req.PublicKey)))
 
 	resp := map[string]interface{}{
 		"agent_id":      agent.ID,
@@ -170,8 +180,10 @@ func (ts *TunnelServer) HandleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expectedToken := hex.EncodeToString(sha256.New().Sum([]byte(agent.ID + ":" + agent.PublicKey)))
-	if agentToken != expectedToken {
+	// An agent with no stored hash predates the random credential and must
+	// re-enrol; it must not fall through to a comparison that could match.
+	if agent.TokenHash == "" ||
+		subtle.ConstantTimeCompare([]byte(HashCredential(agentToken)), []byte(agent.TokenHash)) != 1 {
 		http.Error(w, "Invalid agent token", http.StatusUnauthorized)
 		return
 	}

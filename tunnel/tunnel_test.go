@@ -5,8 +5,6 @@ package tunnel_test
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"io"
 	"net"
 	"net/http"
@@ -25,7 +23,7 @@ func TestTunnel_EnrollmentAndReverseStream(t *testing.T) {
 	// Seed pairing code
 	store := tunnel.NewMemStore()
 	rawPairingCode := "PAIR1234"
-	codeHash := hex.EncodeToString(sha256.New().Sum([]byte(rawPairingCode)))
+	codeHash := tunnel.HashCredential(rawPairingCode)
 	store.SeedPairingCode(codeHash, tunnel.PairingCode{
 		ID:        "pc-99",
 		ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
@@ -116,7 +114,7 @@ func TestTunnel_TLSVerification_UntrustedCertFails(t *testing.T) {
 
 	store := tunnel.NewMemStore()
 	rawPairingCode := "TLSCODE1"
-	codeHash := hex.EncodeToString(sha256.New().Sum([]byte(rawPairingCode)))
+	codeHash := tunnel.HashCredential(rawPairingCode)
 	store.SeedPairingCode(codeHash, tunnel.PairingCode{
 		ID:        "pc-tls",
 		ExpiresAt: time.Now().UTC().Add(10 * time.Minute),
