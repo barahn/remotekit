@@ -8,3 +8,11 @@ The VP8 encoder in screen/codec/vp8 is a derivative work of
 github.com/opd-ai/vp8, Copyright (c) 2026 opdai, licensed under the MIT
 License. The upstream licence text is retained in
 screen/codec/vp8/LICENSE.upstream.
+
+It is vendored by way of github.com/mendsec/vp8, a fork of that upstream
+carrying corrections to the inter-frame and intra-prediction paths which
+were offered back to opd-ai/vp8 as pull requests #9 and #10 and are not
+yet accepted there. That intermediate fork is under the same MIT terms
+and adds no obligation of its own; it is named because the derivation
+runs opd-ai/vp8 -> mendsec/vp8 -> here, and a provenance chain is only
+useful if it is complete.
