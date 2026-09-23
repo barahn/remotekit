@@ -45,7 +45,7 @@ func TestPeerSession_OfferAnswerExchange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create offerer: %v", err)
 	}
-	defer offerer.Close()
+	defer func() { _ = offerer.Close() }()
 
 	// Add video track to offerer
 	if err := offerer.CreateVideoTrack("screen-stream", "video-track-1"); err != nil {
@@ -57,7 +57,7 @@ func TestPeerSession_OfferAnswerExchange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create answerer: %v", err)
 	}
-	defer answerer.Close()
+	defer func() { _ = answerer.Close() }()
 
 	// 1. Offerer creates SDP Offer
 	offerSDP, err := offerer.CreateOffer()
@@ -91,7 +91,7 @@ func TestPeerSession_WriteVideoSample(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPeerSession failed: %v", err)
 	}
-	defer peer.Close()
+	defer func() { _ = peer.Close() }()
 
 	if err := peer.CreateVideoTrack("stream", "track"); err != nil {
 		t.Fatalf("CreateVideoTrack failed: %v", err)

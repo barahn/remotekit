@@ -55,7 +55,7 @@ func TestTunnel_EnrollmentAndReverseStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to listen on local mock SSH port: %v", err)
 	}
-	defer sshListener.Close()
+	defer func() { _ = sshListener.Close() }()
 
 	sshPort := sshListener.Addr().(*net.TCPAddr).Port
 
@@ -66,7 +66,7 @@ func TestTunnel_EnrollmentAndReverseStream(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				defer func() { _ = c.Close() }()
 				buf := make([]byte, 64)
 				n, _ := c.Read(buf)
 				if string(buf[:n]) == "PING_SSH\n" {
@@ -92,7 +92,7 @@ func TestTunnel_EnrollmentAndReverseStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenReverseStream failed: %v", err)
 	}
-	defer revConn.Close()
+	defer func() { _ = revConn.Close() }()
 
 	// 5. Test bidirectional stream communication over Yamux
 	_, err = revConn.Write([]byte("PING_SSH\n"))

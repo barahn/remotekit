@@ -24,7 +24,7 @@ func TestNewInjector(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewInjector failed: %v", err)
 	}
-	defer inj.Close()
+	defer func() { _ = inj.Close() }()
 
 	inj.SetScreenBounds(image.Rect(0, 0, 1920, 1080))
 }
@@ -38,7 +38,7 @@ func TestInputEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewInjector failed: %v", err)
 	}
-	defer inj.Close()
+	defer func() { _ = inj.Close() }()
 
 	inj.SetScreenBounds(image.Rect(0, 0, 1920, 1080))
 

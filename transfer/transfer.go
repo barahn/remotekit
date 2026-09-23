@@ -125,7 +125,9 @@ func (m *Manager) AssembleFile(id string) (string, string, error) {
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create destination file %s: %w", destPath, err)
 	}
-	defer outFile.Close()
+	// Guard for the early returns below; the success path closes explicitly
+	// and checks the error.
+	defer func() { _ = outFile.Close() }()
 
 	hasher := sha256.New()
 
@@ -141,6 +143,14 @@ func (m *Manager) AssembleFile(id string) (string, string, error) {
 	}
 
 	calculatedSHA256 := hex.EncodeToString(hasher.Sum(nil))
+
+	// Close before the checksum verdict. A write that only fails at close time
+	// would otherwise be reported as a completed transfer, and Windows refuses
+	// to remove a file that is still open.
+	if err := outFile.Close(); err != nil {
+		_ = os.Remove(destPath)
+		return "", "", fmt.Errorf("failed to close destination file %s: %w", destPath, err)
+	}
 
 	if session.ExpectedSHA256 != "" && session.ExpectedSHA256 != calculatedSHA256 {
 		_ = os.Remove(destPath)
