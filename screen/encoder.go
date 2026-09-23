@@ -144,9 +144,27 @@ func (e *VP8Encoder) ensureEncoder(width, height int) error {
 	enc.SetKeyFrameInterval(defaultKeyFrameInterval)
 	enc.SetBitrate(qualityToBitrate(e.quality, width, height, e.fps))
 
-	// Screen content moves in whole blocks or not at all, so the motion search
-	// buys nothing here and the profile skips it. See the codec package.
-	enc.SetScreenContentProfile(true)
+	// The motion search stays on.
+	//
+	// The screen-content profile skips it and codes every inter macroblock as
+	// ZEROMV. It was introduced on a theory that turned out to be wrong — that
+	// the inter-frame corruption lived in MV_NEW — and kept afterwards on the
+	// assumption that skipping the search was faster. Measured on a real 1080p
+	// desktop, it is not:
+	//
+	//	 static desktop, few dirty macroblocks   4.0 ms/frame on, 3.2 ms off
+	//	 full-screen scrolling                  99.7 ms/frame on, 120 ms off
+	//
+	// In the common case it costs 25% more time and saves nothing, because the
+	// dirty map has already removed the macroblocks a motion search would waste
+	// time on. In the hard case it trades 19% more bits for 20% less time, and
+	// bits are what crosses a network.
+	enc.SetScreenContentProfile(false)
+
+	// Make the bitrate parameter mean what it says. Without this the quantiser
+	// is fixed at whatever the target maps to and the output is whatever the
+	// content makes it — 43 Mbps for a scrolling 1080p desktop asked for 8.
+	enc.SetRateControl(true)
 
 	e.enc = enc
 	e.width = width

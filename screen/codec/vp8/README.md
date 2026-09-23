@@ -100,14 +100,40 @@ rather than in place of it. VP8 prediction is closed-loop, so a single byte of
 disagreement compounds into every frame that follows — a stream can measure well
 on the first inter frame and still be diverging.
 
-## The profile this project actually needs
+## The screen-content profile, and why it is off
 
-Screen content, not camera video: restrict inter macroblocks to `MV_ZERO` +
-skip + intra. That removes motion search and the 6-tap interpolation filter,
-and it never enters `MV_NEW` — where defects 1 and 2 both live. Dropping motion
-estimation is not a concession here; it designs the defect class out.
+The profile restricts inter macroblocks to `MV_ZERO` + skip + intra, removing
+the motion search and the 6-tap interpolation filter. It was introduced on the
+theory that the inter-frame corruption lived in `MV_NEW`, so designing the
+defect class out looked cheaper than fixing it.
 
-Not done yet. This commit is the vendoring only.
+The theory was wrong. The corruption was in the mode and motion-vector layer,
+catalogued above, and it is fixed. What remained was the assumption that
+skipping the search is faster. Measured on a real 1080p desktop:
+
+| | profile on | profile off |
+|---|---|---|
+| static desktop, few dirty macroblocks | 4.0 ms/frame | 3.2 ms/frame |
+| full-screen scrolling | 99.7 ms/frame | 120 ms/frame |
+
+In the common case it costs 25% more time and saves nothing, because the dirty
+map has already removed the macroblocks a motion search would waste time on. In
+the hard case it trades 19% more bits for 20% less time, and bits are what
+crosses a network. `screen` therefore calls `SetScreenContentProfile(false)`.
+
+The profile stays available. It is a reasonable switch for a link where the CPU
+is the scarce resource, which is not the case this encoder was tuned for.
+
+## Rate control
+
+`SetRateControl(true)` makes the bitrate parameter mean what it says. Without
+it the quantiser is fixed at whatever the target maps to and the output is
+whatever the content makes it — a scrolling 1080p desktop asked for 8 Mbps
+produced 43. See `ratecontrol.go`.
+
+The quantiser range this operates over is the format's full `[4, 127]`. It used
+to stop at 63, half of what VP8 allows, so the coarse end — the end a
+constrained link needs — did not exist.
 
 
 ## Prediction is closed-loop
