@@ -298,12 +298,20 @@ func (c *windowsCapturer) Stop() {
 }
 
 func (c *windowsCapturer) SetDisplay(index int) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if index < 0 {
+	// Displays takes c.mu itself, so enumerate before locking.
+	displays, err := c.Displays()
+	if err != nil {
+		return err
+	}
+	// An index past the end used to be accepted and then silently fall back to
+	// the primary monitor inside getActiveDisplayBounds, which left the
+	// operator looking at a monitor they did not pick with nothing saying so.
+	if index < 0 || index >= len(displays) {
 		return ErrDisplayNotFound
 	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.config.DisplayIndex = index
 	return nil
 }
