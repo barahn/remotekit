@@ -122,7 +122,14 @@ jobs:
           # conformance gate that silently skips is how an encoder ends up with
           # an inter-frame path no test ever decoded.
           VP8_CONFORMANCE_REQUIRED: '1'
-        run: xvfb-run -a go test -race -coverprofile=coverage.out ./...
+        # Go's default is 10 minutes per package, and screen/codec/vp8 now
+        # exceeds it: the rate-control test drives a second of scrolling 720p
+        # through the encoder twice, and under -race with coverage
+        # instrumentation that alone is five minutes -- before the conformance
+        # sweep across seven quantisers and the soak run in the same package.
+        # barahn/barahn runs the same test inside the default and fits only
+        # because it has no vpxdec, so everything that needs the oracle skips.
+        run: xvfb-run -a go test -race -timeout 30m -coverprofile=coverage.out ./...
 
       # screen/codec/vp8 is excluded for its 53 deliberate int->int16 narrowings
       # in the forward DCT and quantiser, where the VP8 spec bounds the values by
