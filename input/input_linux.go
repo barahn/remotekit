@@ -99,6 +99,14 @@ func (inj *linuxInjector) SetScreenBounds(bounds image.Rectangle) {
 	}
 }
 
+// toPixels maps normalized (0.0-1.0) viewer coordinates onto the captured
+// screen area, in the global root-window coordinates XTest warps to.
+//
+// The normalized pair addresses the frame the technician is looking at, which
+// is one monitor, while XTest addresses the whole X screen. On a multi-monitor
+// setup the captured monitor does not start at the origin -- a second monitor
+// to the right of a 1920-wide primary starts at x=1920 -- so the offset has to
+// be added back or every click on that monitor lands on the primary one.
 func (inj *linuxInjector) toPixels(x, y float64) (int16, int16) {
 	maxW := float64(inj.bounds.Dx() - 1)
 	maxH := float64(inj.bounds.Dy() - 1)
@@ -122,6 +130,9 @@ func (inj *linuxInjector) toPixels(x, y float64) (int16, int16) {
 	} else if py > maxH {
 		py = maxH
 	}
+
+	px += float64(inj.bounds.Min.X)
+	py += float64(inj.bounds.Min.Y)
 
 	return int16(px), int16(py)
 }
