@@ -152,8 +152,8 @@ func (e *VP8Encoder) ensureEncoder(width, height int) error {
 	// assumption that skipping the search was faster. Measured on a real 1080p
 	// desktop, it is not:
 	//
-	//	 static desktop, few dirty macroblocks   4.0 ms/frame on, 3.2 ms off
-	//	 full-screen scrolling                  99.7 ms/frame on, 120 ms off
+	//	static desktop, few dirty macroblocks   4.0 ms/frame on, 3.2 ms off
+	//	full-screen scrolling                  99.7 ms/frame on, 120 ms off
 	//
 	// In the common case it costs 25% more time and saves nothing, because the
 	// dirty map has already removed the macroblocks a motion search would waste

@@ -7,6 +7,7 @@ package screen
 
 import (
 	"context"
+	"image"
 	"os"
 	"testing"
 	"time"
@@ -208,8 +209,9 @@ func BenchmarkCaptureFrame(b *testing.B) {
 		b.Skip("non-X11 capturer detected — skipping X11 SHM benchmark")
 	}
 
-	w := int(x11cap.width)
-	h := int(x11cap.height)
+	rect := image.Rect(0, 0, int(x11cap.width), int(x11cap.height))
+	w := rect.Dx()
+	h := rect.Dy()
 	buf := make([]byte, w*h*4)
 
 	b.ResetTimer()
@@ -218,9 +220,9 @@ func BenchmarkCaptureFrame(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		var err error
 		if x11cap.shmAvailable {
-			err = x11cap.captureSHM(buf, w, h)
+			err = x11cap.captureSHM(buf, rect)
 		} else {
-			err = x11cap.captureFallback(buf, w, h)
+			err = x11cap.captureFallback(buf, rect)
 		}
 		if err != nil {
 			b.Fatalf("capture failed: %v", err)
