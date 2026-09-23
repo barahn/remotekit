@@ -47,7 +47,7 @@ func TestTunnelServer_Multiplexing(t *testing.T) {
 			errCh <- err
 			return
 		}
-		defer stream.Close()
+		defer func() { _ = stream.Close() }()
 
 		buf := make([]byte, 64)
 		n, err := stream.Read(buf)
@@ -73,7 +73,7 @@ func TestTunnelServer_Multiplexing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenReverseStream failed: %v", err)
 	}
-	defer stream.Close()
+	defer func() { _ = stream.Close() }()
 
 	buf := make([]byte, 3)
 	n, err := stream.Read(buf)
@@ -95,8 +95,8 @@ func TestTunnelServer_Multiplexing(t *testing.T) {
 	}
 
 	// Test disconnected state
-	clientSession.Close()
-	serverSession.Close()
+	_ = clientSession.Close()
+	_ = serverSession.Close()
 	time.Sleep(10 * time.Millisecond) // Let closes propagate
 
 	if ts.IsSessionConnected(agentID) {

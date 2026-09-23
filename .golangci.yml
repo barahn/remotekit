@@ -23,3 +23,11 @@ linters:
           - errcheck
           - staticcheck
           - unused
+
+issues:
+  # golangci-lint truncates to 3 occurrences of the same message by default.
+  # That is how the first run on main reported "57 issues" while hiding four
+  # more in tunnel/server_test.go: fixing the visible ones simply uncovered
+  # them. Report everything, so one run gives the real count.
+  max-issues-per-linter: 0
+  max-same-issues: 0
