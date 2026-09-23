@@ -70,6 +70,15 @@ const (
 	mouseEventFWheel      uint32 = 0x0800
 	mouseEventFHWHL       uint32 = 0x1000
 	mouseEventFAbsolute   uint32 = 0x8000
+	// Without VIRTUALDESK, SendInput reads absolute coordinates as a fraction
+	// of the PRIMARY monitor, so no absolute event can ever reach a second
+	// monitor. With it, the fraction spans the whole virtual desktop.
+	mouseEventFVirtualDesk uint32 = 0x4000
+
+	smXVirtualScreen  = 76
+	smYVirtualScreen  = 77
+	smCXVirtualScreen = 78
+	smCYVirtualScreen = 79
 
 	keyEventFExtendedKey uint32 = 0x0001
 	keyEventFKeyUp       uint32 = 0x0002
@@ -211,6 +220,80 @@ func normalizeCoordinates(x, y float64) (int32, int32) {
 	return normX, normY
 }
 
+// virtualScreen returns the bounding rectangle of the whole virtual desktop:
+// every monitor combined, in the coordinate space SendInput addresses when
+// mouseEventFVirtualDesk is set. Its origin is negative when a monitor sits
+// left of or above the primary one.
+func virtualScreen() image.Rectangle {
+	x, _, _ := procGetSystemMetric.Call(smXVirtualScreen)
+	y, _, _ := procGetSystemMetric.Call(smYVirtualScreen)
+	w, _, _ := procGetSystemMetric.Call(smCXVirtualScreen)
+	h, _, _ := procGetSystemMetric.Call(smCYVirtualScreen)
+
+	vx := int(int32(x))
+	vy := int(int32(y))
+	vw := int(int32(w))
+	vh := int(int32(h))
+	if vw <= 0 || vh <= 0 {
+		// No virtual-desktop metrics (single monitor, or the call failed).
+		// Fall back to the primary screen so callers still get a usable rect.
+		cx, _, _ := procGetSystemMetric.Call(0) // SM_CXSCREEN
+		cy, _, _ := procGetSystemMetric.Call(1) // SM_CYSCREEN
+		vx, vy = 0, 0
+		vw, vh = int(int32(cx)), int(int32(cy))
+		if vw <= 0 {
+			vw = 1920
+		}
+		if vh <= 0 {
+			vh = 1080
+		}
+	}
+	return image.Rect(vx, vy, vx+vw, vy+vh)
+}
+
+// absoluteCoordinates converts a normalized (0.0-1.0) position within the
+// frame the technician is viewing into SendInput's virtual-desktop absolute
+// coordinates.
+//
+// The viewer's pair is relative to one captured monitor, so it first has to
+// become a global desktop pixel (adding that monitor's origin) and only then
+// a fraction of the virtual desktop. Skipping the middle step is what pins
+// every click to the primary monitor.
+//
+// Callers must hold i.mu.
+func (i *windowsInjector) absoluteCoordinates(x, y float64) (int32, int32) {
+	b := i.bounds
+	if b.Empty() {
+		return normalizeCoordinates(x, y)
+	}
+
+	if x < 0 {
+		x = 0
+	} else if x > 1.0 {
+		x = 1.0
+	}
+	if y < 0 {
+		y = 0
+	} else if y > 1.0 {
+		y = 1.0
+	}
+
+	globalX := float64(b.Min.X) + x*float64(b.Dx()-1)
+	globalY := float64(b.Min.Y) + y*float64(b.Dy()-1)
+
+	v := virtualScreen()
+	spanX := float64(v.Dx() - 1)
+	spanY := float64(v.Dy() - 1)
+	if spanX <= 0 || spanY <= 0 {
+		return normalizeCoordinates(x, y)
+	}
+
+	return normalizeCoordinates(
+		(globalX-float64(v.Min.X))/spanX,
+		(globalY-float64(v.Min.Y))/spanY,
+	)
+}
+
 func sendInputs(inputs []winInput) error {
 	if len(inputs) == 0 {
 		return nil
@@ -262,8 +345,8 @@ func (i *windowsInjector) MoveMouse(x, y float64) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	normX, normY := normalizeCoordinates(x, y)
-	inp := createMouseInput(normX, normY, 0, mouseEventFAbsolute|mouseEventFMove)
+	normX, normY := i.absoluteCoordinates(x, y)
+	inp := createMouseInput(normX, normY, 0, mouseEventFAbsolute|mouseEventFVirtualDesk|mouseEventFMove)
 	return sendInputs([]winInput{inp})
 }
 
@@ -271,7 +354,7 @@ func (i *windowsInjector) MouseDown(button MouseButton, x, y float64) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	normX, normY := normalizeCoordinates(x, y)
+	normX, normY := i.absoluteCoordinates(x, y)
 	var flag uint32
 	switch button {
 	case ButtonLeft:
@@ -284,7 +367,7 @@ func (i *windowsInjector) MouseDown(button MouseButton, x, y float64) error {
 		flag = mouseEventFLeftDown
 	}
 
-	inp := createMouseInput(normX, normY, 0, mouseEventFAbsolute|mouseEventFMove|flag)
+	inp := createMouseInput(normX, normY, 0, mouseEventFAbsolute|mouseEventFVirtualDesk|mouseEventFMove|flag)
 	return sendInputs([]winInput{inp})
 }
 
@@ -292,7 +375,7 @@ func (i *windowsInjector) MouseUp(button MouseButton, x, y float64) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	normX, normY := normalizeCoordinates(x, y)
+	normX, normY := i.absoluteCoordinates(x, y)
 	var flag uint32
 	switch button {
 	case ButtonLeft:
@@ -305,7 +388,7 @@ func (i *windowsInjector) MouseUp(button MouseButton, x, y float64) error {
 		flag = mouseEventFLeftUp
 	}
 
-	inp := createMouseInput(normX, normY, 0, mouseEventFAbsolute|mouseEventFMove|flag)
+	inp := createMouseInput(normX, normY, 0, mouseEventFAbsolute|mouseEventFVirtualDesk|mouseEventFMove|flag)
 	return sendInputs([]winInput{inp})
 }
 
@@ -313,18 +396,18 @@ func (i *windowsInjector) Scroll(deltaX, deltaY float64, x, y float64) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	normX, normY := normalizeCoordinates(x, y)
+	normX, normY := i.absoluteCoordinates(x, y)
 	var inputs []winInput
 
 	if deltaY != 0 {
 		// Invert deltaY: standard Windows wheel convention (positive = scroll up, negative = scroll down)
 		data := uint32(-int32(deltaY * wheelDelta))
-		inputs = append(inputs, createMouseInput(normX, normY, data, mouseEventFAbsolute|mouseEventFWheel))
+		inputs = append(inputs, createMouseInput(normX, normY, data, mouseEventFAbsolute|mouseEventFVirtualDesk|mouseEventFWheel))
 	}
 
 	if deltaX != 0 {
 		data := uint32(int32(deltaX * wheelDelta))
-		inputs = append(inputs, createMouseInput(normX, normY, data, mouseEventFAbsolute|mouseEventFHWHL))
+		inputs = append(inputs, createMouseInput(normX, normY, data, mouseEventFAbsolute|mouseEventFVirtualDesk|mouseEventFHWHL))
 	}
 
 	return sendInputs(inputs)
