@@ -78,6 +78,7 @@ func (m *MemStore) CreateAgent(_ context.Context, agent AgentRegistration) error
 		OS:        agent.OS,
 		Arch:      agent.Arch,
 		PublicKey: agent.PublicKey,
+		TokenHash: agent.TokenHash,
 	}
 	m.status[agent.ID] = "online"
 	return nil

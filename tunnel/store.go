@@ -52,6 +52,9 @@ type AgentRegistration struct {
 	Arch          string
 	PublicKey     string
 	PairingCodeID string
+	// TokenHash is HashCredential of the agent's reconnection token. The token
+	// itself is handed to the agent once and never stored.
+	TokenHash string
 }
 
 // AgentIdentity is the subset of a stored agent the tunnel uses to
@@ -62,4 +65,7 @@ type AgentIdentity struct {
 	OS        string
 	Arch      string
 	PublicKey string
+	// TokenHash is what HandleConnect compares the presented token against. An
+	// agent row that carries no hash cannot authenticate: see HandleConnect.
+	TokenHash string
 }
