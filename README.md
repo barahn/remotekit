@@ -50,7 +50,8 @@ exercised of the three.
 
 ## The VP8 encoder
 
-`screen/codec/vp8` is a pure-Go VP8 encoder forked from
+`screen/codec/vp8` is a pure-Go VP8 encoder vendored from
+[mendsec/vp8](https://github.com/mendsec/vp8), our fork of
 [opd-ai/vp8](https://github.com/opd-ai/vp8). Its output decodes in libvpx, and
 its internal reconstruction matches libvpx's byte for byte on every frame of the
 conformance suite. It has not yet been validated rendering in a browser over

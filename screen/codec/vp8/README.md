@@ -1,20 +1,46 @@
 # vp8 — forked VP8 encoder
 
-Vendored from [`github.com/opd-ai/vp8`](https://github.com/opd-ai/vp8) at commit
-`49304f9`, MIT licensed. Upstream's licence is kept verbatim in
-`LICENSE.upstream`; our own changes from here on are Apache-2.0, per
-[ADR-0005](../../../../docs/adr/0005-build-images-without-the-host-podman-socket.md).
+Vendored from [`github.com/mendsec/vp8`](https://github.com/mendsec/vp8) at
+commit `4967b3f`, our fork of
+[`github.com/opd-ai/vp8`](https://github.com/opd-ai/vp8), MIT licensed.
+Upstream's licence is kept verbatim in `LICENSE.upstream`; our own changes from
+here on are Apache-2.0.
+
+## Why the base is our fork and not upstream directly
+
+The vendoring base was originally `opd-ai/vp8@49304f9`. That commit does not
+decode correctly: it carries the inter-frame defects catalogued below, and the
+fixes for them were offered upstream and have not been acted on.
+
+| | |
+|---|---|
+| upstream's last commit | 2026-06-20 |
+| upstream `main` CI | failing since 2026-06-20 |
+| pull requests merged in upstream's history | 7, all by the maintainer's own agent, all same-day |
+| pull requests merged from outside contributors | none |
+| `opd-ai/vp8#9`, `#10` (the fixes below), `#11` (upstream's own CI) | open, no review, workflows never approved, so upstream CI has never run on them |
+| `opd-ai/vp8#8`, the inter-frame bug report | open since 2026-09-06, no maintainer reply |
+
+`mendsec/vp8@4967b3f` is those same two fixes merged into a fork we control, so
+the tree this project vendors from descends from a state that decodes. The pull
+requests stay open upstream: they cost nothing parked, and nothing here waits on
+them.
+
+Re-basing changes no licence obligation. The MIT terms require upstream's
+copyright notice to travel with the code whatever the fork chain looks like, and
+it does — verbatim in `LICENSE.upstream`, explained in `NOTICE`.
 
 ## Why a fork rather than a dependency
 
-Recorded in ADR-0005. In short: the changes this project needs are
-screen-content specialisations that are not upstreamable as-is, the project has
-bus factor 1 and no external users, and a codec on the critical path with an
-unvalidated inter-frame path is not something to consume at arm's length.
+The changes this project needs are screen-content specialisations that are not
+upstreamable as-is, the project has bus factor 1 and no external users, and a
+codec on the critical path with an unvalidated inter-frame path is not something
+to consume at arm's length.
 
 Generic fixes found here are offered back upstream as pull requests. Forking and
 contributing are not alternatives — upstream's merge velocity simply cannot sit
-on this project's critical path.
+on this project's critical path. The table above is what that sentence has cost
+in practice.
 
 ## What came across, and what did not
 
