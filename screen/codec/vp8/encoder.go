@@ -56,6 +56,13 @@ type Encoder struct {
 	bitrate int // target bitrate in bits/s (used to derive quantizer)
 	qi      int // quantizer index [0, 127]
 
+	// Rate control state. rcBaseQI is the quantiser the target bitrate maps to
+	// as a starting point; rcBucket is the accumulated deviation from budget,
+	// in bits. See ratecontrol.go.
+	rateControl bool
+	rcBaseQI    int
+	rcBucket    float64
+
 	// Quantizer delta fields for per-plane adjustments.
 	// These are added to the base qi for specific coefficient types.
 	y1DCDelta int // Y1 DC coefficient delta
@@ -146,10 +153,17 @@ func (e *Encoder) SetBitrate(bitrate int) {
 		bitrate = 8_000_000
 	}
 	e.bitrate = bitrate
-	// Rough linear mapping: higher bitrate → lower QI (better quality).
-	// qi ∈ [4, 63]: 8 Mbps → qi=4, 100 kbps → qi=63.
+	// Rough linear mapping over VP8's full quantiser range: higher bitrate →
+	// finer quantiser. qi ∈ [4, 127]: 8 Mbps → qi=4, 100 kbps → qi=127.
+	//
+	// The range matters. This used to stop at 63, which is half of what the
+	// format allows, so the coarse end — the end a constrained link needs —
+	// did not exist. With rate control on, the starting point matters less than
+	// the range the controller can reach.
 	ratio := float64(e.bitrate-100_000) / float64(8_000_000-100_000)
-	e.qi = 63 - int(ratio*59)
+	e.qi = 127 - int(ratio*123)
+	e.rcBaseQI = e.qi
+	e.rcBucket = 0
 }
 
 // ForceKeyFrame causes the next call to Encode to produce a key frame.
@@ -291,10 +305,19 @@ func (e *Encoder) Encode(yuv []byte) ([]byte, error) {
 	// notion of what changed to the next one.
 	e.dirtyMap = nil
 
+	var out []byte
+	var encErr error
 	if isKeyFrame || !e.refFrames.hasReference(refFrameLast) {
-		return e.encodeKeyFrame(mbs, recon)
+		out, encErr = e.encodeKeyFrame(mbs, recon)
+		isKeyFrame = true
+	} else {
+		out, encErr = e.encodeInterFrame(mbs, recon)
 	}
-	return e.encodeInterFrame(mbs, recon)
+	if encErr != nil {
+		return nil, encErr
+	}
+	e.updateRateControl(len(out), isKeyFrame)
+	return out, nil
 }
 
 // processAllMacroblocks processes all macroblocks in the frame.
@@ -324,18 +347,18 @@ func (e *Encoder) processAllMacroblocks(frame *Frame, isKeyFrame bool, qf QuantF
 
 // processKeyFrameMBs analyses and reconstructs macroblocks for a key frame.
 func (e *Encoder) processKeyFrameMBs(frame *Frame, mbs []macroblock, recon *refFrameBuffer, mbW, mbH, chromaW, chromaH int, qf QuantFactors) {
-	for mbY := 0; mbY < mbH; mbY++ {
-		for mbX := 0; mbX < mbW; mbX++ {
-			mbIdx := mbY*mbW + mbX
-			srcY := extractLumaBlock(frame, mbX, mbY, e.width, e.height)
-			srcU, srcV := extractChromaBlocks(frame, mbX, mbY, chromaW, chromaH)
+	// Wavefront, not row-parallel: each macroblock still waits for the
+	// neighbours it predicts from, it just does not wait for the whole row.
+	forEachMacroblockInWave(mbW, mbH, func(mbX, mbY int) {
+		mbIdx := mbY*mbW + mbX
+		srcY := extractLumaBlock(frame, mbX, mbY, e.width, e.height)
+		srcU, srcV := extractChromaBlocks(frame, mbX, mbY, chromaW, chromaH)
 
-			// From the reconstruction, not the source: see processAllMacroblocks.
-			ctx := buildReconContext(recon, mbX, mbY, e.width, e.height, chromaW)
-			mbs[mbIdx] = processMacroblock(srcY, srcU, srcV, ctx, qf)
-			reconstructIntraMBWithContext(recon, &mbs[mbIdx], ctx, mbX, mbY, e.width, chromaW, qf)
-		}
-	}
+		// From the reconstruction, not the source: see processAllMacroblocks.
+		ctx := buildReconContext(recon, mbX, mbY, e.width, e.height, chromaW)
+		mbs[mbIdx] = processMacroblock(srcY, srcU, srcV, ctx, qf)
+		reconstructIntraMBWithContext(recon, &mbs[mbIdx], ctx, mbX, mbY, e.width, chromaW, qf)
+	})
 }
 
 // processInterFrameMBs analyses and reconstructs macroblocks for an inter frame.
@@ -345,26 +368,26 @@ func (e *Encoder) processInterFrameMBs(frame *Frame, mbs []macroblock, recon *re
 	if len(dirty) != len(mbs) {
 		dirty = nil
 	}
-	for mbY := 0; mbY < mbH; mbY++ {
-		for mbX := 0; mbX < mbW; mbX++ {
-			mbIdx := mbY*mbW + mbX
-			if dirty != nil && !dirty[mbIdx] {
-				mbs[mbIdx] = unchangedMacroblock()
-				reconstructInterMB(recon, &mbs[mbIdx], mbX, mbY, e.width, e.height, chromaW, qf, e.refFrames)
-				continue
-			}
-			srcY := extractLumaBlock(frame, mbX, mbY, e.width, e.height)
-			srcU, srcV := extractChromaBlocks(frame, mbX, mbY, chromaW, chromaH)
-			ctx := buildReconContext(recon, mbX, mbY, e.width, e.height, chromaW)
-			mbs[mbIdx] = processInterMacroblock(srcY, srcU, srcV, refBuf, mbX, mbY, mbW, mbs, qf, ctx, e.screenContent)
-
-			if mbs[mbIdx].isInter {
-				reconstructInterMB(recon, &mbs[mbIdx], mbX, mbY, e.width, e.height, chromaW, qf, e.refFrames)
-			} else {
-				reconstructIntraMBWithContext(recon, &mbs[mbIdx], ctx, mbX, mbY, e.width, chromaW, qf)
-			}
+	// The same wave. findNearMVs reads the above, left and above-left
+	// macroblocks' motion vectors, which the two-ahead rule already covers.
+	forEachMacroblockInWave(mbW, mbH, func(mbX, mbY int) {
+		mbIdx := mbY*mbW + mbX
+		if dirty != nil && !dirty[mbIdx] {
+			mbs[mbIdx] = unchangedMacroblock()
+			reconstructInterMB(recon, &mbs[mbIdx], mbX, mbY, e.width, e.height, chromaW, qf, e.refFrames)
+			return
 		}
-	}
+		srcY := extractLumaBlock(frame, mbX, mbY, e.width, e.height)
+		srcU, srcV := extractChromaBlocks(frame, mbX, mbY, chromaW, chromaH)
+		ctx := buildReconContext(recon, mbX, mbY, e.width, e.height, chromaW)
+		mbs[mbIdx] = processInterMacroblock(srcY, srcU, srcV, refBuf, mbX, mbY, mbW, mbs, qf, ctx, e.screenContent)
+
+		if mbs[mbIdx].isInter {
+			reconstructInterMB(recon, &mbs[mbIdx], mbX, mbY, e.width, e.height, chromaW, qf, e.refFrames)
+		} else {
+			reconstructIntraMBWithContext(recon, &mbs[mbIdx], ctx, mbX, mbY, e.width, chromaW, qf)
+		}
+	})
 }
 
 // unchangedMacroblock is a skipped ZEROMV reference to the last frame: the
