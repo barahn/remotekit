@@ -116,8 +116,42 @@ jobs:
       - name: Install libvpx tools (VP8 conformance oracle)
         run: sudo apt-get install -y --no-install-recommends vpx-tools
 
+      # TestFirefoxDecodesTheStream drives a real Firefox through geckodriver
+      # and is the only test that proves a browser can decode what this
+      # encoder produces. Unit tests cannot: they compare our output against
+      # our own expectations.
+      #
+      # Firefox is installed from Mozilla's tarball rather than apt. On current
+      # Ubuntu the apt `firefox` package is a transition stub that pulls in
+      # snapd, which does not work on a GitHub-hosted runner. The tarball is
+      # self-contained and needs no display -- the test passes `-headless`.
+      #
+      # Both are skipped when the image already carries them, so this costs
+      # nothing on runners that do.
+      - name: Install Firefox and geckodriver (browser decode test)
+        run: |
+          if ! command -v firefox >/dev/null 2>&1; then
+            curl -fsSL -o /tmp/firefox.tar.xz \
+              "https://download.mozilla.org/?product=firefox-latest-ssl&os=linux64&lang=en-US"
+            sudo tar -xJf /tmp/firefox.tar.xz -C /opt
+            sudo ln -sf /opt/firefox/firefox /usr/local/bin/firefox
+          fi
+          if ! command -v geckodriver >/dev/null 2>&1; then
+            GD=v0.36.0
+            curl -fsSL -o /tmp/geckodriver.tar.gz \
+              "https://github.com/mozilla/geckodriver/releases/download/${GD}/geckodriver-${GD}-linux64.tar.gz"
+            sudo tar -xzf /tmp/geckodriver.tar.gz -C /usr/local/bin
+          fi
+          firefox --version
+          geckodriver --version | head -1
+
       - name: Test
         env:
+          # Without this TestFirefoxDecodesTheStream skips even where firefox
+          # and geckodriver are present, which is how it sat unnoticed outside
+          # the pipeline. The step above guarantees both exist, so a skip here
+          # now means something is wrong rather than something is missing.
+          BARAHN_BROWSER_TEST: '1'
           # Turns a missing vpxdec into a test failure instead of a skip. A
           # conformance gate that silently skips is how an encoder ends up with
           # an inter-frame path no test ever decoded.
