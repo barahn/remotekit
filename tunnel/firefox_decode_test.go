@@ -47,12 +47,17 @@ const (
 )
 
 func TestFirefoxDecodesTheStream(t *testing.T) {
-	if os.Getenv("BARAHN_BROWSER_TEST") != "1" {
+	required := os.Getenv("BARAHN_BROWSER_TEST") == "1"
+	if !required {
 		t.Skip("needs firefox and geckodriver; set BARAHN_BROWSER_TEST=1 to run it")
 	}
+	// Past this point the caller has asked for this test, so a missing binary
+	// is a broken environment rather than an absent one. Skipping here is how
+	// the check ends up green while proving nothing -- the same failure the
+	// VP8_CONFORMANCE_REQUIRED gate in this repository exists to prevent.
 	for _, bin := range []string{"firefox", "geckodriver"} {
 		if _, err := exec.LookPath(bin); err != nil {
-			t.Skipf("%s is not installed: %v", bin, err)
+			t.Fatalf("BARAHN_BROWSER_TEST=1 but %s is not installed: %v", bin, err)
 		}
 	}
 
