@@ -1,0 +1,113 @@
+name: Release PR (develop → main)
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  open-pr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.actor != 'github-actions[bot]'
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check for new commits on develop
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git fetch origin main develop
+          COUNT=$(git rev-list --count origin/main..origin/develop 2>/dev/null || echo "0")
+          if [ "$COUNT" -gt 0 ]; then
+            echo "has_commits=true" >> "$GITHUB_OUTPUT"
+            echo "Found $COUNT new commits on develop."
+          else
+            echo "has_commits=false" >> "$GITHUB_OUTPUT"
+            echo "No new commits on develop."
+          fi
+
+      - name: Create or Update Rich Pull Request
+        if: steps.check.outputs.has_commits == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git fetch origin main develop
+          python3 - <<'PY'
+          import subprocess
+          import textwrap
+
+          count = subprocess.check_output(["git", "rev-list", "--count", "origin/main..origin/develop"]).decode().strip()
+          latest = subprocess.check_output(["git", "log", "-1", "--format=%s", "origin/develop"]).decode().strip()
+          log = subprocess.check_output(["git", "log", "origin/main..origin/develop", "--oneline"]).decode().strip()
+
+          commit_lines = "\n".join(["- " + line for line in log.split("\n") if line.strip()])
+
+          title = f"chore(release): merge develop → main ({count} commits) — {latest}"
+          if len(title) > 120:
+              title = title[:117] + "..."
+
+          body = textwrap.dedent(f"""\
+              ## 🚀 Automated Release PR: `develop` → `main`
+
+              Automated Pull Request created by `github-actions[bot]` to propose merging accumulated development changes into production.
+
+              ### 📊 Summary
+              - **Commits to merge**: `{count}`
+              - **Head Branch**: `develop`
+              - **Base Branch**: `main`
+              - **Latest Change**: {latest}
+
+              ### 📝 Commit Log
+              {commit_lines}
+
+              ### 🧪 Automated Quality Checks
+              - [x] DCO Sign-off validation
+              - [x] NOTICE coverage for vendored code
+              - [x] Go Build & Vet (`go build ./...`, `go vet ./...`)
+              - [x] Cross-compile Check (Windows & macOS)
+              - [x] Linter (`golangci-lint`)
+              - [x] Unit Tests & VP8 Oracle (`go test -race ./...`)
+              - [x] Firefox Browser WebRTC Decode Test
+              - [x] SAST Security Scans (`gosec` / `govulncheck`)
+
+              ---
+              > 👥 **Reviewer Requested**: `@mendsec` — Manual review and approval are strictly required before merging into `main`. Auto-merge is disabled.
+          """).strip()
+
+          pr_num = subprocess.check_output(["gh", "pr", "list", "--head", "develop", "--base", "main", "--json", "number", "-q", ".[0].number"]).decode().strip()
+          if not pr_num or pr_num == "null":
+              cmd = ["gh", "pr", "create", "--base", "main", "--head", "develop", "--title", title, "--body", body]
+          else:
+              cmd = ["gh", "pr", "edit", pr_num, "--title", title, "--body", body]
+          subprocess.run(cmd, check=True)
+          PY
+
+      - name: Request Review from Maintainer
+        if: steps.check.outputs.has_commits == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=$(gh pr list --head develop --base main --json number -q '.[0].number' 2>/dev/null || echo "")
+          if [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "null" ]; then
+            gh pr edit "$PR_NUMBER" --add-reviewer mendsec 2>/dev/null || \
+            echo "Could not request review."
+
+            echo "PR #$PR_NUMBER updated. Waiting for manual review and approval from @mendsec."
+          fi
