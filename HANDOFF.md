@@ -47,9 +47,9 @@ Packages (each usable on its own):
 
 ## 2. Ground rules you must follow
 
-- Develop on branch **`claude/tender-feynman-zqy5d1`**; create it from
-  `origin/main` if needed. Never push to `main`. Push with
-  `git push -u origin claude/tender-feynman-zqy5d1`.
+- Develop on a descriptive feature branch created from `origin/develop` (or
+  `origin/main` if retargeting); never push directly to `develop` or `main`.
+  Push with `git push -u origin <branch-name>`.
 - **Every commit needs a DCO `Signed-off-by` trailer** (`git commit -s`). CI
   enforces it on every non-merge commit in a PR and this has already broken one
   PR — see §4. `CONTRIBUTING.md` also carries a CLA; sign-off is not the CLA.
@@ -60,8 +60,8 @@ Packages (each usable on its own):
 
 ## 3. State of the tree
 
-The live figures — `main`'s tip, the open pull requests and their CI verdict —
-are regenerated on every push to `main` by `.github/workflows/handoff.yml`, and
+The live figures — the default branch's tip, the open pull requests and their CI verdict —
+are regenerated on every push to the default branch (`develop`) by `.github/workflows/handoff.yml`, and
 sit in the generated block in §4. Read that block for current state; the prose
 around it is the durable part.
 
@@ -106,21 +106,20 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `e5b3d72`** — Merge pull request #8 from barahn/chore/pion-transport-v5
+**`develop` is at `551b808`** — Merge pull request #10 from barahn/claude/elegant-bell-ea29qg
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#10](https://github.com/barahn/remotekit/pull/10) | docs(vp8): record that a browser decodes the stream | `claude/elegant-bell-ea29qg` | no checks reported |
-| [#11](https://github.com/barahn/remotekit/pull/11) | docs: propose an untrusted control plane, and a swappable signalling path | `claude/sharp-wright-u0s07v` | Build, Test & SAST ✅ |
-| [#12](https://github.com/barahn/remotekit/pull/12) | docs: add a handoff brief, and keep its volatile half generated | `claude/tender-feynman-zqy5d1` | Build, Test & SAST ✅ |
+| [#12](https://github.com/barahn/remotekit/pull/12) | docs: add a handoff brief, and keep its volatile half generated | `claude/tender-feynman-zqy5d1` | no checks reported |
 
 <!-- END GENERATED: handoff status -->
 
 ## 5. The roadmap, and the security findings inside it
 
-The argument in `docs/decentralised-signalling.md`: decentralisation and security are separate axes, and
+The argument in `docs/decentralised-signalling.md` (detailed in the companion
+implementation roadmap `docs/implementation-phases.md`): decentralisation and security are separate axes, and
 today the control plane is a man-in-the-middle with unlimited power — it mints
 agent credentials (so it can impersonate any agent), the JPEG fallback
 base64s full frames over the server's WebSocket whenever a viewer has not yet
@@ -186,13 +185,14 @@ hard part; discuss before starting.
 1. Clear whatever §4's generated block shows red. A failing check on an open
    pull request comes before new work, and on a docs-only branch it is usually
    the one-line DCO fix.
-2. Ask the repository owner whether `docs/decentralised-signalling.md` is
-   accepted as the roadmap before implementing any phase of it. The document
-   says "proposal, not accepted" and Phase 0 changes the trust model — that is
-   not yours to decide unilaterally.
-3. Once (2) is answered, the natural first slice is Phase 0 item 5 (port
-   allowlist in `handleReverseStream`) plus the consent enforcement, since
-   neither changes any wire format. Then the signing work, which does.
+2. Refer to `docs/decentralised-signalling.md` and `docs/implementation-phases.md`.
+   The roadmap is structured into Phase 0a (defect remediation), Phase 0b (enrolment
+   identity & signing), Phase 1 (DataChannel data plane), Phase 2 (pluggable signalling),
+   and Phase 3 (relays & transports).
+3. The natural first slice is Phase 0a from `docs/implementation-phases.md` (port
+   allowlist in `handleReverseStream`, removing insecure token fallback, and
+   consent enforcement), since these harden security without breaking wire formats.
+   Then Phase 0b (message signing).
 
 Before every push: run the repo's own checks locally —
 `go build ./...`, `go vet ./...`, `golangci-lint run`, and
