@@ -106,9 +106,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `25a0099`** — ci(handoff): grant pull-requests and checks read permissions
+**`develop` is at `40f83e8`** — docs: refresh the handoff status block
 
-No open pull requests.
+### Open pull requests
+
+| PR | Title | Branch | CI on head |
+|---|---|---|---|
+| [#13](https://github.com/barahn/remotekit/pull/13) | ci(workflows): add automated release PR and sync-develop workflows | `ci/release-pr-workflow` | Refresh the handoff status block ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
