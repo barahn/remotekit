@@ -106,7 +106,7 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `0b8986b`** — Merge pull request #12 from barahn/claude/tender-feynman-zqy5d1
+**`develop` is at `25a0099`** — ci(handoff): grant pull-requests and checks read permissions
 
 No open pull requests.
 
