@@ -1,6 +1,7 @@
 # Decentralised signalling and an untrusted control plane
 
 **Status:** proposal, not accepted. Nothing here has been implemented.
+**Implementation Roadmap:** [implementation-phases.md](implementation-phases.md)
 **Scope:** `webrtc`, `tunnel`, `bark`. Policy consequences for Chirp and the
 Barahn platform are noted but not decided here.
 
