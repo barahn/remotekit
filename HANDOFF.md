@@ -60,9 +60,10 @@ Packages (each usable on its own):
 
 ## 3. State of the tree
 
-`main` is green at commit `e5b3d72` ("Merge pull request #8 from
-barahn/chore/pion-transport-v5"). `claude/tender-feynman-zqy5d1` currently sits
-at the same commit — no unpushed work, no local diff.
+The live figures — `main`'s tip, the open pull requests and their CI verdict —
+are regenerated on every push to `main` by `.github/workflows/handoff.yml`, and
+sit in the generated block in §4. Read that block for current state; the prose
+around it is the durable part.
 
 What has landed so far: the module stood up independently; the CI pipeline with
 the VP8 conformance oracle; 57 lint findings cleared; `golang.org/x/net` bumped
@@ -87,28 +88,39 @@ Two environment variables exist specifically to turn *skips* into *failures*:
 `VP8_CONFORMANCE_REQUIRED` for the libvpx oracle. Never weaken either, and
 never skip, disable or quarantine a test to get green.
 
-## 4. Open pull requests — deal with these first
+## 4. Current state — generated, do not hand-edit
 
-**PR #10 — `docs(vp8): record that a browser decodes the stream`**
-(branch `claude/elegant-bell-ea29qg`, https://github.com/barahn/remotekit/pull/10)
-README-only change replacing the "not yet validated in a browser" caveat with
-the fact that headless Firefox decodes the stream over real WebRTC via
-`TestFirefoxDecodesTheStream`, while noting that what a browser *paints* is
-still nobody's measurement. **CI is red for exactly one reason: commit
-`d7abde6` has no `Signed-off-by` trailer.** Fix: re-sign that commit
-(`git commit --amend -s`, or rebase with sign-off) and force-push that branch —
-it is a Claude-authored branch, so rewriting it is fine — then confirm CI goes
-green. Nothing else is wrong with it.
+Everything between the two markers below is written by
+`scripts/gen-handoff-status.sh`, run by `.github/workflows/handoff.yml` on every
+push to the default branch (`develop`). Edit the script, not the block.
 
-**PR #11 — `docs: propose an untrusted control plane, and a swappable
-signalling path`** (branch `claude/sharp-wright-u0s07v`,
-https://github.com/barahn/remotekit/pull/11) — CI green. Adds
-`docs/decentralised-signalling.md`, a design proposal (explicitly *not
-accepted*). It is the roadmap, summarised in §5.
+Reading it: an open pull request with a red check is work before anything else.
+Two failures recur in this repository and are worth ruling out first — a commit
+missing its `Signed-off-by` trailer (the DCO step, and the usual cause on a
+docs-only branch), and a vendored directory absent from `NOTICE`. Both are
+reported by name in the failing job's log. Branches under `claude/` are
+agent-authored, so re-signing a commit and force-pushing is fine; never rewrite
+a branch someone else owns.
+
+<!-- BEGIN GENERATED: handoff status -->
+
+_Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
+
+**`develop` is at `e5b3d72`** — Merge pull request #8 from barahn/chore/pion-transport-v5
+
+### Open pull requests
+
+| PR | Title | Branch | CI on head |
+|---|---|---|---|
+| [#10](https://github.com/barahn/remotekit/pull/10) | docs(vp8): record that a browser decodes the stream | `claude/elegant-bell-ea29qg` | no checks reported |
+| [#11](https://github.com/barahn/remotekit/pull/11) | docs: propose an untrusted control plane, and a swappable signalling path | `claude/sharp-wright-u0s07v` | Build, Test & SAST ✅ |
+| [#12](https://github.com/barahn/remotekit/pull/12) | docs: add a handoff brief, and keep its volatile half generated | `claude/tender-feynman-zqy5d1` | Build, Test & SAST ✅ |
+
+<!-- END GENERATED: handoff status -->
 
 ## 5. The roadmap, and the security findings inside it
 
-PR #11's core argument: decentralisation and security are separate axes, and
+The argument in `docs/decentralised-signalling.md`: decentralisation and security are separate axes, and
 today the control plane is a man-in-the-middle with unlimited power — it mints
 agent credentials (so it can impersonate any agent), the JPEG fallback
 base64s full frames over the server's WebSocket whenever a viewer has not yet
@@ -171,11 +183,13 @@ hard part; discuss before starting.
 
 ## 6. What to do now
 
-1. Fix PR #10's missing sign-off and get it green. Small, unambiguous, unblocks
-   a correct README.
-2. Ask the repository owner whether PR #11 is accepted as the roadmap before
-   implementing any phase of it. The document says "proposal, not accepted" and
-   Phase 0 changes the trust model — that is not yours to decide unilaterally.
+1. Clear whatever §4's generated block shows red. A failing check on an open
+   pull request comes before new work, and on a docs-only branch it is usually
+   the one-line DCO fix.
+2. Ask the repository owner whether `docs/decentralised-signalling.md` is
+   accepted as the roadmap before implementing any phase of it. The document
+   says "proposal, not accepted" and Phase 0 changes the trust model — that is
+   not yours to decide unilaterally.
 3. Once (2) is answered, the natural first slice is Phase 0 item 5 (port
    allowlist in `handleReverseStream`) plus the consent enforcement, since
    neither changes any wire format. Then the signing work, which does.
