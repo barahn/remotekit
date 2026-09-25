@@ -106,13 +106,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `5fb4de1`** — Merge pull request #13 from barahn/ci/release-pr-workflow
+**`develop` is at `1c87211`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (14 commits) — Merge pull request #13 from barahn/ci/release-pr-workflow | `develop` | Refresh the handoff status block ⏳ (in_progress)<br>open-pr ⏳ (in_progress) |
+| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (14 commits) — Merge pull request #13 from barahn/ci/release-pr-workflow | `develop` | no checks reported |
 
 <!-- END GENERATED: handoff status -->
 
