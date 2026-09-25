@@ -54,8 +54,12 @@ exercised of the three.
 [mendsec/vp8](https://github.com/mendsec/vp8), our fork of
 [opd-ai/vp8](https://github.com/opd-ai/vp8). Its output decodes in libvpx, and
 its internal reconstruction matches libvpx's byte for byte on every frame of the
-conformance suite. It has not yet been validated rendering in a browser over
-WebRTC — that claim is not the same one, and is not yet made.
+conformance suite. A headless Firefox also decodes it over a real WebRTC
+connection — `TestFirefoxDecodesTheStream` in `tunnel`, which CI runs with
+`BARAHN_BROWSER_TEST=1` — which is the only check that covers the RTP
+depacketizer and jitter buffer sitting between the wire and the decoder. The
+verdict there is `getStats().framesDecoded`; what a browser paints from those
+frames is still nobody's measurement.
 
 The fork is Apache-2.0; upstream's MIT terms are preserved in
 `screen/codec/vp8/LICENSE.upstream` and explained in `screen/codec/vp8/NOTICE`.
