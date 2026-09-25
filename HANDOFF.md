@@ -106,13 +106,9 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `551b808`** — Merge pull request #10 from barahn/claude/elegant-bell-ea29qg
+**`develop` is at `0b8986b`** — Merge pull request #12 from barahn/claude/tender-feynman-zqy5d1
 
-### Open pull requests
-
-| PR | Title | Branch | CI on head |
-|---|---|---|---|
-| [#12](https://github.com/barahn/remotekit/pull/12) | docs: add a handoff brief, and keep its volatile half generated | `claude/tender-feynman-zqy5d1` | no checks reported |
+No open pull requests.
 
 <!-- END GENERATED: handoff status -->
 
