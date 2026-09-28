@@ -1,11 +1,20 @@
 name: CI
 
 on:
+  # develop is the integration branch and main the release branch, so both
+  # have to be covered: work lands on develop through pull requests long before
+  # it reaches main.
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
     tags: [ 'v*.*.*' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
+  # A push made with GITHUB_TOKEN triggers no workflow, so a commit a workflow
+  # pushes -- the handoff refresh, the develop sync -- would otherwise leave the
+  # branch tip, and the release pull request whose head it is, with no checks.
+  # Those workflows dispatch this one explicitly; the exemption for
+  # workflow_dispatch is what makes that possible.
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}

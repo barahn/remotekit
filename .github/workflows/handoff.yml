@@ -23,6 +23,8 @@ permissions:
   contents: write
   pull-requests: read
   checks: read
+  # To dispatch ci.yml after pushing; see the last step.
+  actions: write
 
 jobs:
   regenerate:
@@ -44,6 +46,7 @@ jobs:
         run: scripts/gen-handoff-status.sh
 
       - name: Commit if anything changed
+        id: commit
         run: |
           if git diff --quiet -- HANDOFF.md; then
             echo "Status block already current; nothing to commit."
@@ -67,6 +70,7 @@ jobs:
           for attempt in 1 2 3 4; do
             if git push origin "HEAD:${TARGET_BRANCH}"; then
               echo "Pushed."
+              echo "pushed=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
             echo "Push rejected (attempt $attempt); rebasing onto origin/${TARGET_BRANCH}."
@@ -76,3 +80,13 @@ jobs:
           done
           echo "::error::Could not push the refreshed handoff after 4 attempts."
           exit 1
+
+      # The commit just pushed is now the branch tip, and the head of the
+      # release pull request. Pushed with GITHUB_TOKEN, it triggers no workflow,
+      # so without this the tip carries no checks and the release pull request
+      # shows none. Dispatching CI on the branch attaches them to that commit.
+      - name: Run CI on the new tip
+        if: steps.commit.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run ci.yml --ref "${{ github.event.repository.default_branch }}" --repo "${{ github.repository }}"
