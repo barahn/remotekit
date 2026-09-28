@@ -56,9 +56,8 @@ Packages (each usable on its own):
   `.github/workflows/sync-develop.yml` merges `main` back into `develop` once
   that release pull request is merged.
 - **Every commit needs a DCO `Signed-off-by` trailer** (`git commit -s`). CI
-  enforces it on every non-merge commit in a pull request that CI runs on (see
-  §3 for which ones do), and a missing trailer has already turned one pull
-  request red. `CONTRIBUTING.md` also carries a CLA; sign-off is not the CLA.
+  enforces it on every non-merge commit in a pull request, and a missing
+  trailer has already turned one pull request red. `CONTRIBUTING.md` also carries a CLA; sign-off is not the CLA.
 - CI additionally enforces that every directory containing a
   `LICENSE.upstream` is named in `NOTICE` (Apache-2.0 §4(d)). If you vendor
   anything, update `NOTICE` in the same commit.
@@ -80,8 +79,9 @@ and NOTICE enforcement; `pion/transport/v5` with the browser tests restored;
 the browser decode test now *runs* rather than skipping, and the README says
 so; the signalling proposal (`docs/decentralised-signalling.md`) and its
 engineering breakdown (`docs/implementation-phases.md`); this brief with its
-generated status block; and the `develop`/`main` branch model with the
-release-PR and sync workflows. No roadmap phase has been implemented yet.
+generated status block; the `develop`/`main` branch model with the
+release-PR and sync workflows; and CI extended to `develop` and to the commits
+those workflows push. No roadmap phase has been implemented yet.
 
 ### The CI pipeline (`.github/workflows/ci.yml`, single job, 20 min cap)
 
@@ -93,16 +93,16 @@ windows/amd64 and darwin/amd64 → golangci-lint v2.13.2 → install Xvfb,
 (excluding `screen/codec/vp8`, which has 53 deliberate int→int16 narrowings the
 spec bounds by construction) → govulncheck v1.7.0.
 
-**Known gap — CI does not run where most work now lands.** `ci.yml` triggers
-only on pushes to `main`, `v*.*.*` tags, and pull requests *targeting `main`*.
-It predates the move to `develop`, so a pull request against `develop` gets no
-build, lint, test or DCO check at all, and "mergeable" on one says nothing
-about whether it compiles. The release pull request does target `main`, but
-its head is `develop`'s tip, which is usually a commit the handoff workflow
-pushed with `GITHUB_TOKEN` — and pushes made with that token do not trigger
-workflows, so the release pull request routinely shows no checks either. Until
-`ci.yml` is extended to `develop`, run the checks locally (§6) before every
-push, and never read an absent check as a pass.
+**Which commits CI covers.** `ci.yml` runs on pushes and pull requests for
+both `main` and `develop`, and on `v*.*.*` tags. Commits that a workflow pushes
+need extra care: a push made with `GITHUB_TOKEN` starts no workflow, and a
+pull request run it causes waits in *action_required* for a human to approve.
+The handoff refresh and the `sync-develop` merge both push that way, so each
+dispatches `ci.yml` on the branch afterwards (`workflow_dispatch` is exempt from
+that rule), and the result attaches to the new tip, which is what the release
+pull request shows. If you add a workflow that pushes, give it the same
+dispatch step, or its commits will go unchecked. Whatever the cause, an absent
+check is never a pass.
 
 Two environment variables exist specifically to turn *skips* into *failures*:
 `BARAHN_BROWSER_TEST` for `TestFirefoxDecodesTheStream` and
@@ -120,7 +120,7 @@ Two failures recur in this repository and are worth ruling out first — a commi
 missing its `Signed-off-by` trailer (the DCO step, and the usual cause on a
 docs-only branch), and a vendored directory absent from `NOTICE`. Both are
 reported by name in the failing job's log. A row reading "no checks
-reported" is not green — see the CI gap in §3. Branches under `claude/` are
+reported" is not green — see §3 for which commits CI covers. Branches under `claude/` are
 agent-authored, so re-signing a commit and force-pushing is fine; never rewrite
 a branch someone else owns.
 
