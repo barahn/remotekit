@@ -47,12 +47,18 @@ Packages (each usable on its own):
 
 ## 2. Ground rules you must follow
 
-- Develop on a descriptive feature branch created from `origin/develop` (or
-  `origin/main` if retargeting); never push directly to `develop` or `main`.
-  Push with `git push -u origin <branch-name>`.
+- **Branch model.** `develop` is the default and integration branch; `main`
+  is the release branch. Branch from `origin/develop`, open pull requests
+  against `develop`, and never push directly to either. Push with
+  `git push -u origin <branch-name>`. You never open the release pull request
+  yourself: `.github/workflows/release-pr.yml` opens or updates a single
+  `develop` → `main` pull request on every push to `develop`, and
+  `.github/workflows/sync-develop.yml` merges `main` back into `develop` once
+  that release pull request is merged.
 - **Every commit needs a DCO `Signed-off-by` trailer** (`git commit -s`). CI
-  enforces it on every non-merge commit in a PR and this has already broken one
-  PR — see §4. `CONTRIBUTING.md` also carries a CLA; sign-off is not the CLA.
+  enforces it on every non-merge commit in a pull request that CI runs on (see
+  §3 for which ones do), and a missing trailer has already turned one pull
+  request red. `CONTRIBUTING.md` also carries a CLA; sign-off is not the CLA.
 - CI additionally enforces that every directory containing a
   `LICENSE.upstream` is named in `NOTICE` (Apache-2.0 §4(d)). If you vendor
   anything, update `NOTICE` in the same commit.
@@ -71,7 +77,11 @@ to v0.56.0 for GO-2026-5942; the VP8 encoder reconciled with the copy in
 `barahn/barahn`; a real agent credential issued instead of a derived one;
 multi-monitor capture and injection carried forward; CONTRIBUTING + CLA + DCO
 and NOTICE enforcement; `pion/transport/v5` with the browser tests restored;
-the browser decode test now *runs* rather than skipping.
+the browser decode test now *runs* rather than skipping, and the README says
+so; the signalling proposal (`docs/decentralised-signalling.md`) and its
+engineering breakdown (`docs/implementation-phases.md`); this brief with its
+generated status block; and the `develop`/`main` branch model with the
+release-PR and sync workflows. No roadmap phase has been implemented yet.
 
 ### The CI pipeline (`.github/workflows/ci.yml`, single job, 20 min cap)
 
@@ -82,6 +92,17 @@ windows/amd64 and darwin/amd64 → golangci-lint v2.13.2 → install Xvfb,
 `BARAHN_BROWSER_TEST=1` and `VP8_CONFORMANCE_REQUIRED=1` → gosec v2.22.1
 (excluding `screen/codec/vp8`, which has 53 deliberate int→int16 narrowings the
 spec bounds by construction) → govulncheck v1.7.0.
+
+**Known gap — CI does not run where most work now lands.** `ci.yml` triggers
+only on pushes to `main`, `v*.*.*` tags, and pull requests *targeting `main`*.
+It predates the move to `develop`, so a pull request against `develop` gets no
+build, lint, test or DCO check at all, and "mergeable" on one says nothing
+about whether it compiles. The release pull request does target `main`, but
+its head is `develop`'s tip, which is usually a commit the handoff workflow
+pushed with `GITHUB_TOKEN` — and pushes made with that token do not trigger
+workflows, so the release pull request routinely shows no checks either. Until
+`ci.yml` is extended to `develop`, run the checks locally (§6) before every
+push, and never read an absent check as a pass.
 
 Two environment variables exist specifically to turn *skips* into *failures*:
 `BARAHN_BROWSER_TEST` for `TestFirefoxDecodesTheStream` and
@@ -98,7 +119,8 @@ Reading it: an open pull request with a red check is work before anything else.
 Two failures recur in this repository and are worth ruling out first — a commit
 missing its `Signed-off-by` trailer (the DCO step, and the usual cause on a
 docs-only branch), and a vendored directory absent from `NOTICE`. Both are
-reported by name in the failing job's log. Branches under `claude/` are
+reported by name in the failing job's log. A row reading "no checks
+reported" is not green — see the CI gap in §3. Branches under `claude/` are
 agent-authored, so re-signing a commit and force-pushing is fine; never rewrite
 a branch someone else owns.
 
@@ -163,7 +185,10 @@ Ordered work, as proposed:
   fleet topology. The relay path's value is rendezvous when the control plane
   is unreachable or untrusted, and it belongs to Chirp first, not Barahn.
 
-Three defects that stand on their own regardless of the proposal:
+`docs/implementation-phases.md` is the authoritative breakdown (its status is
+still *Draft / Proposed Roadmap*) and splits Phase 0 in two: **Phase 0a** is
+the three defects below, which stand on their own regardless of the proposal,
+and Phase 0 proper is the identity, signing and consent work above.
 
 1. `tunnel/agent_stream.go` — when `AgentToken` is empty the client sends the
    **agent ID as the token**. `HandleConnect` rejects it, but `/signal` is
