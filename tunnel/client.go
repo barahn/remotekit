@@ -7,11 +7,11 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -24,7 +24,6 @@ import (
 
 	"github.com/barahn/remotekit/heartbeat"
 	"github.com/barahn/remotekit/osinfo"
-	"github.com/gorilla/websocket"
 	"github.com/hashicorp/yamux"
 )
 
@@ -32,6 +31,11 @@ type AgentCredentials struct {
 	AgentID    string `json:"agent_id"`
 	AgentToken string `json:"agent_token"`
 	ServerAddr string `json:"server_addr"`
+	// ServerKeyPin is the ServerKeyPin of the key the server presented at
+	// enrolment, recorded when enrolment ran over TLS. Once set, the agent
+	// talks only to a server holding that key. Empty for plain-HTTP servers
+	// and for credentials written before pinning existed.
+	ServerKeyPin string `json:"server_key_pin,omitempty"`
 }
 
 type TunnelClient struct {
@@ -44,6 +48,29 @@ type TunnelClient struct {
 	// to drive UI indicators (e.g. the desktop tray icon) with the real connection
 	// state instead of an assumed/static value.
 	OnStatusChange func(connected bool)
+
+	// AllowedReversePorts lists the local ports a reverse stream may reach.
+	// Anything else is refused, and an empty list refuses everything.
+	//
+	// The port arrives from the server, so without this list whoever controls
+	// the server -- or impersonates it -- could reach any service bound to
+	// this host's loopback, which is exactly where services that trust local
+	// callers live. Name the ports you mean to expose, typically just 22.
+	AllowedReversePorts []int
+}
+
+// ErrPortNotPermitted is returned for a reverse stream to a port that
+// AllowedReversePorts does not list.
+var ErrPortNotPermitted = errors.New("tunnel: reverse stream port not permitted")
+
+// checkReversePort decides whether a reverse stream may dial port.
+func (tc *TunnelClient) checkReversePort(port int) error {
+	for _, p := range tc.AllowedReversePorts {
+		if p == port {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %d", ErrPortNotPermitted, port)
 }
 
 func NewTunnelClient(credsPath string, insecureSkipVerify bool) *TunnelClient {
@@ -67,10 +94,6 @@ func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath st
 
 	if !insecureSkipVerify && os.Getenv("BARAHN_INSECURE_SKIP_VERIFY") == "true" {
 		insecureSkipVerify = true
-	}
-
-	if insecureSkipVerify {
-		fmt.Fprintln(os.Stderr, "[WARNING] TLS certificate verification is DISABLED (--insecure-skip-verify). Connection is insecure!")
 	}
 
 	parsedURL, err := url.ParseRequestURI(serverAddr)
@@ -97,10 +120,8 @@ func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath st
 	bodyBytes, _ := json.Marshal(payload)
 
 	httpClient := &http.Client{Timeout: 10 * time.Second}
-	if insecureSkipVerify {
-		httpClient.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- CLI opt-in flag for dev/test
-		}
+	if cfg := clientTLSConfig("", insecureSkipVerify); cfg != nil {
+		httpClient.Transport = &http.Transport{TLSClientConfig: cfg}
 	}
 
 	// #nosec G107 -- serverAddr is provided by the agent administrator during enrollment, not an untrusted user
@@ -122,6 +143,13 @@ func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath st
 	}
 
 	creds.ServerAddr = serverAddr
+	// Trust on first use: whatever key the server just proved it holds is
+	// the only one this agent will accept from now on. Enrolment is the one
+	// connection that cannot be pinned, which is why it is also the one that
+	// redeems a single-use pairing code.
+	if resp.TLS != nil && len(resp.TLS.PeerCertificates) > 0 {
+		creds.ServerKeyPin = ServerKeyPin(resp.TLS.PeerCertificates[0])
+	}
 
 	if err := saveCredentials(savePath, &creds); err != nil {
 		return nil, fmt.Errorf("failed to save agent credentials to %s: %w", savePath, err)
@@ -187,15 +215,7 @@ func (tc *TunnelClient) Connect(ctx context.Context, creds *AgentCredentials) er
 		header.Set("X-Barahn-Agent-Hostname", hostname)
 	}
 
-	dialer := websocket.DefaultDialer
-	if tc.insecureSkipVerify {
-		fmt.Fprintln(os.Stderr, "[WARNING] TLS certificate verification is DISABLED (--insecure-skip-verify). Connection is insecure!")
-		dialer = &websocket.Dialer{
-			Proxy:            http.ProxyFromEnvironment,
-			HandshakeTimeout: 45 * time.Second,
-			TLSClientConfig:  &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- CLI opt-in flag for dev/test
-		}
-	}
+	dialer := wsDialer(creds.ServerKeyPin, tc.insecureSkipVerify)
 
 	ws, _, err := dialer.DialContext(ctx, wsURL, header)
 	if err != nil {
@@ -263,6 +283,10 @@ func (tc *TunnelClient) handleReverseStream(stream *yamux.Stream) {
 	portStr := strings.TrimSpace(line)
 	port, err := strconv.Atoi(portStr)
 	if err != nil || port <= 0 {
+		return
+	}
+	if err := tc.checkReversePort(port); err != nil {
+		log.Printf("[Tunnel] refusing reverse stream: %v", err)
 		return
 	}
 

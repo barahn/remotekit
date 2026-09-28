@@ -76,6 +76,7 @@ func TestTunnel_EnrollmentAndReverseStream(t *testing.T) {
 
 	// 3. Connect Agent Tunnel in background
 	client := tunnel.NewTunnelClient(savePath, false)
+	client.AllowedReversePorts = []int{sshPort}
 	connCtx, connCancel := context.WithCancel(context.Background())
 	defer connCancel()
 
