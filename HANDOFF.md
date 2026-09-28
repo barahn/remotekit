@@ -128,13 +128,16 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `1c87211`** — docs: refresh the handoff status block
+**`develop` is at `572ff72`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
 | [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (14 commits) — Merge pull request #13 from barahn/ci/release-pr-workflow | `develop` | no checks reported |
+| [#15](https://github.com/barahn/remotekit/pull/15) | docs(handoff): describe the develop branch model and the CI gap it opened | `claude/tender-feynman-zqy5d1` | Refresh the handoff status block ✅ |
+| [#16](https://github.com/barahn/remotekit/pull/16) | ci: run on develop, and on the commits workflows push there | `claude/tender-feynman-zqy5d1-ci` | Refresh the handoff status block ✅<br>Build, Test & SAST ✅ |
+| [#17](https://github.com/barahn/remotekit/pull/17) | Phase 0a + signing primitive: close the three standing defects, let SignalMessage authenticate itself | `claude/sharp-wright-u0s07v` | Refresh the handoff status block ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
