@@ -35,25 +35,32 @@ func ServerKeyPin(cert *x509.Certificate) string {
 // clientTLSConfig returns the TLS configuration for talking to the control
 // plane, or nil when the library default (full CA verification) is right.
 //
-// With a pin, the server must present the pinned key -- on top of normal CA
-// verification, or instead of it when insecureSkipVerify is set. The second
-// case is what makes a self-signed development server safe to use after
-// enrolment: the agent trusts that key and no other, rather than anything at
-// all.
+// The pin stands in for the CA, so it applies only when CA verification is
+// off. With insecureSkipVerify set and a pin recorded, the server must present
+// the pinned key: that is what makes a self-signed development server safe to
+// use after enrolment -- the agent trusts that key and no other, rather than
+// anything at all.
+//
+// With CA verification on, the CA is the trust anchor and the pin is not
+// checked. Enforcing it there as well would disconnect every agent whenever
+// the server's key changes under a certificate the CA still vouches for --
+// which ACME clients do on renewal by default, and which a load balancer in
+// front of servers with different keys does on every connection. The only
+// recovery would be re-enrolling each machine with a fresh pairing code.
 //
 // Without a pin and with insecureSkipVerify set, verification is off
 // entirely. That is only ever true before enrolment has recorded a pin, and it
 // is the trust-on-first-use window.
 func clientTLSConfig(pin string, insecureSkipVerify bool) *tls.Config {
+	if !insecureSkipVerify {
+		return nil
+	}
 	if pin == "" {
-		if !insecureSkipVerify {
-			return nil
-		}
 		fmt.Fprintln(os.Stderr, "[WARNING] TLS certificate verification is DISABLED and no server key is pinned. Connection is insecure!")
 		return &tls.Config{InsecureSkipVerify: true} // #nosec G402 -- CLI opt-in flag for dev/test, before a pin exists
 	}
 	return &tls.Config{
-		InsecureSkipVerify: insecureSkipVerify, // #nosec G402 -- the pin check below still binds the server's key
+		InsecureSkipVerify: true, // #nosec G402 -- the pin check below binds the server's key in place of the CA
 		VerifyConnection: func(cs tls.ConnectionState) error {
 			if len(cs.PeerCertificates) == 0 {
 				return ErrServerKeyMismatch

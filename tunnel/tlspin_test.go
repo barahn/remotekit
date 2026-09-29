@@ -80,8 +80,8 @@ func TestClientTLSConfig_PinBindsTheServerKey(t *testing.T) {
 	}
 }
 
-// A pin adds to CA verification, it does not replace it: without
-// skip-verify, the pinned key on an untrusted certificate is still refused.
+// A pin never loosens CA verification: without skip-verify, the pinned key on
+// an untrusted certificate is still refused, by the CA check.
 func TestClientTLSConfig_PinDoesNotBypassCAVerification(t *testing.T) {
 	srv := httptest.NewTLSServer(http.NotFoundHandler())
 	defer srv.Close()
@@ -92,6 +92,31 @@ func TestClientTLSConfig_PinDoesNotBypassCAVerification(t *testing.T) {
 	}
 	if errors.Is(err, ErrServerKeyMismatch) {
 		t.Fatalf("expected a CA verification failure, got a pin mismatch: %v", err)
+	}
+}
+
+// With CA verification on, the CA decides and the pin is not consulted. A
+// server that renews onto a new key under a certificate the CA still trusts --
+// the ACME default -- must not strand every enrolled agent.
+func TestClientTLSConfig_CAValidRenewalOnNewKeyIsAccepted(t *testing.T) {
+	old := httptest.NewTLSServer(http.NotFoundHandler())
+	pin := ServerKeyPin(old.Certificate())
+	old.Close()
+
+	renewed := newTLSServerWithOwnKey(t)
+	defer renewed.Close()
+	if ServerKeyPin(renewed.Certificate()) == pin {
+		t.Fatal("test servers unexpectedly share a key")
+	}
+
+	if cfg := clientTLSConfig(pin, false); cfg != nil {
+		t.Fatalf("with CA verification on, the library default should apply, got %+v", cfg)
+	}
+	// The library default, with the renewed certificate's issuer trusted.
+	pool := x509.NewCertPool()
+	pool.AddCert(renewed.Certificate())
+	if err := dialWith(t, renewed, &tls.Config{RootCAs: pool}); err != nil {
+		t.Fatalf("CA-valid renewal on a new key refused: %v", err)
 	}
 }
 

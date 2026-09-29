@@ -31,10 +31,11 @@ type AgentCredentials struct {
 	AgentID    string `json:"agent_id"`
 	AgentToken string `json:"agent_token"`
 	ServerAddr string `json:"server_addr"`
-	// ServerKeyPin is the ServerKeyPin of the key the server presented at
-	// enrolment, recorded when enrolment ran over TLS. Once set, the agent
-	// talks only to a server holding that key. Empty for plain-HTTP servers
-	// and for credentials written before pinning existed.
+	// ServerKeyPin is the SHA-256 of the public key the server presented at
+	// enrolment, recorded when enrolment ran over TLS. When CA verification
+	// is off, the agent talks only to a server holding that key; with it on,
+	// the CA decides and the pin is not consulted. Empty for plain-HTTP
+	// servers and for credentials written before pinning existed.
 	ServerKeyPin string `json:"server_key_pin,omitempty"`
 }
 
@@ -144,9 +145,11 @@ func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath st
 
 	creds.ServerAddr = serverAddr
 	// Trust on first use: whatever key the server just proved it holds is
-	// the only one this agent will accept from now on. Enrolment is the one
-	// connection that cannot be pinned, which is why it is also the one that
-	// redeems a single-use pairing code.
+	// the only one this agent will accept from now on when CA verification
+	// is off. It is recorded either way, so turning skip-verify on later
+	// narrows trust to this key instead of dropping it altogether. Enrolment
+	// is the one connection that cannot be pinned, which is why it is also
+	// the one that redeems a single-use pairing code.
 	if resp.TLS != nil && len(resp.TLS.PeerCertificates) > 0 {
 		creds.ServerKeyPin = ServerKeyPin(resp.TLS.PeerCertificates[0])
 	}
