@@ -33,6 +33,11 @@ func ServerKeyPin(cert *x509.Certificate) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// insecureWarning prints the unpinned skip-verify warning once per process.
+// clientTLSConfig runs on every reconnect, so a flapping server would
+// otherwise repeat it on every attempt and bury everything else in stderr.
+var insecureWarning sync.Once
+
 // clientTLSConfig returns the TLS configuration for talking to the control
 // plane, or nil when the library default (full CA verification) is right.
 //
@@ -52,11 +57,6 @@ func ServerKeyPin(cert *x509.Certificate) string {
 // Without a pin and with insecureSkipVerify set, verification is off
 // entirely. That is only ever true before enrolment has recorded a pin, and it
 // is the trust-on-first-use window.
-// insecureWarning prints the unpinned skip-verify warning once per process.
-// clientTLSConfig runs on every reconnect, so a flapping server would
-// otherwise repeat it on every attempt and bury everything else in stderr.
-var insecureWarning sync.Once
-
 func clientTLSConfig(pin string, insecureSkipVerify bool) *tls.Config {
 	if !insecureSkipVerify {
 		return nil
