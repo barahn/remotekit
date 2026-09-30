@@ -130,13 +130,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `cf1a234`** — Merge pull request #24 from barahn/licence/accept-mpl-2.0
+**`develop` is at `370b14b`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (49 commits) — Merge pull request #20 from barahn/devsecops/pipeline | `develop` | [Review dependency changes ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36781927420/job/110114031606)<br>[Analyze (Go) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36781927424/job/110114031341)<br>gitleaks ⏳ (in_progress)<br>Dependency review (disabled) ⏳ (in_progress)<br>CodeQL (disabled) ⏳ (in_progress)<br>[Analyze (Go) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36781921767/job/110114012945)<br>open-pr ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>CodeQL (disabled) ✅ |
+| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (60 commits) — Merge pull request #24 from barahn/licence/accept-mpl-2.0 | `develop` | no checks reported |
 | [#18](https://github.com/barahn/remotekit/pull/18) | Phase 0b: device keys, and a proof of possession on every connection | `claude/phase-0b-device-key` | Build, Test & SAST ✅ |
 | [#21](https://github.com/barahn/remotekit/pull/21) | deps: bump github.com/pion/webrtc/v4 from 4.2.21 to 4.2.22 in the pion group | `dependabot/go_modules/develop/pion-2157ff8f69` | [Analyze (Go) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36780127987/job/110107996754)<br>[Review dependency changes ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36780128015/job/110107995706)<br>CodeQL (disabled) ✅<br>Dependency review (disabled) ✅<br>gitleaks ✅<br>Build, Test & SAST ✅<br>Refresh the handoff status block ✅ |
 | [#22](https://github.com/barahn/remotekit/pull/22) | ci: bump github/codeql-action/init from 88585263c0627ee42c0e1c5143a112c8d6f4aa18 to 2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 | `dependabot/github_actions/develop/github/codeql-action/init-2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2` | [Analyze (Go) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36780386081/job/110108864185)<br>[Review dependency changes ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36780385964/job/110108863147)<br>CodeQL (disabled) ✅<br>gitleaks ✅<br>Dependency review (disabled) ✅<br>Build, Test & SAST ✅<br>Refresh the handoff status block ✅ |
