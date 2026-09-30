@@ -1,0 +1,84 @@
+name: CodeQL
+
+# gosec matches known-bad patterns inside a function. CodeQL follows data from a
+# source to a sink across packages -- how a remote peer's input reaching a
+# file path, a command or an injected keystroke would be caught. In a module
+# whose whole job is acting on input from another machine, that is the
+# analysis that matters most.
+on:
+  push:
+    branches: [ develop, main ]
+  pull_request:
+    branches: [ develop, main ]
+  schedule:
+    # Queries improve without the code changing. Wednesdays 04:17 UTC.
+    - cron: '17 4 * * 3'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# Gated on the CODE_SCANNING repository variable, off by default.
+#
+# This repository is private. On a private repository GitHub runs CodeQL and
+# dependency review only with GitHub Advanced Security (Code Security). In
+# barahn/chirp, same organisation, both were observed failing for exactly that
+# reason. The CodeQL licence also permits analysing private code only under
+# that entitlement, so this is not a gate to force through.
+#
+# Set Settings -> Secrets and variables -> Actions -> Variables ->
+# CODE_SCANNING = true once the repository is public or Code Security is on.
+# Until then the gate is off, and says so on every run rather than going
+# quietly green. A skipped job counts as passing for a required check, so
+# marking these required before then enforces nothing. See docs/devsecops.md.
+
+jobs:
+  analyze:
+    name: Analyze (Go)
+    if: vars.CODE_SCANNING == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        continue-on-error: true
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version: '1.26'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@88585263c0627ee42c0e1c5143a112c8d6f4aa18 # v4.38.2
+        with:
+          languages: go
+          queries: security-extended
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@88585263c0627ee42c0e1c5143a112c8d6f4aa18 # v4.38.2
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@88585263c0627ee42c0e1c5143a112c8d6f4aa18 # v4.38.2
+        with:
+          category: /language:go
+
+  gate-disabled:
+    name: CodeQL (disabled)
+    if: vars.CODE_SCANNING != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Report that this gate is off
+        run: |
+          echo "::warning title=CodeQL is not running::This repository is private and the CODE_SCANNING variable is not set, so CodeQL is skipped. Enable it once the repository is public or Code Security is on. See docs/devsecops.md."
