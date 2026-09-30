@@ -81,7 +81,9 @@ so; the signalling proposal (`docs/decentralised-signalling.md`) and its
 engineering breakdown (`docs/implementation-phases.md`); this brief with its
 generated status block; the `develop`/`main` branch model with the
 release-PR and sync workflows; and CI extended to `develop` and to the commits
-those workflows push. No roadmap phase has been implemented yet.
+those workflows push; and Phase 0a plus the Phase 0 signing primitive
+(barahn/remotekit#17), described in §5. Nothing past that has been
+implemented.
 
 ### The CI pipeline (`.github/workflows/ci.yml`, single job, 20 min cap)
 
@@ -155,14 +157,14 @@ Ordered work, as proposed:
 
 - **Phase 0 — activate the identity already in the code.** Generate a device
   keypair at enrolment and actually populate/verify `AgentRegistration.PublicKey`
-  (`tunnel/store.go:53`, set at `tunnel/server.go:132`, *stored and never
-  read*). Sign every control message; extend `webrtc.SignalMessage` with
-  `PubKey`, `Nonce`, `IssuedAt`, `ExpiresAt`, `Sig` plus `Sign()`/`Verify()`
-  and a seen-nonce cache. Enforce `bark.ConsentRequestPayload.RequestedPermissions`
-  (`bark/bark.go:86`, *defined and never enforced*) in `handleInputPayload`,
-  clipboard writes, `file_complete` and `OpenReverseStream`. Allowlist ports in
-  `handleReverseStream` — `tunnel/client.go:270` dials `127.0.0.1:%d` with no
-  allowlist at all. Worth doing whether or not the rest is ever built.
+  (`tunnel/store.go`, set in `tunnel/server.go`, *stored and never read*).
+  Sign every control message and verify it on receipt. Enforce
+  `bark.ConsentRequestPayload.RequestedPermissions` (`bark/bark.go`, *defined
+  and never enforced*) in `handleInputPayload`, clipboard writes,
+  `file_complete` and `OpenReverseStream`. **Already done:** the signing
+  primitive itself — see "What #17 landed" below. **Still open:** the device
+  keypair, wiring `Sign`/`VerifyFrom` into the signalling loop, verifying
+  `PublicKey`, and consent enforcement.
 - **Phase 1 — move the data plane off the server.** Add a DataChannel to
   `webrtc/peer.go` (video track only today) and carry input, clipboard and
   `transfer` over it with `bark.Envelope` as the format. Keep the JPEG fallback
@@ -188,18 +190,37 @@ Ordered work, as proposed:
   is unreachable or untrusted, and it belongs to Chirp first, not Barahn.
 
 `docs/implementation-phases.md` is the authoritative breakdown (its status is
-still *Draft / Proposed Roadmap*) and splits Phase 0 in two: **Phase 0a** is
-the three defects below, which stand on their own regardless of the proposal,
-and Phase 0 proper is the identity, signing and consent work above.
+still *Draft / Proposed Roadmap*) and splits Phase 0 in two: **Phase 0a**, the
+three standalone defects, and Phase 0 proper, the identity, signing and consent
+work above.
 
-1. `tunnel/agent_stream.go` — when `AgentToken` is empty the client sends the
-   **agent ID as the token**. `HandleConnect` rejects it, but `/signal` is
-   implemented by the product; a lenient server turns a non-secret identifier
-   into a credential.
-2. `PublicKey` is never verified anywhere — the field is decorative.
-3. `BARAHN_INSECURE_SKIP_VERIFY` disables TLS verification via an environment
-   variable (`tunnel/client.go`). The right answer is pinning the server key
-   (TOFU over the pubkey recorded at enrolment), not disabling verification.
+### What #17 landed (Phase 0a, plus the signing primitive)
+
+- **No agent ID as token.** `AgentStreamRunner.Start` refuses to dial without
+  an `AgentToken` and returns for good, logging once; it reports no error, so
+  callers check the token themselves (its doc comment says so).
+- **Reverse-stream port allowlist — a behaviour change for consumers.**
+  `TunnelClient.AllowedReversePorts` is **deny-by-default**: an empty list
+  refuses every reverse stream with `ErrPortNotPermitted`. Any consumer that
+  uses reverse streams (the SSH tunnel) must set it, typically to `[]int{22}`.
+  Chirp and the platform both need that one-line change when they take this
+  version.
+- **Server key pin.** `Enroll` records the SHA-256 of the server's public key
+  as `AgentCredentials.ServerKeyPin`. The pin is enforced **only when CA
+  verification is off** (`BARAHN_INSECURE_SKIP_VERIFY`), where it turns "trust
+  anything" into "trust this key". With CA verification on, the CA decides and
+  the pin is not consulted — deliberately: enforcing it there would turn an
+  ACME renewal onto a new key, or a load balancer with differing backend keys,
+  into a fleet-wide outage recoverable only by re-enrolling every agent. Do
+  not "tighten" this without solving key rotation first.
+- **Signing primitive, not yet wired in.** `webrtc/signed.go`: `SignalMessage`
+  gains `PubKey`, `Nonce`, `IssuedAt`, `ExpiresAt`, `Sig` (Ed25519), with
+  `Sign`, `Verify`, `VerifyFrom` and a `NonceCache`. Gate actions on
+  `VerifyFrom` with the peer's known key, never on `Verify` alone, and call
+  `NonceCache.CheckAndRecord` only after verification succeeds. Signed bytes
+  are a length-prefixed layout behind the `remotekit/signal/v1` domain tag, not
+  JSON; bump the tag if that layout ever changes. Unsigned messages encode
+  exactly as before. Nothing calls `Sign` or `Verify` yet.
 
 Also open, unrelated to the above: macOS is stubbed out —
 `input/input_darwin.go` and `screen/capture_darwin.go` both return
@@ -216,10 +237,12 @@ hard part; discuss before starting.
    The roadmap is structured into Phase 0a (defect remediation), Phase 0b (enrolment
    identity & signing), Phase 1 (DataChannel data plane), Phase 2 (pluggable signalling),
    and Phase 3 (relays & transports).
-3. The natural first slice is Phase 0a from `docs/implementation-phases.md` (port
-   allowlist in `handleReverseStream`, removing insecure token fallback, and
-   consent enforcement), since these harden security without breaking wire formats.
-   Then Phase 0b (message signing).
+3. Phase 0a is done (#17). The next slice is Phase 0b: generate a device
+   keypair at enrolment, send its public key in the `public_key` field that
+   enrolment already carries, verify `AgentRegistration.PublicKey` server-side,
+   and wire `Sign`/`VerifyFrom` plus a `NonceCache` into the signalling loop.
+   Consent enforcement (`RequestedPermissions`) is independent of that and can
+   go first or alongside.
 
 Before every push: run the repo's own checks locally —
 `go build ./...`, `go vet ./...`, `golangci-lint run`, and
