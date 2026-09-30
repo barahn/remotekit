@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -98,39 +99,102 @@ func TestConnectProof(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	otherPub, _, _ := ed25519.GenerateKey(rand.Reader)
 	now := time.Unix(1_790_000_000, 0)
-	ts, sig := SignConnect(priv, "agent-1", now)
+	p := SignConnect(priv, AudienceTunnel, "agent-1", now)
 
-	if err := VerifyConnect(pub, "agent-1", ts, sig, now.Add(30*time.Second)); err != nil {
+	if err := VerifyConnect(pub, AudienceTunnel, "agent-1", p, now.Add(30*time.Second), &ReplayCache{}); err != nil {
 		t.Fatalf("valid proof: %v", err)
+	}
+	with := func(f func(*ConnectProof)) ConnectProof {
+		q := p
+		f(&q)
+		return q
+	}
+	verify := func(pub ed25519.PublicKey, audience, agentID string, p ConnectProof, now time.Time) error {
+		return VerifyConnect(pub, audience, agentID, p, now, &ReplayCache{})
 	}
 	cases := []struct {
 		name string
 		err  error
 		got  error
 	}{
-		{"other agent", ErrConnectSigInvalid, VerifyConnect(pub, "agent-2", ts, sig, now)},
-		{"other key", ErrConnectSigInvalid, VerifyConnect(otherPub, "agent-1", ts, sig, now)},
-		{"altered timestamp", ErrConnectSigInvalid, VerifyConnect(pub, "agent-1", "1790000001", sig, now)},
-		{"too old", ErrConnectSigStale, VerifyConnect(pub, "agent-1", ts, sig, now.Add(ConnectSignatureSkew+time.Second))},
-		{"too far ahead", ErrConnectSigStale, VerifyConnect(pub, "agent-1", ts, sig, now.Add(-ConnectSignatureSkew-time.Second))},
-		{"no signature", ErrConnectSigMissing, VerifyConnect(pub, "agent-1", ts, "", now)},
-		{"no timestamp", ErrConnectSigMissing, VerifyConnect(pub, "agent-1", "", sig, now)},
-		{"garbage signature", ErrConnectSigInvalid, VerifyConnect(pub, "agent-1", ts, "!!", now)},
+		{"other agent", ErrConnectSigInvalid, verify(pub, AudienceTunnel, "agent-2", p, now)},
+		{"other key", ErrConnectSigInvalid, verify(otherPub, AudienceTunnel, "agent-1", p, now)},
+		{"other audience", ErrConnectSigInvalid, verify(pub, AudienceSignal, "agent-1", p, now)},
+		{"altered timestamp", ErrConnectSigInvalid, verify(pub, AudienceTunnel, "agent-1", with(func(q *ConnectProof) { q.Timestamp = "1790000001" }), now)},
+		{"altered nonce", ErrConnectSigInvalid, verify(pub, AudienceTunnel, "agent-1", with(func(q *ConnectProof) { q.Nonce = "AAAAAAAAAAAAAAAAAAAAAAAAAA" }), now)},
+		{"malformed nonce", ErrConnectSigInvalid, verify(pub, AudienceTunnel, "agent-1", with(func(q *ConnectProof) { q.Nonce = "short" }), now)},
+		{"too old", ErrConnectSigStale, verify(pub, AudienceTunnel, "agent-1", p, now.Add(ConnectSignatureSkew+time.Second))},
+		{"too far ahead", ErrConnectSigStale, verify(pub, AudienceTunnel, "agent-1", p, now.Add(-ConnectSignatureSkew-time.Second))},
+		{"no signature", ErrConnectSigMissing, verify(pub, AudienceTunnel, "agent-1", with(func(q *ConnectProof) { q.Signature = "" }), now)},
+		{"no timestamp", ErrConnectSigMissing, verify(pub, AudienceTunnel, "agent-1", with(func(q *ConnectProof) { q.Timestamp = "" }), now)},
+		{"no nonce", ErrConnectSigMissing, verify(pub, AudienceTunnel, "agent-1", with(func(q *ConnectProof) { q.Nonce = "" }), now)},
+		{"garbage signature", ErrConnectSigInvalid, verify(pub, AudienceTunnel, "agent-1", with(func(q *ConnectProof) { q.Signature = "!!" }), now)},
 	}
 	for _, c := range cases {
 		if !errors.Is(c.got, c.err) {
 			t.Errorf("%s: want %v, got %v", c.name, c.err, c.got)
 		}
 	}
+
+	if q := SignConnect(priv, AudienceTunnel, "agent-1", now); q.Nonce == p.Nonce {
+		t.Error("two proofs share a nonce")
+	}
 }
 
-func proofRequest(t *testing.T, priv ed25519.PrivateKey, agentID string, now time.Time) *http.Request {
+func TestConnectProof_Replay(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	now := time.Unix(1_790_000_000, 0)
+	p := SignConnect(priv, AudienceTunnel, "agent-1", now)
+	var seen ReplayCache
+
+	if err := VerifyConnect(pub, AudienceTunnel, "agent-1", p, now, &seen); err != nil {
+		t.Fatalf("first use: %v", err)
+	}
+	// Anywhere inside the window, the same proof is refused a second time.
+	for _, at := range []time.Duration{0, time.Second, ConnectSignatureSkew} {
+		if err := VerifyConnect(pub, AudienceTunnel, "agent-1", p, now.Add(at), &seen); !errors.Is(err, ErrConnectSigReplayed) {
+			t.Errorf("replay at +%v: want ErrConnectSigReplayed, got %v", at, err)
+		}
+	}
+	// A fresh proof from the same agent is still accepted.
+	if err := VerifyConnect(pub, AudienceTunnel, "agent-1", SignConnect(priv, AudienceTunnel, "agent-1", now), now, &seen); err != nil {
+		t.Errorf("fresh proof after a replay: %v", err)
+	}
+	// A proof that fails verification is not recorded: its nonce stays usable.
+	_, strangerPriv, _ := ed25519.GenerateKey(rand.Reader)
+	forged := SignConnect(strangerPriv, AudienceTunnel, "agent-1", now)
+	if err := VerifyConnect(pub, AudienceTunnel, "agent-1", forged, now, &seen); !errors.Is(err, ErrConnectSigInvalid) {
+		t.Fatalf("forged proof: want ErrConnectSigInvalid, got %v", err)
+	}
+	if _, ok := seen.seen["agent-1\x00"+forged.Nonce]; ok {
+		t.Error("a forged proof's nonce was recorded")
+	}
+}
+
+func TestReplayCache_Sweeps(t *testing.T) {
+	var c ReplayCache
+	now := time.Unix(1_790_000_000, 0)
+	for i := range 100 {
+		c.use(string(rune('a'+i%26))+strconv.Itoa(i), now.Add(ConnectSignatureSkew), now)
+	}
+	later := now.Add(3 * ConnectSignatureSkew)
+	if !c.use("new", later.Add(ConnectSignatureSkew), later) {
+		t.Fatal("new key refused")
+	}
+	if len(c.seen) != 1 {
+		t.Errorf("expired entries kept: %d left, want 1", len(c.seen))
+	}
+	// An expired entry is also no bar to reuse, sweep or not.
+	if !c.use("new", later.Add(3*ConnectSignatureSkew), later.Add(2*ConnectSignatureSkew)) {
+		t.Error("key refused after its expiry")
+	}
+}
+
+func proofRequest(t *testing.T, priv ed25519.PrivateKey, audience, agentID string, now time.Time) *http.Request {
 	t.Helper()
 	r := httptest.NewRequest(http.MethodGet, "/tunnel/connect", nil)
 	if priv != nil {
-		ts, sig := SignConnect(priv, agentID, now)
-		r.Header.Set(headerAgentTimestamp, ts)
-		r.Header.Set(headerAgentSignature, sig)
+		SignConnect(priv, audience, agentID, now).setHeader(r.Header)
 	}
 	return r
 }
@@ -146,24 +210,39 @@ func TestCheckDeviceProof(t *testing.T) {
 	strict := &TunnelServer{RequireDeviceProof: true}
 
 	for _, ts := range []*TunnelServer{lenient, strict} {
-		if err := ts.checkDeviceProof(keyed, proofRequest(t, priv, "agent-1", now)); err != nil {
+		if err := ts.checkDeviceProof(keyed, proofRequest(t, priv, AudienceTunnel, "agent-1", now)); err != nil {
 			t.Errorf("strict=%v: valid proof refused: %v", ts.RequireDeviceProof, err)
 		}
 		// A proof that is present but wrong is refused whatever the mode.
-		if err := ts.checkDeviceProof(keyed, proofRequest(t, strangerPriv, "agent-1", now)); !errors.Is(err, ErrConnectSigInvalid) {
+		if err := ts.checkDeviceProof(keyed, proofRequest(t, strangerPriv, AudienceTunnel, "agent-1", now)); !errors.Is(err, ErrConnectSigInvalid) {
 			t.Errorf("strict=%v: stranger's proof: want ErrConnectSigInvalid, got %v", ts.RequireDeviceProof, err)
 		}
 		// Agents without a device key are never held to a proof.
-		if err := ts.checkDeviceProof(legacy, proofRequest(t, nil, "", now)); err != nil {
+		if err := ts.checkDeviceProof(legacy, proofRequest(t, nil, "", "", now)); err != nil {
 			t.Errorf("strict=%v: legacy agent refused: %v", ts.RequireDeviceProof, err)
 		}
 	}
 
+	// A proof made for the signalling socket is refused by the tunnel, and a
+	// proof already accepted is refused the second time, whatever the mode.
+	for _, ts := range []*TunnelServer{lenient, strict} {
+		if err := ts.checkDeviceProof(keyed, proofRequest(t, priv, AudienceSignal, "agent-1", now)); !errors.Is(err, ErrConnectSigInvalid) {
+			t.Errorf("strict=%v: signalling proof on the tunnel: want ErrConnectSigInvalid, got %v", ts.RequireDeviceProof, err)
+		}
+		r := proofRequest(t, priv, AudienceTunnel, "agent-1", now)
+		if err := ts.checkDeviceProof(keyed, r); err != nil {
+			t.Fatalf("strict=%v: valid proof refused: %v", ts.RequireDeviceProof, err)
+		}
+		if err := ts.checkDeviceProof(keyed, r); !errors.Is(err, ErrConnectSigReplayed) {
+			t.Errorf("strict=%v: replayed proof: want ErrConnectSigReplayed, got %v", ts.RequireDeviceProof, err)
+		}
+	}
+
 	// The two modes differ only on a keyed agent that sends nothing.
-	if err := lenient.checkDeviceProof(keyed, proofRequest(t, nil, "", now)); err != nil {
+	if err := lenient.checkDeviceProof(keyed, proofRequest(t, nil, "", "", now)); err != nil {
 		t.Errorf("lenient: missing proof should be tolerated, got %v", err)
 	}
-	if err := strict.checkDeviceProof(keyed, proofRequest(t, nil, "", now)); !errors.Is(err, ErrConnectSigMissing) {
+	if err := strict.checkDeviceProof(keyed, proofRequest(t, nil, "", "", now)); !errors.Is(err, ErrConnectSigMissing) {
 		t.Errorf("strict: missing proof: want ErrConnectSigMissing, got %v", err)
 	}
 }

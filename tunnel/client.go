@@ -243,7 +243,7 @@ func (tc *TunnelClient) Connect(ctx context.Context, creds *AgentCredentials) er
 	header := http.Header{}
 	header.Set("X-Barahn-Agent-ID", creds.AgentID)
 	header.Set("X-Barahn-Agent-Token", creds.AgentToken)
-	if err := connectProofHeaders(header, creds, time.Now()); err != nil {
+	if err := connectProofHeaders(header, creds, AudienceTunnel, time.Now()); err != nil {
 		return err
 	}
 

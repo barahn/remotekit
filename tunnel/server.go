@@ -38,6 +38,9 @@ type TunnelServer struct {
 	// there is nothing to prove.
 	RequireDeviceProof bool
 
+	// replay refuses a connect proof presented a second time.
+	replay ReplayCache
+
 	store      AgentStore
 	sessions   map[string]*yamux.Session
 	sessionsMu sync.RWMutex
@@ -318,8 +321,7 @@ func (ts *TunnelServer) checkDeviceProof(agent AgentIdentity, r *http.Request) e
 	if !ok {
 		return nil // enrolled without a device key: token-only, as before
 	}
-	err := VerifyConnect(pub, agent.ID,
-		r.Header.Get(headerAgentTimestamp), r.Header.Get(headerAgentSignature), time.Now())
+	err := VerifyConnect(pub, AudienceTunnel, agent.ID, ConnectProofFromHeader(r.Header), time.Now(), &ts.replay)
 	if errors.Is(err, ErrConnectSigMissing) && !ts.RequireDeviceProof {
 		log.Printf("[Tunnel] agent %s has a device key but sent no proof; accepting on token alone (RequireDeviceProof is off)", agent.ID)
 		return nil

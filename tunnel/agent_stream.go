@@ -73,11 +73,11 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		default:
-			// The proof carries a timestamp, so it is rebuilt for every
-			// attempt rather than once: a reconnect minutes later would
-			// otherwise present a stale one.
+			// The proof carries a timestamp and a single-use nonce, so it
+			// is rebuilt for every attempt rather than once: a reconnect
+			// would otherwise present a stale or already used one.
 			attempt := headers.Clone()
-			if err := connectProofHeaders(attempt, r.creds, time.Now()); err != nil {
+			if err := connectProofHeaders(attempt, r.creds, AudienceSignal, time.Now()); err != nil {
 				log.Printf("[AgentStream Error] %v; not connecting\n", err)
 				return
 			}
