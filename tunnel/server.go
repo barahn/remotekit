@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"sync"
@@ -27,6 +28,16 @@ var upgrader = websocket.Upgrader{
 }
 
 type TunnelServer struct {
+	// RequireDeviceProof refuses a connection from an agent with a
+	// registered Ed25519 device key unless it proves possession of that key.
+	//
+	// It is off by default so that a server can be upgraded before its
+	// agents: an agent that sends no proof is still accepted, with a log
+	// line naming it. A proof that is present but wrong is refused either
+	// way. Agents enrolled without an Ed25519 key are never affected --
+	// there is nothing to prove.
+	RequireDeviceProof bool
+
 	store      AgentStore
 	sessions   map[string]*yamux.Session
 	sessionsMu sync.RWMutex
@@ -124,6 +135,13 @@ func (ts *TunnelServer) HandlePairing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Enrolment without an Ed25519 device key is still accepted, so existing
+	// agents keep working, but it is named in the log: such an agent can
+	// only ever authenticate with its token.
+	if _, ok := ParseDevicePublicKey(req.PublicKey); !ok {
+		log.Printf("[Tunnel] enrolling %q without an Ed25519 device key; it will authenticate with its token only", req.Hostname)
+	}
+
 	agent := AgentRegistration{
 		ID:            uuid.New().String(),
 		Hostname:      req.Hostname,
@@ -185,6 +203,11 @@ func (ts *TunnelServer) HandleConnect(w http.ResponseWriter, r *http.Request) {
 	if agent.TokenHash == "" ||
 		subtle.ConstantTimeCompare([]byte(HashCredential(agentToken)), []byte(agent.TokenHash)) != 1 {
 		http.Error(w, "Invalid agent token", http.StatusUnauthorized)
+		return
+	}
+
+	if err := ts.checkDeviceProof(agent, r); err != nil {
+		http.Error(w, "Invalid device proof", http.StatusUnauthorized)
 		return
 	}
 
@@ -286,4 +309,20 @@ func (ts *TunnelServer) OpenReverseStream(agentID string, targetPort int) (net.C
 	}
 
 	return stream, nil
+}
+
+// checkDeviceProof holds an agent with a registered device key to the proof
+// of possession sent in the connect headers. See RequireDeviceProof.
+func (ts *TunnelServer) checkDeviceProof(agent AgentIdentity, r *http.Request) error {
+	pub, ok := ParseDevicePublicKey(agent.PublicKey)
+	if !ok {
+		return nil // enrolled without a device key: token-only, as before
+	}
+	err := VerifyConnect(pub, agent.ID,
+		r.Header.Get(headerAgentTimestamp), r.Header.Get(headerAgentSignature), time.Now())
+	if errors.Is(err, ErrConnectSigMissing) && !ts.RequireDeviceProof {
+		log.Printf("[Tunnel] agent %s has a device key but sent no proof; accepting on token alone (RequireDeviceProof is off)", agent.ID)
+		return nil
+	}
+	return err
 }

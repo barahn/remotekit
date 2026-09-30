@@ -73,7 +73,15 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		default:
-			ws, _, err := dialer.DialContext(ctx, signalURL, headers)
+			// The proof carries a timestamp, so it is rebuilt for every
+			// attempt rather than once: a reconnect minutes later would
+			// otherwise present a stale one.
+			attempt := headers.Clone()
+			if err := connectProofHeaders(attempt, r.creds, time.Now()); err != nil {
+				log.Printf("[AgentStream Error] %v; not connecting\n", err)
+				return
+			}
+			ws, _, err := dialer.DialContext(ctx, signalURL, attempt)
 			if err != nil {
 				log.Printf("[AgentStream Error] Failed to connect to signaling WebSocket (%s): %v\n", signalURL, err)
 				time.Sleep(2 * time.Second)
