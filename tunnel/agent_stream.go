@@ -43,6 +43,14 @@ func NewAgentStreamRunner(creds *AgentCredentials, insecureSkipVerify bool) *Age
 	}
 }
 
+// Start connects to the signalling channel and serves it until ctx is
+// cancelled, reconnecting whenever the connection drops.
+//
+// It never connects without a credential: if the runner's AgentToken is
+// empty, Start logs why and returns immediately, and nothing will retry.
+// Start reports no error, so callers that need to know should check
+// AgentToken themselves before calling it -- an empty token means the agent
+// has to re-enrol.
 func (r *AgentStreamRunner) Start(ctx context.Context) {
 	wsURL := r.creds.ServerAddr
 	if strings.HasPrefix(wsURL, "https://") {

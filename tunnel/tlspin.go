@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -51,12 +52,19 @@ func ServerKeyPin(cert *x509.Certificate) string {
 // Without a pin and with insecureSkipVerify set, verification is off
 // entirely. That is only ever true before enrolment has recorded a pin, and it
 // is the trust-on-first-use window.
+// insecureWarning prints the unpinned skip-verify warning once per process.
+// clientTLSConfig runs on every reconnect, so a flapping server would
+// otherwise repeat it on every attempt and bury everything else in stderr.
+var insecureWarning sync.Once
+
 func clientTLSConfig(pin string, insecureSkipVerify bool) *tls.Config {
 	if !insecureSkipVerify {
 		return nil
 	}
 	if pin == "" {
-		fmt.Fprintln(os.Stderr, "[WARNING] TLS certificate verification is DISABLED and no server key is pinned. Connection is insecure!")
+		insecureWarning.Do(func() {
+			fmt.Fprintln(os.Stderr, "[WARNING] TLS certificate verification is DISABLED and no server key is pinned. Connection is insecure!")
+		})
 		return &tls.Config{InsecureSkipVerify: true} // #nosec G402 -- CLI opt-in flag for dev/test, before a pin exists
 	}
 	return &tls.Config{
