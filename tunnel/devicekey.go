@@ -29,14 +29,16 @@ import (
 // can also demand proof of the private key on every connection, and a copy of
 // the token alone -- from a database dump, say -- no longer suffices.
 //
-// Enrolment stays compatible: an agent that sends a public_key which is not an
-// Ed25519 key still enrols and still connects with its token, exactly as
-// before. It simply has no device key to be held to.
+// An agent that sends a public_key which is not an Ed25519 key still enrols
+// and connects with its token, but only until TunnelServer.TokenOnlyUntil.
 
 const (
 	// connectSignatureDomain separates connect proofs from anything else the
 	// device key signs, such as signalling messages.
 	connectSignatureDomain = "remotekit/connect/v1"
+
+	// enrolSignatureDomain separates the enrolment proof from connect proofs.
+	enrolSignatureDomain = "remotekit/enrol/v1"
 
 	// ConnectSignatureSkew is how far a connect proof's timestamp may sit
 	// from the server's clock in either direction.
@@ -54,6 +56,9 @@ var (
 	ErrConnectSigInvalid    = errors.New("tunnel: connect proof does not verify")
 	ErrConnectSigStale      = errors.New("tunnel: connect proof timestamp outside the allowed skew")
 	ErrConnectSigReplayed   = errors.New("tunnel: connect proof already used")
+	ErrDeviceKeyRequired    = errors.New("tunnel: agent has no device key and token-only authentication has ended")
+	ErrEnrolKeyMismatch     = errors.New("tunnel: pairing code was issued for a different device key")
+	ErrEnrolProofInvalid    = errors.New("tunnel: enrolment proof missing or does not verify")
 )
 
 // EncodeDevicePublicKey renders a device public key in the form enrolment
@@ -327,6 +332,29 @@ func connectProofHeaders(h http.Header, creds *AgentCredentials, audience string
 		return fmt.Errorf("tunnel: loading device key: %w", err)
 	}
 	SignConnect(priv, audience, creds.AgentID, now).setHeader(h)
+	return nil
+}
+
+// enrolMessage is what the enrolment proof signs: the pairing code, by its
+// hash, and the public key being registered. Tying it to the code means the
+// proof redeems that one single-use code and nothing else, so it needs no
+// timestamp or nonce of its own.
+func enrolMessage(pairingCode string, pub ed25519.PublicKey) []byte {
+	return []byte(enrolSignatureDomain + "\x00" + HashCredential(pairingCode) + "\x00" + EncodeDevicePublicKey(pub))
+}
+
+// signEnrol proves, at enrolment, possession of the device key being
+// registered.
+func signEnrol(priv ed25519.PrivateKey, pairingCode string) string {
+	pub, _ := priv.Public().(ed25519.PublicKey)
+	return base64.StdEncoding.EncodeToString(ed25519.Sign(priv, enrolMessage(pairingCode, pub)))
+}
+
+func verifyEnrolProof(pub ed25519.PublicKey, pairingCode, proof string) error {
+	sig, err := base64.StdEncoding.DecodeString(proof)
+	if err != nil || len(sig) != ed25519.SignatureSize || !ed25519.Verify(pub, enrolMessage(pairingCode, pub), sig) {
+		return ErrEnrolProofInvalid
+	}
 	return nil
 }
 

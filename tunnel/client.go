@@ -94,7 +94,18 @@ func NewTunnelClient(credsPath string, insecureSkipVerify bool) *TunnelClient {
 }
 
 // Enroll performs single-use pairing exchange with the server and writes credentials to credsPath (/etc/barahn/agent.pem).
+//
+// pubKey is sent as given, with no proof of possession, so a server refuses it
+// if it is an Ed25519 key: an agent with a device key enrols through
+// EnrollWithDeviceKey. Anything else enrols the agent without a device key,
+// which a server accepts only until its TokenOnlyUntil.
 func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath string, insecureSkipVerify bool) (*AgentCredentials, error) {
+	return enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, "", savePath, insecureSkipVerify)
+}
+
+// enroll is Enroll with the device key's proof of possession, which only
+// EnrollWithDeviceKey can produce.
+func enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, keyProof, savePath string, insecureSkipVerify bool) (*AgentCredentials, error) {
 	if savePath == "" {
 		savePath = "/etc/barahn/agent.pem"
 	}
@@ -122,6 +133,9 @@ func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath st
 		"os":           osName,
 		"arch":         arch,
 		"public_key":   pubKey,
+	}
+	if keyProof != "" {
+		payload["key_proof"] = keyProof
 	}
 
 	bodyBytes, _ := json.Marshal(payload)
@@ -180,7 +194,7 @@ func EnrollWithDeviceKey(serverAddr, pairingCode, hostname, osName, arch, keyPat
 		return nil, fmt.Errorf("device key: %w", err)
 	}
 	pub, _ := priv.Public().(ed25519.PublicKey)
-	creds, err := Enroll(serverAddr, pairingCode, hostname, osName, arch, EncodeDevicePublicKey(pub), savePath, insecureSkipVerify)
+	creds, err := enroll(serverAddr, pairingCode, hostname, osName, arch, EncodeDevicePublicKey(pub), signEnrol(priv, pairingCode), savePath, insecureSkipVerify)
 	if err != nil {
 		return nil, err
 	}

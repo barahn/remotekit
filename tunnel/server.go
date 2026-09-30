@@ -28,15 +28,16 @@ var upgrader = websocket.Upgrader{
 }
 
 type TunnelServer struct {
-	// RequireDeviceProof refuses a connection from an agent with a
-	// registered Ed25519 device key unless it proves possession of that key.
+	// TokenOnlyUntil is when agents without an Ed25519 device key stop being
+	// accepted. Until then they enrol and connect on their token alone, and
+	// each time is logged so they can be found and re-enrolled with
+	// EnrollWithDeviceKey. From then on -- and always, if it is left zero --
+	// enrolment without a device key is refused, and so is a connection from
+	// an agent that has none.
 	//
-	// It is off by default so that a server can be upgraded before its
-	// agents: an agent that sends no proof is still accepted, with a log
-	// line naming it. A proof that is present but wrong is refused either
-	// way. Agents enrolled without an Ed25519 key are never affected --
-	// there is nothing to prove.
-	RequireDeviceProof bool
+	// It covers only agents without a key. An agent with a registered device
+	// key must prove possession of it on every connection, whatever the date.
+	TokenOnlyUntil time.Time
 
 	// replay refuses a connect proof presented a second time.
 	replay ReplayCache
@@ -118,6 +119,7 @@ func (ts *TunnelServer) HandlePairing(w http.ResponseWriter, r *http.Request) {
 		OS          string `json:"os"`
 		Arch        string `json:"arch"`
 		PublicKey   string `json:"public_key"`
+		KeyProof    string `json:"key_proof"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -133,16 +135,20 @@ func (ts *TunnelServer) HandlePairing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Checked before the code is redeemed, so a request that cannot use the
+	// code does not burn it for the device it was meant for.
+	if err := ts.checkEnrolKey(pc, req.PairingCode, req.PublicKey, req.KeyProof, time.Now()); err != nil {
+		http.Error(w, "Device key refused: "+err.Error(), http.StatusUnauthorized)
+		return
+	}
+
 	if err := ts.store.MarkPairingCodeUsed(ctx, pc.ID); err != nil {
 		http.Error(w, "Failed to redeem pairing code", http.StatusInternalServerError)
 		return
 	}
 
-	// Enrolment without an Ed25519 device key is still accepted, so existing
-	// agents keep working, but it is named in the log: such an agent can
-	// only ever authenticate with its token.
 	if _, ok := ParseDevicePublicKey(req.PublicKey); !ok {
-		log.Printf("[Tunnel] enrolling %q without an Ed25519 device key; it will authenticate with its token only", req.Hostname)
+		log.Printf("[Tunnel] enrolling %q without an Ed25519 device key; token-only authentication ends %s", req.Hostname, ts.TokenOnlyUntil.Format(time.RFC3339))
 	}
 
 	agent := AgentRegistration{
@@ -315,16 +321,46 @@ func (ts *TunnelServer) OpenReverseStream(agentID string, targetPort int) (net.C
 }
 
 // checkDeviceProof holds an agent with a registered device key to the proof
-// of possession sent in the connect headers. See RequireDeviceProof.
+// of possession sent in the connect headers, and refuses an agent without
+// one once TokenOnlyUntil has passed.
 func (ts *TunnelServer) checkDeviceProof(agent AgentIdentity, r *http.Request) error {
+	now := time.Now()
 	pub, ok := ParseDevicePublicKey(agent.PublicKey)
 	if !ok {
-		return nil // enrolled without a device key: token-only, as before
-	}
-	err := VerifyConnect(pub, AudienceTunnel, agent.ID, ConnectProofFromHeader(r.Header), time.Now(), &ts.replay)
-	if errors.Is(err, ErrConnectSigMissing) && !ts.RequireDeviceProof {
-		log.Printf("[Tunnel] agent %s has a device key but sent no proof; accepting on token alone (RequireDeviceProof is off)", agent.ID)
+		if !ts.tokenOnlyAllowed(now) {
+			return ErrDeviceKeyRequired
+		}
+		log.Printf("[Tunnel] agent %s has no device key; accepting on token alone until %s", agent.ID, ts.TokenOnlyUntil.Format(time.RFC3339))
 		return nil
 	}
-	return err
+	return VerifyConnect(pub, AudienceTunnel, agent.ID, ConnectProofFromHeader(r.Header), now, &ts.replay)
+}
+
+// checkEnrolKey decides whether an enrolment may redeem pc with publicKey.
+//
+// A device key must come with keyProof, its signature over the pairing code,
+// so the key is held by whoever redeems the code rather than copied from
+// somewhere. A code issued for a particular key (PairingCode.DevicePublicKey)
+// is redeemable only with that key, which makes an intercepted code useless
+// to anyone else. Without a device key, enrolment is allowed only until
+// TokenOnlyUntil.
+func (ts *TunnelServer) checkEnrolKey(pc PairingCode, pairingCode, publicKey, keyProof string, now time.Time) error {
+	pub, keyed := ParseDevicePublicKey(publicKey)
+	if pc.DevicePublicKey != "" {
+		want, ok := ParseDevicePublicKey(pc.DevicePublicKey)
+		if !ok || !keyed || !want.Equal(pub) {
+			return ErrEnrolKeyMismatch
+		}
+	}
+	if !keyed {
+		if !ts.tokenOnlyAllowed(now) {
+			return ErrDeviceKeyRequired
+		}
+		return nil
+	}
+	return verifyEnrolProof(pub, pairingCode, keyProof)
+}
+
+func (ts *TunnelServer) tokenOnlyAllowed(now time.Time) bool {
+	return now.Before(ts.TokenOnlyUntil)
 }

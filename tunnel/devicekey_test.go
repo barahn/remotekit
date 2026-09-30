@@ -206,44 +206,110 @@ func TestCheckDeviceProof(t *testing.T) {
 	legacy := AgentIdentity{ID: "agent-2", PublicKey: "pubkey-123"}
 	now := time.Now()
 
-	lenient := &TunnelServer{}
-	strict := &TunnelServer{RequireDeviceProof: true}
+	transition := &TunnelServer{TokenOnlyUntil: now.Add(time.Hour)}
+	ended := &TunnelServer{TokenOnlyUntil: now.Add(-time.Hour)}
+	unset := &TunnelServer{}
 
-	for _, ts := range []*TunnelServer{lenient, strict} {
+	// A keyed agent is held to its proof whatever the date.
+	for name, ts := range map[string]*TunnelServer{"transition": transition, "ended": ended, "unset": unset} {
 		if err := ts.checkDeviceProof(keyed, proofRequest(t, priv, AudienceTunnel, "agent-1", now)); err != nil {
-			t.Errorf("strict=%v: valid proof refused: %v", ts.RequireDeviceProof, err)
+			t.Errorf("%s: valid proof refused: %v", name, err)
 		}
-		// A proof that is present but wrong is refused whatever the mode.
+		if err := ts.checkDeviceProof(keyed, proofRequest(t, nil, "", "", now)); !errors.Is(err, ErrConnectSigMissing) {
+			t.Errorf("%s: missing proof: want ErrConnectSigMissing, got %v", name, err)
+		}
 		if err := ts.checkDeviceProof(keyed, proofRequest(t, strangerPriv, AudienceTunnel, "agent-1", now)); !errors.Is(err, ErrConnectSigInvalid) {
-			t.Errorf("strict=%v: stranger's proof: want ErrConnectSigInvalid, got %v", ts.RequireDeviceProof, err)
+			t.Errorf("%s: stranger's proof: want ErrConnectSigInvalid, got %v", name, err)
 		}
-		// Agents without a device key are never held to a proof.
-		if err := ts.checkDeviceProof(legacy, proofRequest(t, nil, "", "", now)); err != nil {
-			t.Errorf("strict=%v: legacy agent refused: %v", ts.RequireDeviceProof, err)
-		}
-	}
-
-	// A proof made for the signalling socket is refused by the tunnel, and a
-	// proof already accepted is refused the second time, whatever the mode.
-	for _, ts := range []*TunnelServer{lenient, strict} {
 		if err := ts.checkDeviceProof(keyed, proofRequest(t, priv, AudienceSignal, "agent-1", now)); !errors.Is(err, ErrConnectSigInvalid) {
-			t.Errorf("strict=%v: signalling proof on the tunnel: want ErrConnectSigInvalid, got %v", ts.RequireDeviceProof, err)
+			t.Errorf("%s: signalling proof on the tunnel: want ErrConnectSigInvalid, got %v", name, err)
 		}
 		r := proofRequest(t, priv, AudienceTunnel, "agent-1", now)
 		if err := ts.checkDeviceProof(keyed, r); err != nil {
-			t.Fatalf("strict=%v: valid proof refused: %v", ts.RequireDeviceProof, err)
+			t.Fatalf("%s: valid proof refused: %v", name, err)
 		}
 		if err := ts.checkDeviceProof(keyed, r); !errors.Is(err, ErrConnectSigReplayed) {
-			t.Errorf("strict=%v: replayed proof: want ErrConnectSigReplayed, got %v", ts.RequireDeviceProof, err)
+			t.Errorf("%s: replayed proof: want ErrConnectSigReplayed, got %v", name, err)
 		}
 	}
 
-	// The two modes differ only on a keyed agent that sends nothing.
-	if err := lenient.checkDeviceProof(keyed, proofRequest(t, nil, "", "", now)); err != nil {
-		t.Errorf("lenient: missing proof should be tolerated, got %v", err)
+	// An agent without a key gets in on its token only until TokenOnlyUntil.
+	if err := transition.checkDeviceProof(legacy, proofRequest(t, nil, "", "", now)); err != nil {
+		t.Errorf("transition: legacy agent refused: %v", err)
 	}
-	if err := strict.checkDeviceProof(keyed, proofRequest(t, nil, "", "", now)); !errors.Is(err, ErrConnectSigMissing) {
-		t.Errorf("strict: missing proof: want ErrConnectSigMissing, got %v", err)
+	for name, ts := range map[string]*TunnelServer{"ended": ended, "unset": unset} {
+		if err := ts.checkDeviceProof(legacy, proofRequest(t, nil, "", "", now)); !errors.Is(err, ErrDeviceKeyRequired) {
+			t.Errorf("%s: legacy agent: want ErrDeviceKeyRequired, got %v", name, err)
+		}
+	}
+}
+
+func TestCheckEnrolKey(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	otherPub, otherPriv, _ := ed25519.GenerateKey(rand.Reader)
+	key := EncodeDevicePublicKey(pub)
+	proof := signEnrol(priv, "CODE0001")
+	now := time.Now()
+	open := PairingCode{ID: "pc"}
+	bound := PairingCode{ID: "pc", DevicePublicKey: key}
+	boundElsewhere := PairingCode{ID: "pc", DevicePublicKey: EncodeDevicePublicKey(otherPub)}
+	transition := &TunnelServer{TokenOnlyUntil: now.Add(time.Hour)}
+	ended := &TunnelServer{}
+
+	cases := []struct {
+		name  string
+		ts    *TunnelServer
+		pc    PairingCode
+		code  string
+		key   string
+		proof string
+		want  error
+	}{
+		{"keyed, open code", ended, open, "CODE0001", key, proof, nil},
+		{"keyed, code bound to it", ended, bound, "CODE0001", key, proof, nil},
+		{"keyed, code bound to another key", ended, boundElsewhere, "CODE0001", key, proof, ErrEnrolKeyMismatch},
+		{"keyed, no proof", transition, open, "CODE0001", key, "", ErrEnrolProofInvalid},
+		{"keyed, proof for another code", ended, open, "CODE0002", key, proof, ErrEnrolProofInvalid},
+		{"keyed, proof by another key", ended, open, "CODE0001", key, signEnrol(otherPriv, "CODE0001"), ErrEnrolProofInvalid},
+		{"keyed, garbage proof", ended, open, "CODE0001", key, "!!", ErrEnrolProofInvalid},
+		{"keyless, transition", transition, open, "CODE0001", "pubkey-123", "", nil},
+		{"keyless, ended", ended, open, "CODE0001", "pubkey-123", "", ErrDeviceKeyRequired},
+		{"keyless, code bound to a key", transition, bound, "CODE0001", "pubkey-123", "", ErrEnrolKeyMismatch},
+		{"bound to a malformed key", transition, PairingCode{ID: "pc", DevicePublicKey: "junk"}, "CODE0001", key, proof, ErrEnrolKeyMismatch},
+	}
+	for _, c := range cases {
+		if err := c.ts.checkEnrolKey(c.pc, c.code, c.key, c.proof, now); !errors.Is(err, c.want) {
+			t.Errorf("%s: want %v, got %v", c.name, c.want, err)
+		}
+	}
+}
+
+// A code bound to one device is not burnt by another device's attempt to
+// redeem it: the intended device can still enrol afterwards.
+func TestHandlePairing_BoundCodeSurvivesWrongKey(t *testing.T) {
+	store := NewMemStore()
+	dir := t.TempDir()
+	keyPath := filepath.Join(dir, "device.key")
+	priv, err := LoadOrCreateDeviceKey(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pub, _ := priv.Public().(ed25519.PublicKey)
+	store.SeedPairingCode(HashCredential("BOUND001"), PairingCode{
+		ID: "pc-b", ExpiresAt: time.Now().Add(10 * time.Minute), DevicePublicKey: EncodeDevicePublicKey(pub),
+	})
+	ts := NewTunnelServer(store)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/tunnel/pair", ts.HandlePairing)
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	intruder := filepath.Join(dir, "intruder.key")
+	if _, err := EnrollWithDeviceKey(srv.URL, "BOUND001", "h", "linux", "amd64", intruder, filepath.Join(dir, "i.pem"), false); err == nil {
+		t.Fatal("a device with another key redeemed a bound code")
+	}
+	if _, err := EnrollWithDeviceKey(srv.URL, "BOUND001", "h", "linux", "amd64", keyPath, filepath.Join(dir, "a.pem"), false); err != nil {
+		t.Fatalf("intended device refused after the intruder's attempt: %v", err)
 	}
 }
 
@@ -253,8 +319,7 @@ func TestCheckDeviceProof(t *testing.T) {
 func TestEnrollWithDeviceKey_ConnectsUnderRequiredProof(t *testing.T) {
 	store := NewMemStore()
 	store.SeedPairingCode(HashCredential("DEVKEY01"), PairingCode{ID: "pc-dk", ExpiresAt: time.Now().Add(10 * time.Minute)})
-	ts := NewTunnelServer(store)
-	ts.RequireDeviceProof = true
+	ts := NewTunnelServer(store) // TokenOnlyUntil unset: device keys required
 	mux := http.NewServeMux()
 	mux.HandleFunc("/tunnel/pair", ts.HandlePairing)
 	mux.HandleFunc("/tunnel/connect", ts.HandleConnect)
