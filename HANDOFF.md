@@ -130,15 +130,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `35d7318`** — docs: refresh the handoff status block
+**`develop` is at `e0764e8`** — Merge pull request #19 from barahn/claude/tender-feynman-zqy5d1
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (37 commits) — Merge pull request #17 from barahn/claude/sharp-wright-u0s07v | `develop` | no checks reported |
+| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (42 commits) — Merge pull request #19 from barahn/claude/tender-feynman-zqy5d1 | `develop` | Build, Test & SAST ⏳ (in_progress)<br>open-pr ✅<br>Build, Test & SAST ✅<br>Refresh the handoff status block ⏳ (in_progress) |
 | [#18](https://github.com/barahn/remotekit/pull/18) | Phase 0b: device keys, and a proof of possession on every connection | `claude/phase-0b-device-key` | Refresh the handoff status block ✅ |
-| [#19](https://github.com/barahn/remotekit/pull/19) | docs(handoff): record Phase 0a as done, and what #17 changed for callers | `claude/tender-feynman-zqy5d1` | Refresh the handoff status block ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
