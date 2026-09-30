@@ -20,12 +20,29 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
+# Least privilege by default. This workflow only reads the repository; nothing
+# here writes, so nothing here gets a write token. A job that ever needs more
+# asks for it by name.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Build, Test & SAST
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # Audit mode: harden-runner records what the job talks to without
+      # blocking it. Read its egress report on a few green runs before turning
+      # it to `block` with an allowlist -- this job downloads Firefox,
+      # geckodriver and libvpx tools, so a blind switch breaks it outright. An
+      # observer must not be able to fail the build it observes, hence
+      # continue-on-error.
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        continue-on-error: true
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # Both ends of the DCO commit range have to be local, and nothing is
@@ -84,6 +101,41 @@ jobs:
           done < <(find . -name 'LICENSE.upstream' -not -path './.git/*')
           [ "$missing" -eq 0 ] && echo "✓ every vendored tree is named in NOTICE"
           exit "$missing"
+
+      # CONTRIBUTING.md allows only permissive dependencies. The NOTICE check
+      # above covers vendored code; this covers modules. A copyleft dependency
+      # would make remotekit unusable by one or both of the projects it exists
+      # to serve, and nothing else in CI would fail: the build works, the tests
+      # pass. Checked per OS because capture, input and tray are per-platform.
+      #
+      # GOROOT and GOTOOLCHAIN are pinned so go-licenses resolves the standard
+      # library from the same toolchain that builds it; with a mismatch it fails
+      # on the standard library rather than on a licence.
+      #
+      # KNOWN EXCEPTION -- github.com/hashicorp/yamux is MPL-2.0, which the
+      # policy in CONTRIBUTING.md does not list. It predates this gate and is
+      # what tunnel multiplexes over. It is excepted by name so that the gate
+      # catches every *new* copyleft dependency; whether to accept MPL-2.0
+      # formally or replace yamux is the maintainer's decision, recorded in
+      # docs/devsecops.md. Do not add a second name to this list without that
+      # same decision.
+      - name: Dependency licences are permissive
+        run: |
+          export GOROOT="$(go env GOROOT)" GOTOOLCHAIN=local
+          go install github.com/google/go-licenses@v1.6.0
+          status=0
+          for os in linux windows darwin; do
+            echo "::group::$os"
+            if ! GOOS="$os" "$(go env GOPATH)/bin/go-licenses" check \
+                --disallowed_types=forbidden,restricted,reciprocal,unknown \
+                --ignore github.com/hashicorp/yamux \
+                ./...; then
+              echo "::error::a dependency built for $os has a licence the policy does not allow"
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$status"
 
       - name: Build & Vet
         run: |
