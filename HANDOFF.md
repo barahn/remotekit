@@ -130,7 +130,7 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `6ec4d42`** — docs: refresh the handoff status block
+**`develop` is at `4c0f264`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
@@ -138,6 +138,7 @@ _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 |---|---|---|---|
 | [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (49 commits) — Merge pull request #20 from barahn/devsecops/pipeline | `develop` | no checks reported |
 | [#18](https://github.com/barahn/remotekit/pull/18) | Phase 0b: device keys, and a proof of possession on every connection | `claude/phase-0b-device-key` | Build, Test & SAST ✅ |
+| [#21](https://github.com/barahn/remotekit/pull/21) | deps: bump github.com/pion/webrtc/v4 from 4.2.21 to 4.2.22 in the pion group | `dependabot/go_modules/develop/pion-2157ff8f69` | [Analyze (Go) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36780127987/job/110107996754)<br>[Review dependency changes ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36780128015/job/110107995706)<br>CodeQL (disabled) ⏳ (in_progress)<br>Dependency review (disabled) ✅<br>gitleaks ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
