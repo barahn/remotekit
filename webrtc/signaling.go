@@ -40,6 +40,23 @@ type SignalMessage struct {
 
 	// Error contains failure details if signaling fails.
 	Error string `json:"error,omitempty"`
+
+	// The fields below authenticate the message; see Sign and Verify in
+	// signed.go. All are empty on an unsigned message.
+
+	// PubKey is the signer's Ed25519 public key, standard base64.
+	PubKey string `json:"pub_key,omitempty"`
+
+	// Nonce makes each signed message unique, so a NonceCache can refuse a
+	// replay.
+	Nonce string `json:"nonce,omitempty"`
+
+	// IssuedAt and ExpiresAt bound the message's validity, in Unix seconds.
+	IssuedAt  int64 `json:"issued_at,omitempty"`
+	ExpiresAt int64 `json:"expires_at,omitempty"`
+
+	// Sig is the Ed25519 signature over CanonicalBytes, standard base64.
+	Sig string `json:"sig,omitempty"`
 }
 
 // Encode converts a SignalMessage to JSON bytes.

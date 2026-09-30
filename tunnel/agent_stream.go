@@ -6,9 +6,9 @@ package tunnel
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image/jpeg"
 	"log"
@@ -43,6 +43,14 @@ func NewAgentStreamRunner(creds *AgentCredentials, insecureSkipVerify bool) *Age
 	}
 }
 
+// Start connects to the signalling channel and serves it until ctx is
+// cancelled, reconnecting whenever the connection drops.
+//
+// It never connects without a credential: if the runner's AgentToken is
+// empty, Start logs why and returns immediately, and nothing will retry.
+// Start reports no error, so callers that need to know should check
+// AgentToken themselves before calling it -- an empty token means the agent
+// has to re-enrol.
 func (r *AgentStreamRunner) Start(ctx context.Context) {
 	wsURL := r.creds.ServerAddr
 	if strings.HasPrefix(wsURL, "https://") {
@@ -52,20 +60,12 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 	}
 	signalURL := fmt.Sprintf("%s/api/v1/sessions/%s/signal", strings.TrimRight(wsURL, "/"), r.creds.AgentID)
 
-	dialer := websocket.DefaultDialer
-	if r.insecureSkipVerify {
-		dialer = &websocket.Dialer{
-			Proxy:            http.ProxyFromEnvironment,
-			HandshakeTimeout: 45 * time.Second,
-			TLSClientConfig:  &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- CLI opt-in flag for dev/test
-		}
-	}
+	dialer := wsDialer(r.creds.ServerKeyPin, r.insecureSkipVerify)
 
-	headers := http.Header{}
-	if r.creds.AgentToken != "" {
-		headers.Set("X-Barahn-Agent-Token", r.creds.AgentToken)
-	} else {
-		headers.Set("X-Barahn-Agent-Token", r.creds.AgentID)
+	headers, err := signalHeaders(r.creds)
+	if err != nil {
+		log.Printf("[AgentStream Error] %v; not connecting\n", err)
+		return
 	}
 
 	for {
@@ -88,6 +88,24 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 			time.Sleep(1 * time.Second)
 		}
 	}
+}
+
+// errNoAgentToken is why Start refuses to dial without a credential.
+var errNoAgentToken = errors.New("agent_stream: agent has no token; re-enrol before connecting")
+
+// signalHeaders builds the headers the signalling socket authenticates with.
+//
+// It refuses to proceed without a token. It used to fall back to sending the
+// agent ID in the token header, and the ID is not a secret -- the server hands
+// it out and it appears in URLs and logs. A server that accepted that fallback
+// would let anyone who had seen an ID connect as that agent.
+func signalHeaders(creds *AgentCredentials) (http.Header, error) {
+	if creds == nil || creds.AgentToken == "" {
+		return nil, errNoAgentToken
+	}
+	h := http.Header{}
+	h.Set("X-Barahn-Agent-Token", creds.AgentToken)
+	return h, nil
 }
 
 func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.Conn) {
