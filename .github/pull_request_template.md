@@ -15,8 +15,9 @@
 - [ ] No product opinion: no user, tenant, role, account or session policy. A
       consumer's policy belongs behind an extension point, in the consumer.
 - [ ] No import of Chirp or of the Barahn platform, at any depth.
-- [ ] New dependency: permissive licence (MIT, BSD, ISC, Apache-2.0, Zlib) — CI
-      checks it. New vendored code: its attribution added to `NOTICE`.
+- [ ] New dependency: a licence on the list in `CONTRIBUTING.md` — CI checks
+      it; an MPL-2.0 one is deliberate. New vendored code: its attribution
+      added to `NOTICE`.
 - [ ] Security impact considered — input from a remote peer, file paths,
       injected input, anything reachable before consent. If there is any, it is
       described above.

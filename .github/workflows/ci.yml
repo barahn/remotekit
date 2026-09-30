@@ -102,23 +102,22 @@ jobs:
           [ "$missing" -eq 0 ] && echo "✓ every vendored tree is named in NOTICE"
           exit "$missing"
 
-      # CONTRIBUTING.md allows only permissive dependencies. The NOTICE check
-      # above covers vendored code; this covers modules. A copyleft dependency
-      # would make remotekit unusable by one or both of the projects it exists
-      # to serve, and nothing else in CI would fail: the build works, the tests
-      # pass. Checked per OS because capture, input and tray are per-platform.
+      # CONTRIBUTING.md names the licences a dependency may carry; this checks
+      # every module against that exact list, not against a category -- so a
+      # licence nobody has approved fails even when it is in a family that
+      # contains an approved one. The NOTICE check above covers vendored code;
+      # this covers modules. A dependency outside the list would make remotekit
+      # unusable by one or both of the projects it exists to serve, and nothing
+      # else in CI would fail: the build works, the tests pass. Checked per OS
+      # because capture, input and tray build per platform.
       #
       # GOROOT and GOTOOLCHAIN are pinned so go-licenses resolves the standard
       # library from the same toolchain that builds it; with a mismatch it fails
       # on the standard library rather than on a licence.
       #
-      # KNOWN EXCEPTION -- github.com/hashicorp/yamux is MPL-2.0, which the
-      # policy in CONTRIBUTING.md does not list. It predates this gate and is
-      # what tunnel multiplexes over. It is excepted by name so that the gate
-      # catches every *new* copyleft dependency; whether to accept MPL-2.0
-      # formally or replace yamux is the maintainer's decision, recorded in
-      # docs/devsecops.md. Do not add a second name to this list without that
-      # same decision.
+      # The list must match CONTRIBUTING.md and dependency-review.yml. MPL-2.0 is
+      # on it by the maintainer's decision, for github.com/hashicorp/yamux; its
+      # obligations are recorded in CONTRIBUTING.md.
       - name: Dependency licences are permissive
         run: |
           export GOROOT="$(go env GOROOT)" GOTOOLCHAIN=local
@@ -127,8 +126,7 @@ jobs:
           for os in linux windows darwin; do
             echo "::group::$os"
             if ! GOOS="$os" "$(go env GOPATH)/bin/go-licenses" check \
-                --disallowed_types=forbidden,restricted,reciprocal,unknown \
-                --ignore github.com/hashicorp/yamux \
+                --allowed_licenses=MIT,BSD-2-Clause,BSD-3-Clause,ISC,Apache-2.0,Zlib,MPL-2.0 \
                 ./...; then
               echo "::error::a dependency built for $os has a licence the policy does not allow"
               status=1

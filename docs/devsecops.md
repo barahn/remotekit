@@ -51,27 +51,26 @@ is off, so its absence is visible rather than quietly green. A skipped job
 counts as passing for a required check, so marking `Analyze (Go)` or
 `Review dependency changes` as required before then enforces nothing.
 
-### The dependency licence gate, and its one exception
+### The dependency licence gate, and MPL-2.0
 
-`CONTRIBUTING.md` allows only MIT, BSD, ISC, Apache-2.0 and Zlib. The gate
-enforces that with `go-licenses`, rejecting forbidden, restricted, reciprocal
-and unrecognised licences, for each OS the module builds on.
+`CONTRIBUTING.md` names the licences a dependency may carry. The gate checks
+every module against **exactly that list** with `go-licenses
+--allowed_licenses`, for each OS the module builds on — a list rather than a
+category, so a licence nobody approved fails even if it shares a family with
+one that was. `dependency-review.yml` uses the same list; the three must be
+changed together.
 
-**Its first run found a dependency the policy does not allow:
-`github.com/hashicorp/yamux` is MPL-2.0**, and `tunnel` multiplexes over it
-(`tunnel/client.go`, `server.go`, `tunnel.go`). It predates the gate and is
-excepted by name, so that the gate catches every *new* copyleft dependency
-without failing on day one. The exception is a decision deferred, not taken:
+**Its first run found a dependency the policy did not allow:
+`github.com/hashicorp/yamux`, MPL-2.0**, which `tunnel` multiplexes over. It was
+excepted by name at first, then **accepted formally by the maintainer**: MPL-2.0
+is now on the list, with its obligations written into `CONTRIBUTING.md`. Only
+`tunnel` pulls yamux in — `screen`, `input`, `clipboard`, `transfer` and
+`webrtc` are clean — so a consumer that does not import `tunnel` does not
+inherit those obligations.
 
-- **Accept MPL-2.0 formally.** It is file-level copyleft: using yamux unmodified
-  generally does not reach the code around it, but anyone redistributing
-  remotekit must make yamux's source available, and changes to yamux's own files
-  stay MPL-2.0. Accepting it means adding MPL-2.0 to `CONTRIBUTING.md` with
-  those obligations, and to dependency review's allow-list.
-- **Replace yamux** with a permissively licensed multiplexer, and drop the
-  exception.
-
-Until one is chosen, do not add a second name to the exception list.
+The list is exact in both directions, and was checked that way: with MPL-2.0 on
+it every OS passes; with MPL-2.0 removed, yamux — and only yamux — fails. Every
+other dependency matches one of the six permissive licences exactly.
 
 ### harden-runner is in audit mode
 

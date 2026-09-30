@@ -43,13 +43,12 @@ jobs:
         with:
           persist-credentials: false
 
-      # Allow-list, not deny-list, matching CONTRIBUTING.md: anything else --
-      # including MPL-2.0 -- fails. yamux (MPL-2.0) is already a dependency and
-      # is not re-examined unless a pull request changes it.
+      # Allow-list, not deny-list, and the same list as CONTRIBUTING.md and the
+      # licence gate in ci.yml: anything else fails.
       - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: low
-          allow-licenses: MIT, BSD-2-Clause, BSD-3-Clause, ISC, Apache-2.0, Zlib
+          allow-licenses: MIT, BSD-2-Clause, BSD-3-Clause, ISC, Apache-2.0, Zlib, MPL-2.0
           comment-summary-in-pr: on-failure
 
   gate-disabled:

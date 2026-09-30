@@ -79,7 +79,7 @@ which, report here; it will be routed.
 | `go test -race` | Do the tests pass, free of data races | every push and PR |
 | gosec | Does the code match a known-bad Go pattern | every push and PR |
 | govulncheck | Is a known vulnerability reachable from this code | every push and PR |
-| Dependency licence gate | Is every dependency permissively licensed | every push and PR |
+| Dependency licence gate | Is every dependency's licence on the approved list | every push and PR |
 | NOTICE check | Does vendored code keep its attribution | every push and PR |
 | gitleaks | Is a credential being committed | every push and PR, weekly |
 | DCO sign-off | Is the origin of each commit certified | every PR |
