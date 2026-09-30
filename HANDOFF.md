@@ -130,13 +130,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `f36c0c0`** — Merge pull request #20 from barahn/devsecops/pipeline
+**`develop` is at `6ec4d42`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (49 commits) — Merge pull request #20 from barahn/devsecops/pipeline | `develop` | Dependabot ⏳ (in_progress)<br>Dependabot ⏳ (in_progress)<br>[Analyze (Go) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36780026060/job/110107653774)<br>[Review dependency changes ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36780025995/job/110107653497)<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>CodeQL (disabled) ✅<br>Dependency review (disabled) ✅<br>[Analyze (Go) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36780020668/job/110107634858)<br>open-pr ⏳ (in_progress)<br>CodeQL (disabled) ✅<br>gitleaks ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>.github/dependabot.yml ✅ |
+| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (49 commits) — Merge pull request #20 from barahn/devsecops/pipeline | `develop` | no checks reported |
 | [#18](https://github.com/barahn/remotekit/pull/18) | Phase 0b: device keys, and a proof of possession on every connection | `claude/phase-0b-device-key` | Build, Test & SAST ✅ |
 
 <!-- END GENERATED: handoff status -->
