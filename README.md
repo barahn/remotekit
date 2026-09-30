@@ -38,6 +38,7 @@ layered on top register through extension points such as
 | `tunnel` | WSS + Yamux reverse tunnel, agent enrolment, multiplexed streams |
 | `bark` | The wire envelope shared by everything above |
 | `heartbeat` | Generic keepalive with server-side staleness monitoring |
+| `rendezvous` | Two peers that have never met find each other by a short single-use code, or a link that mints one; failed attempts throttled per origin |
 | `tray` | System tray icon and menu |
 | `service` | Install and manage an OS service (systemd, launchd, SCM) |
 | `osinfo` | Host details |
