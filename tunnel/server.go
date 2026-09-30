@@ -28,12 +28,12 @@ var upgrader = websocket.Upgrader{
 }
 
 type TunnelServer struct {
-	// TokenOnlyUntil is when agents without an Ed25519 device key stop being
-	// accepted. Until then they enrol and connect on their token alone, and
-	// each time is logged so they can be found and re-enrolled with
-	// EnrollWithDeviceKey. From then on -- and always, if it is left zero --
-	// enrolment without a device key is refused, and so is a connection from
-	// an agent that has none.
+	// TokenOnlyUntil, when set, is when agents without an Ed25519 device key
+	// stop being accepted. Until then -- and indefinitely if it is left zero
+	// -- they enrol and connect on their token alone, and each time is logged
+	// so they can be found and re-enrolled with EnrollWithDeviceKey. From that
+	// time on, enrolment without a device key is refused, and so is a
+	// connection from an agent that has none.
 	//
 	// It covers only agents without a key. An agent with a registered device
 	// key must prove possession of it on every connection, whatever the date.
@@ -148,7 +148,7 @@ func (ts *TunnelServer) HandlePairing(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if _, ok := ParseDevicePublicKey(req.PublicKey); !ok {
-		log.Printf("[Tunnel] enrolling %q without an Ed25519 device key; token-only authentication ends %s", req.Hostname, ts.TokenOnlyUntil.Format(time.RFC3339))
+		log.Printf("[Tunnel] enrolling %q without an Ed25519 device key; token-only authentication allowed %s", req.Hostname, ts.tokenOnlyDeadline())
 	}
 
 	agent := AgentRegistration{
@@ -330,7 +330,7 @@ func (ts *TunnelServer) checkDeviceProof(agent AgentIdentity, r *http.Request) e
 		if !ts.tokenOnlyAllowed(now) {
 			return ErrDeviceKeyRequired
 		}
-		log.Printf("[Tunnel] agent %s has no device key; accepting on token alone until %s", agent.ID, ts.TokenOnlyUntil.Format(time.RFC3339))
+		log.Printf("[Tunnel] agent %s has no device key; accepting on token alone, %s", agent.ID, ts.tokenOnlyDeadline())
 		return nil
 	}
 	return VerifyConnect(pub, AudienceTunnel, agent.ID, ConnectProofFromHeader(r.Header), now, &ts.replay)
@@ -362,5 +362,13 @@ func (ts *TunnelServer) checkEnrolKey(pc PairingCode, pairingCode, publicKey, ke
 }
 
 func (ts *TunnelServer) tokenOnlyAllowed(now time.Time) bool {
-	return now.Before(ts.TokenOnlyUntil)
+	return ts.TokenOnlyUntil.IsZero() || now.Before(ts.TokenOnlyUntil)
+}
+
+// tokenOnlyDeadline describes TokenOnlyUntil for the log.
+func (ts *TunnelServer) tokenOnlyDeadline() string {
+	if ts.TokenOnlyUntil.IsZero() {
+		return "no deadline set (TokenOnlyUntil)"
+	}
+	return "until " + ts.TokenOnlyUntil.Format(time.RFC3339)
 }

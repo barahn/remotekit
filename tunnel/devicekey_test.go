@@ -208,7 +208,7 @@ func TestCheckDeviceProof(t *testing.T) {
 
 	transition := &TunnelServer{TokenOnlyUntil: now.Add(time.Hour)}
 	ended := &TunnelServer{TokenOnlyUntil: now.Add(-time.Hour)}
-	unset := &TunnelServer{}
+	unset := &TunnelServer{} // no deadline
 
 	// A keyed agent is held to its proof whatever the date.
 	for name, ts := range map[string]*TunnelServer{"transition": transition, "ended": ended, "unset": unset} {
@@ -233,14 +233,15 @@ func TestCheckDeviceProof(t *testing.T) {
 		}
 	}
 
-	// An agent without a key gets in on its token only until TokenOnlyUntil.
-	if err := transition.checkDeviceProof(legacy, proofRequest(t, nil, "", "", now)); err != nil {
-		t.Errorf("transition: legacy agent refused: %v", err)
-	}
-	for name, ts := range map[string]*TunnelServer{"ended": ended, "unset": unset} {
-		if err := ts.checkDeviceProof(legacy, proofRequest(t, nil, "", "", now)); !errors.Is(err, ErrDeviceKeyRequired) {
-			t.Errorf("%s: legacy agent: want ErrDeviceKeyRequired, got %v", name, err)
+	// An agent without a key gets in on its token alone until TokenOnlyUntil,
+	// or indefinitely when none is set.
+	for name, ts := range map[string]*TunnelServer{"transition": transition, "unset": unset} {
+		if err := ts.checkDeviceProof(legacy, proofRequest(t, nil, "", "", now)); err != nil {
+			t.Errorf("%s: legacy agent refused: %v", name, err)
 		}
+	}
+	if err := ended.checkDeviceProof(legacy, proofRequest(t, nil, "", "", now)); !errors.Is(err, ErrDeviceKeyRequired) {
+		t.Errorf("ended: legacy agent: want ErrDeviceKeyRequired, got %v", err)
 	}
 }
 
@@ -254,7 +255,8 @@ func TestCheckEnrolKey(t *testing.T) {
 	bound := PairingCode{ID: "pc", DevicePublicKey: key}
 	boundElsewhere := PairingCode{ID: "pc", DevicePublicKey: EncodeDevicePublicKey(otherPub)}
 	transition := &TunnelServer{TokenOnlyUntil: now.Add(time.Hour)}
-	ended := &TunnelServer{}
+	ended := &TunnelServer{TokenOnlyUntil: now.Add(-time.Hour)}
+	unset := &TunnelServer{}
 
 	cases := []struct {
 		name  string
@@ -274,6 +276,8 @@ func TestCheckEnrolKey(t *testing.T) {
 		{"keyed, garbage proof", ended, open, "CODE0001", key, "!!", ErrEnrolProofInvalid},
 		{"keyless, transition", transition, open, "CODE0001", "pubkey-123", "", nil},
 		{"keyless, ended", ended, open, "CODE0001", "pubkey-123", "", ErrDeviceKeyRequired},
+		{"keyless, no deadline", unset, open, "CODE0001", "pubkey-123", "", nil},
+		{"keyed, no proof, no deadline", unset, open, "CODE0001", key, "", ErrEnrolProofInvalid},
 		{"keyless, code bound to a key", transition, bound, "CODE0001", "pubkey-123", "", ErrEnrolKeyMismatch},
 		{"bound to a malformed key", transition, PairingCode{ID: "pc", DevicePublicKey: "junk"}, "CODE0001", key, proof, ErrEnrolKeyMismatch},
 	}
@@ -319,7 +323,7 @@ func TestHandlePairing_BoundCodeSurvivesWrongKey(t *testing.T) {
 func TestEnrollWithDeviceKey_ConnectsUnderRequiredProof(t *testing.T) {
 	store := NewMemStore()
 	store.SeedPairingCode(HashCredential("DEVKEY01"), PairingCode{ID: "pc-dk", ExpiresAt: time.Now().Add(10 * time.Minute)})
-	ts := NewTunnelServer(store) // TokenOnlyUntil unset: device keys required
+	ts := NewTunnelServer(store) // the device key is held to its proof whatever TokenOnlyUntil says
 	mux := http.NewServeMux()
 	mux.HandleFunc("/tunnel/pair", ts.HandlePairing)
 	mux.HandleFunc("/tunnel/connect", ts.HandleConnect)

@@ -98,7 +98,7 @@ func NewTunnelClient(credsPath string, insecureSkipVerify bool) *TunnelClient {
 // pubKey is sent as given, with no proof of possession, so a server refuses it
 // if it is an Ed25519 key: an agent with a device key enrols through
 // EnrollWithDeviceKey. Anything else enrols the agent without a device key,
-// which a server accepts only until its TokenOnlyUntil.
+// which a server accepts until its TokenOnlyUntil, if it sets one.
 func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath string, insecureSkipVerify bool) (*AgentCredentials, error) {
 	return enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, "", savePath, insecureSkipVerify)
 }

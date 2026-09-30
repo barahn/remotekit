@@ -51,7 +51,6 @@ func TestAgentTokenIsNotDerivable(t *testing.T) {
 	})
 
 	ts := NewTunnelServer(store)
-	ts.TokenOnlyUntil = time.Now().Add(time.Hour) // enrols with a placeholder key
 	srv := httptest.NewServer(http.HandlerFunc(ts.HandlePairing))
 	defer srv.Close()
 

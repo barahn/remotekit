@@ -30,7 +30,7 @@ import (
 // the token alone -- from a database dump, say -- no longer suffices.
 //
 // An agent that sends a public_key which is not an Ed25519 key still enrols
-// and connects with its token, but only until TunnelServer.TokenOnlyUntil.
+// and connects with its token, until TunnelServer.TokenOnlyUntil if one is set.
 
 const (
 	// connectSignatureDomain separates connect proofs from anything else the
