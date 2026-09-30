@@ -1,0 +1,30 @@
+# Every action here is pinned to a commit SHA and every Go tool to an exact
+# version. Pinning without updating only trades a moving target for a stale
+# one, so Dependabot proposes the updates -- against develop, the integration
+# branch, where CI checks them like any other change.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+    groups:
+      # pion's modules move together; one pull request, not a dozen.
+      pion:
+        patterns: [ "github.com/pion/*" ]
+      golang-x:
+        patterns: [ "golang.org/x/*" ]
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: ci

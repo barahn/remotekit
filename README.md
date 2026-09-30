@@ -65,6 +65,16 @@ The fork is Apache-2.0; upstream's MIT terms are preserved in
 `screen/codec/vp8/LICENSE.upstream` and explained in `screen/codec/vp8/NOTICE`.
 Generic fixes should be offered back to upstream under its own terms.
 
+## Security
+
+Report vulnerabilities privately to
+[security@mendsec.com](mailto:security@mendsec.com), not in a public issue — see
+[SECURITY.md](SECURITY.md). Every push and pull request runs gosec,
+govulncheck, gitleaks, a dependency licence gate and the NOTICE check, with
+every action pinned to a commit SHA; CodeQL and dependency review are wired in
+and turn on when the repository has code scanning available. What each gate is
+for is in [docs/devsecops.md](docs/devsecops.md).
+
 ## Licence
 
 Apache License 2.0 — see [LICENSE](LICENSE). Vendored third-party code retains
