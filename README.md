@@ -38,6 +38,7 @@ layered on top register through extension points such as
 | `tunnel` | WSS + Yamux reverse tunnel, agent enrolment, multiplexed streams |
 | `bark` | The wire envelope shared by everything above |
 | `heartbeat` | Generic keepalive with server-side staleness monitoring |
+| `rendezvous` | Two peers that have never met find each other by a short single-use code, or a link that mints one; failed attempts throttled per origin |
 | `tray` | System tray icon and menu |
 | `service` | Install and manage an OS service (systemd, launchd, SCM) |
 | `osinfo` | Host details |
@@ -54,12 +55,26 @@ exercised of the three.
 [mendsec/vp8](https://github.com/mendsec/vp8), our fork of
 [opd-ai/vp8](https://github.com/opd-ai/vp8). Its output decodes in libvpx, and
 its internal reconstruction matches libvpx's byte for byte on every frame of the
-conformance suite. It has not yet been validated rendering in a browser over
-WebRTC — that claim is not the same one, and is not yet made.
+conformance suite. A headless Firefox also decodes it over a real WebRTC
+connection — `TestFirefoxDecodesTheStream` in `tunnel`, which CI runs with
+`BARAHN_BROWSER_TEST=1` — which is the only check that covers the RTP
+depacketizer and jitter buffer sitting between the wire and the decoder. The
+verdict there is `getStats().framesDecoded`; what a browser paints from those
+frames is still nobody's measurement.
 
 The fork is Apache-2.0; upstream's MIT terms are preserved in
 `screen/codec/vp8/LICENSE.upstream` and explained in `screen/codec/vp8/NOTICE`.
 Generic fixes should be offered back to upstream under its own terms.
+
+## Security
+
+Report vulnerabilities privately to
+[security@mendsec.com](mailto:security@mendsec.com), not in a public issue — see
+[SECURITY.md](SECURITY.md). Every push and pull request runs gosec,
+govulncheck, gitleaks, a dependency licence gate and the NOTICE check, with
+every action pinned to a commit SHA; CodeQL and dependency review are wired in
+and turn on when the repository has code scanning available. What each gate is
+for is in [docs/devsecops.md](docs/devsecops.md).
 
 ## Licence
 

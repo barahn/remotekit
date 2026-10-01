@@ -1,0 +1,62 @@
+name: Dependency Review
+
+# What a pull request *adds*: a dependency with a known advisory, or one under
+# a licence the policy does not allow. govulncheck asks whether a known
+# vulnerability is reachable from this code; this asks what is arriving.
+on:
+  pull_request:
+    branches: [ develop, main ]
+
+permissions:
+  contents: read
+
+# Gated on the CODE_SCANNING repository variable, off by default.
+#
+# This repository is private. On a private repository GitHub runs CodeQL and
+# dependency review only with GitHub Advanced Security (Code Security). In
+# barahn/chirp, same organisation, both were observed failing for exactly that
+# reason. The CodeQL licence also permits analysing private code only under
+# that entitlement, so this is not a gate to force through.
+#
+# Set Settings -> Secrets and variables -> Actions -> Variables ->
+# CODE_SCANNING = true once the repository is public or Code Security is on.
+# Until then the gate is off, and says so on every run rather than going
+# quietly green. A skipped job counts as passing for a required check, so
+# marking these required before then enforces nothing. See docs/devsecops.md.
+
+jobs:
+  review:
+    name: Review dependency changes
+    if: vars.CODE_SCANNING == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        continue-on-error: true
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Allow-list, not deny-list, and the same list as CONTRIBUTING.md and the
+      # licence gate in ci.yml: anything else fails.
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: low
+          allow-licenses: MIT, BSD-2-Clause, BSD-3-Clause, ISC, Apache-2.0, Zlib, MPL-2.0
+          comment-summary-in-pr: on-failure
+
+  gate-disabled:
+    name: Dependency review (disabled)
+    if: vars.CODE_SCANNING != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Report that this gate is off
+        run: |
+          echo "::warning title=Dependency review is not running::This repository is private and the CODE_SCANNING variable is not set, so dependency review is skipped. Enable it once the repository is public or Code Security is on. See docs/devsecops.md."

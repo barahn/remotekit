@@ -1,0 +1,45 @@
+name: Sync develop after merge
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+concurrency:
+  group: sync-develop
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  sync-develop:
+    if: github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'develop'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      # To dispatch ci.yml after pushing; see the last step.
+      actions: write
+    steps:
+      # The merge goes through the REST API, not git push: develop and main
+      # require signed commits, and GitHub signs the merge commit it creates
+      # here, while one made in the runner and pushed would carry no signature.
+      # No checkout is needed for that. A 204 means develop already contains
+      # main; a 409 is a real conflict and fails the job.
+      - name: Sync develop with main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api --method POST "repos/${{ github.repository }}/merges" \
+            -f base=develop -f head=main \
+            -f commit_message="Merge main into develop after the release
+
+          Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+
+      # The merge commit just created is develop's new tip. Made with
+      # GITHUB_TOKEN, it triggers no workflow, so CI is dispatched explicitly
+      # rather than leaving the tip without checks.
+      - name: Run CI on the new tip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run ci.yml --ref develop --repo "${{ github.repository }}"

@@ -6,9 +6,10 @@ package tunnel
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image/jpeg"
 	"log"
@@ -43,6 +44,14 @@ func NewAgentStreamRunner(creds *AgentCredentials, insecureSkipVerify bool) *Age
 	}
 }
 
+// Start connects to the signalling channel and serves it until ctx is
+// cancelled, reconnecting whenever the connection drops.
+//
+// It never connects without a credential: if the runner's AgentToken is
+// empty, Start logs why and returns immediately, and nothing will retry.
+// Start reports no error, so callers that need to know should check
+// AgentToken themselves before calling it -- an empty token means the agent
+// has to re-enrol.
 func (r *AgentStreamRunner) Start(ctx context.Context) {
 	wsURL := r.creds.ServerAddr
 	if strings.HasPrefix(wsURL, "https://") {
@@ -52,20 +61,18 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 	}
 	signalURL := fmt.Sprintf("%s/api/v1/sessions/%s/signal", strings.TrimRight(wsURL, "/"), r.creds.AgentID)
 
-	dialer := websocket.DefaultDialer
-	if r.insecureSkipVerify {
-		dialer = &websocket.Dialer{
-			Proxy:            http.ProxyFromEnvironment,
-			HandshakeTimeout: 45 * time.Second,
-			TLSClientConfig:  &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- CLI opt-in flag for dev/test
-		}
+	dialer := wsDialer(r.creds.ServerKeyPin, r.insecureSkipVerify)
+
+	headers, err := signalHeaders(r.creds)
+	if err != nil {
+		log.Printf("[AgentStream Error] %v; not connecting\n", err)
+		return
 	}
 
-	headers := http.Header{}
-	if r.creds.AgentToken != "" {
-		headers.Set("X-Barahn-Agent-Token", r.creds.AgentToken)
-	} else {
-		headers.Set("X-Barahn-Agent-Token", r.creds.AgentID)
+	signKey, err := signalSigningKey(r.creds)
+	if err != nil {
+		log.Printf("[AgentStream Error] %v; not connecting\n", err)
+		return
 	}
 
 	for {
@@ -73,7 +80,15 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		default:
-			ws, _, err := dialer.DialContext(ctx, signalURL, headers)
+			// The proof carries a timestamp and a single-use nonce, so it
+			// is rebuilt for every attempt rather than once: a reconnect
+			// would otherwise present a stale or already used one.
+			attempt := headers.Clone()
+			if err := connectProofHeaders(attempt, r.creds, AudienceSignal, time.Now()); err != nil {
+				log.Printf("[AgentStream Error] %v; not connecting\n", err)
+				return
+			}
+			ws, _, err := dialer.DialContext(ctx, signalURL, attempt)
 			if err != nil {
 				log.Printf("[AgentStream Error] Failed to connect to signaling WebSocket (%s): %v\n", signalURL, err)
 				time.Sleep(2 * time.Second)
@@ -83,14 +98,90 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 			ws.SetReadLimit(10 * 1024 * 1024) // 10MB limit for fallback JPEG frames
 
 			log.Printf("[AgentStream] Connected to signaling channel for agent %s\n", r.creds.AgentID)
-			r.runSignalingLoop(ctx, ws)
+			r.runSignalingLoop(ctx, ws, signKey)
 			_ = ws.Close()
 			time.Sleep(1 * time.Second)
 		}
 	}
 }
 
-func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.Conn) {
+// errNoAgentToken is why Start refuses to dial without a credential.
+var errNoAgentToken = errors.New("agent_stream: agent has no token; re-enrol before connecting")
+
+// signalHeaders builds the headers the signalling socket authenticates with.
+//
+// It refuses to proceed without a token. It used to fall back to sending the
+// agent ID in the token header, and the ID is not a secret -- the server hands
+// it out and it appears in URLs and logs. A server that accepted that fallback
+// would let anyone who had seen an ID connect as that agent.
+func signalHeaders(creds *AgentCredentials) (http.Header, error) {
+	if creds == nil || creds.AgentToken == "" {
+		return nil, errNoAgentToken
+	}
+	h := http.Header{}
+	h.Set("X-Barahn-Agent-Token", creds.AgentToken)
+	return h, nil
+}
+
+// logSafe strips line breaks from a value that came off the wire before it
+// is logged. viewer_id is chosen by whoever is on the other end of the
+// signalling socket; logged as is, a "\n" in it would forge log lines.
+// Numbers and booleans decoded from a message go through it too, formatted
+// first: they cannot carry a line break, but CodeQL's log-injection query
+// cannot tell, and one rule for every peer-supplied value is easier to keep.
+func logSafe(s string) string {
+	s = strings.ReplaceAll(s, "\n", "")
+	return strings.ReplaceAll(s, "\r", "")
+}
+
+// signalTTL is how long a signed answer or candidate stays valid. Negotiation
+// finishes in seconds; the margin covers a slow relay and clock skew without
+// leaving a long replay window.
+const signalTTL = 2 * time.Minute
+
+// signalSigningKey loads the device key the agent signs its answers and ICE
+// candidates with, or returns nil for an agent enrolled without one, whose
+// messages go out unsigned as before. It is loaded once per Start rather than
+// per message.
+func signalSigningKey(creds *AgentCredentials) (ed25519.PrivateKey, error) {
+	if creds == nil || creds.DeviceKeyPath == "" {
+		return nil, nil
+	}
+	priv, err := LoadDeviceKey(creds.DeviceKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("agent_stream: loading device key: %w", err)
+	}
+	return priv, nil
+}
+
+// encodeSignal encodes an outgoing answer or candidate for one viewer.
+//
+// With a key, the message is signed with webrtc.SignalMessage.Sign, so a
+// viewer that knows the agent's device key can tell the SDP and candidates
+// came from the agent and not from the relay in between. The viewer is put in
+// TargetID, which the signature covers, so a message signed for one viewer
+// cannot be replayed to another. viewer_id is still set alongside it, since
+// that is what the server routes on.
+func encodeSignal(m webrtc.SignalMessage, viewerID string, key ed25519.PrivateKey, now time.Time) ([]byte, error) {
+	if key != nil {
+		m.TargetID = viewerID
+		if err := m.Sign(key, now, signalTTL); err != nil {
+			return nil, err
+		}
+	}
+	data, err := m.Encode()
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]interface{}
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return nil, err
+	}
+	fields["viewer_id"] = viewerID
+	return json.Marshal(fields)
+}
+
+func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.Conn, signKey ed25519.PrivateKey) {
 	var stateMu sync.RWMutex
 	// One WebRTC negotiation per connected viewer (keyed by the server-assigned viewer_id,
 	// or "" for legacy/unattributed messages), so multiple technicians can view the same
@@ -197,7 +288,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 					// answer carries no video and the browser waits forever for
 					// a stream that was never offered back.
 					if tErr := peer.CreateVideoTrack("barahn-screen", "screen"); tErr != nil {
-						log.Printf("[AgentStream] video track unavailable for viewer %s, falling back to WebSocket frames: %v\n", viewerID, tErr)
+						log.Printf("[AgentStream] video track unavailable for viewer %s, falling back to WebSocket frames: %v\n", logSafe(viewerID), tErr)
 					} else {
 						// A receiver that cannot decode asks for an intra frame.
 						// Reset is the right answer to that: it forces a key
@@ -214,26 +305,30 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 					videoEncoder.Reset()
 
 					peer.OnICECandidate(func(candJSON string) {
-						candMsg := map[string]interface{}{
-							"type":       "candidate",
-							"session_id": r.creds.AgentID,
-							"viewer_id":  viewerID,
-							"candidate":  candJSON,
+						data, err := encodeSignal(webrtc.SignalMessage{
+							Type:      webrtc.SignalCandidate,
+							SessionID: r.creds.AgentID,
+							Candidate: candJSON,
+						}, viewerID, signKey, time.Now())
+						if err != nil {
+							log.Printf("[AgentStream] not sending ICE candidate to viewer %s: %v\n", logSafe(viewerID), err)
+							return
 						}
-						data, _ := json.Marshal(candMsg)
 						_ = safeWrite(data)
 					})
 
 					answerSDP, aErr := peer.CreateAnswer(sdp)
 					if aErr == nil {
-						ansMsg := map[string]interface{}{
-							"type":       "answer",
-							"session_id": r.creds.AgentID,
-							"viewer_id":  viewerID,
-							"sdp":        answerSDP,
+						ansBytes, sErr := encodeSignal(webrtc.SignalMessage{
+							Type:      webrtc.SignalAnswer,
+							SessionID: r.creds.AgentID,
+							SDP:       answerSDP,
+						}, viewerID, signKey, time.Now())
+						if sErr != nil {
+							log.Printf("[AgentStream] not sending answer to viewer %s: %v\n", logSafe(viewerID), sErr)
+						} else {
+							_ = safeWrite(ansBytes)
 						}
-						ansBytes, _ := json.Marshal(ansMsg)
-						_ = safeWrite(ansBytes)
 					} else {
 						log.Printf("[AgentStream] WebRTC answer note (direct WebSocket stream active): %v\n", aErr)
 					}
@@ -390,10 +485,10 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			stateMu.Lock()
 			if msgType == "video_ok" {
 				videoConfirmed[viewerID] = true
-				log.Printf("[AgentStream] viewer %s is decoding WebRTC video; stopping its JPEG fallback\n", viewerID)
+				log.Printf("[AgentStream] viewer %s is decoding WebRTC video; stopping its JPEG fallback\n", logSafe(viewerID))
 			} else {
 				delete(videoConfirmed, viewerID)
-				log.Printf("[AgentStream] viewer %s reports stalled video; resuming the JPEG fallback\n", viewerID)
+				log.Printf("[AgentStream] viewer %s reports stalled video; resuming the JPEG fallback\n", logSafe(viewerID))
 			}
 			stateMu.Unlock()
 
@@ -417,17 +512,17 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			w, _ := signal["width"].(float64)
 			h, _ := signal["height"].(float64)
 			if w > 0 && h > 0 {
-				log.Printf("[AgentStream] Technician browser viewport size: %.0fx%.0f\n", w, h)
+				log.Printf("[AgentStream] Technician browser viewport size: %sx%s\n", logSafe(fmt.Sprintf("%.0f", w)), logSafe(fmt.Sprintf("%.0f", h)))
 			}
 
 		case "chat":
 			text, _ := signal["text"].(string)
 			sender, _ := signal["sender"].(string)
-			log.Printf("[AgentStream] Chat message from %s: %s\n", sender, text)
+			log.Printf("[AgentStream] Chat message from %s: %s\n", logSafe(sender), logSafe(text))
 
 		case "focus_state":
 			focused, _ := signal["focused"].(bool)
-			log.Printf("[AgentStream] Session focus state changed: focused=%v\n", focused)
+			log.Printf("[AgentStream] Session focus state changed: focused=%s\n", logSafe(fmt.Sprint(focused)))
 
 		case "clipboard":
 			text, _ := signal["text"].(string)
@@ -444,7 +539,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			sha, _ := signal["sha256"].(string)
 			if id != "" && name != "" {
 				transferMgr.StartSession(id, name, int64(size), sha)
-				log.Printf("[AgentStream] Started file transfer session %s (%s, %.0f bytes)\n", id, name, size)
+				log.Printf("[AgentStream] Started file transfer session %s (%s, %s bytes)\n", logSafe(id), logSafe(name), logSafe(fmt.Sprintf("%.0f", size)))
 			}
 
 		case "file_chunk":
@@ -472,9 +567,9 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				errStr := ""
 				if err != nil {
 					errStr = err.Error()
-					log.Printf("[AgentStream] File assembly error for %s: %v\n", id, err)
+					log.Printf("[AgentStream] File assembly error for %s: %v\n", logSafe(id), err)
 				} else {
-					log.Printf("[AgentStream] File transfer %s completed! Saved to: %s (SHA: %s)\n", id, destPath, sha)
+					log.Printf("[AgentStream] File transfer %s completed! Saved to: %s (SHA: %s)\n", logSafe(id), logSafe(destPath), sha)
 				}
 				resMsg, _ := json.Marshal(map[string]interface{}{
 					"type":        "file_saved",

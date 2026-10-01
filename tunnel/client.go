@@ -7,11 +7,12 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/tls"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -24,7 +25,6 @@ import (
 
 	"github.com/barahn/remotekit/heartbeat"
 	"github.com/barahn/remotekit/osinfo"
-	"github.com/gorilla/websocket"
 	"github.com/hashicorp/yamux"
 )
 
@@ -32,6 +32,17 @@ type AgentCredentials struct {
 	AgentID    string `json:"agent_id"`
 	AgentToken string `json:"agent_token"`
 	ServerAddr string `json:"server_addr"`
+	// ServerKeyPin is the SHA-256 of the public key the server presented at
+	// enrolment, recorded when enrolment ran over TLS. When CA verification
+	// is off, the agent talks only to a server holding that key; with it on,
+	// the CA decides and the pin is not consulted. Empty for plain-HTTP
+	// servers and for credentials written before pinning existed.
+	ServerKeyPin string `json:"server_key_pin,omitempty"`
+	// DeviceKeyPath is where the agent's device key lives, set by
+	// EnrollWithDeviceKey. When set, every connection carries a proof that
+	// the agent holds that key. Empty for agents enrolled without one, which
+	// authenticate with the token alone.
+	DeviceKeyPath string `json:"device_key_path,omitempty"`
 }
 
 type TunnelClient struct {
@@ -44,6 +55,29 @@ type TunnelClient struct {
 	// to drive UI indicators (e.g. the desktop tray icon) with the real connection
 	// state instead of an assumed/static value.
 	OnStatusChange func(connected bool)
+
+	// AllowedReversePorts lists the local ports a reverse stream may reach.
+	// Anything else is refused, and an empty list refuses everything.
+	//
+	// The port arrives from the server, so without this list whoever controls
+	// the server -- or impersonates it -- could reach any service bound to
+	// this host's loopback, which is exactly where services that trust local
+	// callers live. Name the ports you mean to expose, typically just 22.
+	AllowedReversePorts []int
+}
+
+// ErrPortNotPermitted is returned for a reverse stream to a port that
+// AllowedReversePorts does not list.
+var ErrPortNotPermitted = errors.New("tunnel: reverse stream port not permitted")
+
+// checkReversePort decides whether a reverse stream may dial port.
+func (tc *TunnelClient) checkReversePort(port int) error {
+	for _, p := range tc.AllowedReversePorts {
+		if p == port {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: %d", ErrPortNotPermitted, port)
 }
 
 func NewTunnelClient(credsPath string, insecureSkipVerify bool) *TunnelClient {
@@ -60,17 +94,24 @@ func NewTunnelClient(credsPath string, insecureSkipVerify bool) *TunnelClient {
 }
 
 // Enroll performs single-use pairing exchange with the server and writes credentials to credsPath (/etc/barahn/agent.pem).
+//
+// pubKey is sent as given, with no proof of possession, so a server refuses it
+// if it is an Ed25519 key: an agent with a device key enrols through
+// EnrollWithDeviceKey. Anything else enrols the agent without a device key,
+// which a server accepts until its TokenOnlyUntil, if it sets one.
 func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath string, insecureSkipVerify bool) (*AgentCredentials, error) {
+	return enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, "", savePath, insecureSkipVerify)
+}
+
+// enroll is Enroll with the device key's proof of possession, which only
+// EnrollWithDeviceKey can produce.
+func enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, keyProof, savePath string, insecureSkipVerify bool) (*AgentCredentials, error) {
 	if savePath == "" {
 		savePath = "/etc/barahn/agent.pem"
 	}
 
 	if !insecureSkipVerify && os.Getenv("BARAHN_INSECURE_SKIP_VERIFY") == "true" {
 		insecureSkipVerify = true
-	}
-
-	if insecureSkipVerify {
-		fmt.Fprintln(os.Stderr, "[WARNING] TLS certificate verification is DISABLED (--insecure-skip-verify). Connection is insecure!")
 	}
 
 	parsedURL, err := url.ParseRequestURI(serverAddr)
@@ -93,14 +134,15 @@ func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath st
 		"arch":         arch,
 		"public_key":   pubKey,
 	}
+	if keyProof != "" {
+		payload["key_proof"] = keyProof
+	}
 
 	bodyBytes, _ := json.Marshal(payload)
 
 	httpClient := &http.Client{Timeout: 10 * time.Second}
-	if insecureSkipVerify {
-		httpClient.Transport = &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- CLI opt-in flag for dev/test
-		}
+	if cfg := clientTLSConfig("", insecureSkipVerify); cfg != nil {
+		httpClient.Transport = &http.Transport{TLSClientConfig: cfg}
 	}
 
 	// #nosec G107 -- serverAddr is provided by the agent administrator during enrollment, not an untrusted user
@@ -122,12 +164,48 @@ func Enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, savePath st
 	}
 
 	creds.ServerAddr = serverAddr
+	// Trust on first use: whatever key the server just proved it holds is
+	// the only one this agent will accept from now on when CA verification
+	// is off. It is recorded either way, so turning skip-verify on later
+	// narrows trust to this key instead of dropping it altogether. Enrolment
+	// is the one connection that cannot be pinned, which is why it is also
+	// the one that redeems a single-use pairing code.
+	if resp.TLS != nil && len(resp.TLS.PeerCertificates) > 0 {
+		creds.ServerKeyPin = ServerKeyPin(resp.TLS.PeerCertificates[0])
+	}
 
 	if err := saveCredentials(savePath, &creds); err != nil {
 		return nil, fmt.Errorf("failed to save agent credentials to %s: %w", savePath, err)
 	}
 
 	return &creds, nil
+}
+
+// EnrollWithDeviceKey is Enroll with a device key: it loads the key at
+// keyPath, generating one if the file does not exist, sends its public half
+// as the agent's public key, and records keyPath in the saved credentials so
+// every later connection proves possession of it.
+//
+// Re-enrolling reuses an existing key file rather than replacing it, so the
+// identity survives a fresh pairing code.
+func EnrollWithDeviceKey(serverAddr, pairingCode, hostname, osName, arch, keyPath, savePath string, insecureSkipVerify bool) (*AgentCredentials, error) {
+	priv, err := LoadOrCreateDeviceKey(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("device key: %w", err)
+	}
+	pub, _ := priv.Public().(ed25519.PublicKey)
+	creds, err := enroll(serverAddr, pairingCode, hostname, osName, arch, EncodeDevicePublicKey(pub), signEnrol(priv, pairingCode), savePath, insecureSkipVerify)
+	if err != nil {
+		return nil, err
+	}
+	if savePath == "" {
+		savePath = "/etc/barahn/agent.pem"
+	}
+	creds.DeviceKeyPath = keyPath
+	if err := saveCredentials(savePath, creds); err != nil {
+		return nil, fmt.Errorf("failed to save agent credentials to %s: %w", savePath, err)
+	}
+	return creds, nil
 }
 
 func saveCredentials(path string, creds *AgentCredentials) error {
@@ -179,6 +257,9 @@ func (tc *TunnelClient) Connect(ctx context.Context, creds *AgentCredentials) er
 	header := http.Header{}
 	header.Set("X-Barahn-Agent-ID", creds.AgentID)
 	header.Set("X-Barahn-Agent-Token", creds.AgentToken)
+	if err := connectProofHeaders(header, creds, AudienceTunnel, time.Now()); err != nil {
+		return err
+	}
 
 	sysInfo := osinfo.Detect()
 	header.Set("X-Barahn-Agent-OS", sysInfo.Formatted)
@@ -187,15 +268,7 @@ func (tc *TunnelClient) Connect(ctx context.Context, creds *AgentCredentials) er
 		header.Set("X-Barahn-Agent-Hostname", hostname)
 	}
 
-	dialer := websocket.DefaultDialer
-	if tc.insecureSkipVerify {
-		fmt.Fprintln(os.Stderr, "[WARNING] TLS certificate verification is DISABLED (--insecure-skip-verify). Connection is insecure!")
-		dialer = &websocket.Dialer{
-			Proxy:            http.ProxyFromEnvironment,
-			HandshakeTimeout: 45 * time.Second,
-			TLSClientConfig:  &tls.Config{InsecureSkipVerify: true}, // #nosec G402 -- CLI opt-in flag for dev/test
-		}
-	}
+	dialer := wsDialer(creds.ServerKeyPin, tc.insecureSkipVerify)
 
 	ws, _, err := dialer.DialContext(ctx, wsURL, header)
 	if err != nil {
@@ -263,6 +336,10 @@ func (tc *TunnelClient) handleReverseStream(stream *yamux.Stream) {
 	portStr := strings.TrimSpace(line)
 	port, err := strconv.Atoi(portStr)
 	if err != nil || port <= 0 {
+		return
+	}
+	if err := tc.checkReversePort(port); err != nil {
+		log.Printf("[Tunnel] refusing reverse stream: %v", err)
 		return
 	}
 

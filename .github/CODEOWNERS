@@ -1,0 +1,15 @@
+# Sole maintainer; see SECURITY.md and CONTRIBUTING.md.
+#
+# CODEOWNERS only requests review. It becomes a gate when "Require review from
+# Code Owners" is enabled in branch protection -- see docs/devsecops.md.
+
+*                       @mendsec
+
+# Anything that decides what may enter the tree, or under what terms.
+/.github/               @mendsec
+/scripts/               @mendsec
+/LICENSE                @mendsec
+/NOTICE                 @mendsec
+/SECURITY.md            @mendsec
+/CONTRIBUTING.md        @mendsec
+/screen/codec/vp8/      @mendsec
