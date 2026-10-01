@@ -130,13 +130,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `775cf96`** — docs: refresh the handoff status block
+**`develop` is at `f771b0a`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#33](https://github.com/barahn/remotekit/pull/33) | tunnel: enforce session consent in AgentStreamRunner | `feat/phase-0-consent-enforcement` | [Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36923033319/job/110573488211)<br>Refresh the handoff status block ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36923033306/job/110573486829)<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress) |
+| [#33](https://github.com/barahn/remotekit/pull/33) | tunnel: enforce session consent in AgentStreamRunner | `feat/phase-0-consent-enforcement` | Build, Test & SAST ✅<br>CodeQL ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36923350289/job/110574594288)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36923350291/job/110574533551)<br>Review dependency changes ✅<br>gitleaks ✅<br>Analyze (Go) ✅ |
+| [#34](https://github.com/barahn/remotekit/pull/34) | [Aikido] AI Fix for Possible command injection via shell script | `fix/aikido-security-sast-131086227-kj8m` | [Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36925877081/job/110582983245)<br>Refresh the handoff status block ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36925877077/job/110582941933)<br>Review dependency changes ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
