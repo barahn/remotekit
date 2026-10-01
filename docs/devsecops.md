@@ -11,6 +11,7 @@ built around those two facts.
 | --- | --- | --- |
 | `ci.yml` | push and PR to `develop`/`main`, tags, dispatch | DCO, NOTICE for vendored code, dependency licences (linux, windows, darwin), build, vet, cross-compile, lint, `go test -race` with the VP8 conformance and browser-decode tests, gosec, govulncheck |
 | `secret-scan.yml` | push and PR, weekly | gitleaks over the PR's commits, or the tree and full history |
+| Aikido Security | push and PR (via GitHub App) | SAST, dependency vulnerability scanning (SCA), secrets, auto-triage and PR gating |
 | `codeql.yml` | push and PR, weekly — **when `CODE_SCANNING` is set** | CodeQL `security-extended` for Go |
 | `dependency-review.yml` | PR — **when `CODE_SCANNING` is set** | what the PR adds: advisories at `low` and above, licences outside the allow-list |
 | `sbom.yml` | release tags | SPDX SBOM attached to the release |
@@ -22,10 +23,12 @@ against `develop`.
 
 Why the overlaps are not redundant:
 
-- **gosec vs CodeQL.** gosec matches known-bad patterns inside one function.
+- **gosec vs CodeQL and Aikido.** gosec matches known-bad patterns inside one function.
   CodeQL follows data from a source to a sink across packages — a remote peer's
   input reaching a file path in `transfer` or a keystroke in `input` is the
-  second tool's finding.
+  second tool's finding. Aikido provides unified SAST, dependency vulnerability
+  scanning (SCA), and secret detection, which operates across private repositories
+  without requiring GitHub Advanced Security.
 - **govulncheck vs dependency review.** govulncheck asks whether a known
   vulnerability is *reachable* from this code, and fails the build. Dependency
   review asks what a pull request *introduces*, which catches a dependency with
@@ -50,6 +53,24 @@ Code Security is enabled. Until then every run carries a warning that the gate
 is off, so its absence is visible rather than quietly green. A skipped job
 counts as passing for a required check, so marking `Analyze (Go)` or
 `Review dependency changes` as required before then enforces nothing.
+
+### Aikido Security: SAST, dependency and secret scanning
+
+Because this repository is private and GitHub Advanced Security is not active,
+CodeQL and dependency review are gated off. Aikido Security bridges that gap by
+providing comprehensive coverage integrated natively via the [Aikido Security GitHub App](https://github.com/marketplace/aikido-security):
+
+- **Webhook-driven, zero runner overhead:** Scans trigger automatically on every
+  push and pull request without consuming GitHub Actions runner minutes.
+- **PR Check Suite & Auto-Triage:** Displays security findings directly within
+  pull request checks, prevents merging code with severe vulnerabilities, and
+  provides automated vulnerability prioritization.
+- **Repository Configuration (`.aikido`):** Scan exclusions (such as temporary
+  paths or test fixtures) and ignored CVEs are controlled by the `.aikido` file
+  at the repository root.
+- **Inline Suppressions:** Aikido supports `//nosec` on the line preceding or
+  containing a SAST finding, as well as `@AikidoSec ignore: <reason>` replies
+  on pull request review comments.
 
 ### The dependency licence gate, and MPL-2.0
 
@@ -124,8 +145,9 @@ Fix the finding. The escape hatches, in order of preference:
 
 1. Fix the code.
 2. Suppress narrowly, in code, with a comment naming *why it is not
-   exploitable* — `//nolint:` or `//#nosec` on the one line, never a file or a
-   rule globally.
+   exploitable* — `//nolint:` or `//#nosec` on the one line (Aikido recognizes
+   `//nosec` for inline SAST suppression, or `@AikidoSec ignore: <reason>`
+   on PR review comments), never a file or a rule globally.
 3. Change the gate. That is a review decision and gets its own pull request,
    not a line buried in a feature branch.
 

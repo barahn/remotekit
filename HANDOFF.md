@@ -81,9 +81,10 @@ so; the signalling proposal (`docs/decentralised-signalling.md`) and its
 engineering breakdown (`docs/implementation-phases.md`); this brief with its
 generated status block; the `develop`/`main` branch model with the
 release-PR and sync workflows; and CI extended to `develop` and to the commits
-those workflows push; and Phase 0a plus the Phase 0 signing primitive
-(barahn/remotekit#17), described in §5. Nothing past that has been
-implemented.
+those workflows push; Phase 0a plus the Phase 0 signing primitive
+(barahn/remotekit#17), described in §5; and Aikido Security integration
+via the GitHub App with repository configuration in `.aikido`. Nothing past
+that has been implemented.
 
 ### The CI pipeline (`.github/workflows/ci.yml`, single job, 20 min cap)
 
