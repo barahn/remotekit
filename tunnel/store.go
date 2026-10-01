@@ -42,6 +42,13 @@ type PairingCode struct {
 	ID        string
 	Used      bool
 	ExpiresAt time.Time
+	// DevicePublicKey, when set, is the only device key that may redeem the
+	// code, in the form EncodeDevicePublicKey produces. An issuer that learns
+	// the device's key before issuing the code -- read off the device's
+	// screen, say -- sets it so that an intercepted code is useless to any
+	// other device. Empty leaves the code redeemable by any device that
+	// proves possession of the key it presents.
+	DevicePublicKey string
 }
 
 // AgentRegistration carries the details recorded when an agent enrols.

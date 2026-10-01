@@ -39,7 +39,7 @@ func TestTunnel_EnrollmentAndReverseStream(t *testing.T) {
 
 	// 1. Agent Enroll
 	savePath := filepath.Join(tmpDir, "agent.pem")
-	creds, err := tunnel.Enroll(server.URL, rawPairingCode, "test-host", "linux", "amd64", "pubkey-123", savePath, false)
+	creds, err := tunnel.EnrollWithDeviceKey(server.URL, rawPairingCode, "test-host", "linux", "amd64", filepath.Join(tmpDir, "device.key"), savePath, false)
 	if err != nil {
 		t.Fatalf("Enroll failed: %v", err)
 	}
@@ -133,13 +133,13 @@ func TestTunnel_TLSVerification_UntrustedCertFails(t *testing.T) {
 	savePath := filepath.Join(tmpDir, "agent_tls.pem")
 
 	// Case 1: Default TLS verification ON (insecureSkipVerify = false) -> MUST FAIL on untrusted cert
-	_, err := tunnel.Enroll(tlsServer.URL, rawPairingCode, "tls-host", "linux", "amd64", "pubkey-tls", savePath, false)
+	_, err := tunnel.EnrollWithDeviceKey(tlsServer.URL, rawPairingCode, "tls-host", "linux", "amd64", filepath.Join(tmpDir, "device_tls.key"), savePath, false)
 	if err == nil {
 		t.Fatalf("Expected Enroll to fail due to untrusted TLS certificate when insecureSkipVerify is false, but it succeeded")
 	}
 
 	// Case 2: Opt-in bypass (insecureSkipVerify = true) -> MUST SUCCEED
-	creds, err := tunnel.Enroll(tlsServer.URL, rawPairingCode, "tls-host", "linux", "amd64", "pubkey-tls", savePath, true)
+	creds, err := tunnel.EnrollWithDeviceKey(tlsServer.URL, rawPairingCode, "tls-host", "linux", "amd64", filepath.Join(tmpDir, "device_tls.key"), savePath, true)
 	if err != nil {
 		t.Fatalf("Expected Enroll to succeed with insecureSkipVerify = true, but failed: %v", err)
 	}

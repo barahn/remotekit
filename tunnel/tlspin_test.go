@@ -140,8 +140,9 @@ func TestEnroll_PinsTheServerKey(t *testing.T) {
 	srv := httptest.NewTLSServer(mux)
 	defer srv.Close()
 
-	savePath := filepath.Join(t.TempDir(), "agent.pem")
-	creds, err := Enroll(srv.URL, "PINCODE1", "h", "linux", "amd64", "pk", savePath, true)
+	dir := t.TempDir()
+	savePath := filepath.Join(dir, "agent.pem")
+	creds, err := EnrollWithDeviceKey(srv.URL, "PINCODE1", "h", "linux", "amd64", filepath.Join(dir, "device.key"), savePath, true)
 	if err != nil {
 		t.Fatalf("Enroll: %v", err)
 	}
