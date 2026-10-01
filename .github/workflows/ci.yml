@@ -215,19 +215,20 @@ jobs:
           # conformance gate that silently skips is how an encoder ends up with
           # an inter-frame path no test ever decoded.
           VP8_CONFORMANCE_REQUIRED: '1'
-        # -short skips the rate-control test and the 720p wavefront case: under
-        # -race they cost over eight minutes (about a second without it) and
-        # gain nothing from the detector. The next step runs them in full.
-        # The timeout stays generous because the conformance sweep in
-        # screen/codec/vp8 is still slow under -race with coverage.
+        # -short skips the rate-control test, the 720p wavefront and conformance
+        # cases and most of the quantiser sweep: under -race they cost over
+        # eight minutes (about a second without it) and gain nothing from the
+        # detector. The next step runs them in full.
+        # The timeout stays generous because screen/codec/vp8 is still slow
+        # under -race with coverage.
         run: xvfb-run -a go test -race -short -timeout 30m -coverprofile=coverage.out ./...
 
       # The tests -short skipped above, without the race detector. The
       # wavefront's concurrency is still raced at 320x192 and 640x480 above.
-      - name: Test (VP8 rate control & wavefront, full size)
+      - name: Test (VP8 slow tests, full size, no race)
         env:
           VP8_CONFORMANCE_REQUIRED: '1'
-        run: go test -timeout 10m -run 'TestRateControlHitsItsTarget|TestWavefrontIsBitExact' ./screen/codec/vp8
+        run: go test -timeout 10m -run 'TestRateControlHitsItsTarget|TestWavefrontIsBitExact|TestConformanceAcrossContentAndSize|TestConformanceAcrossQuantisers' ./screen/codec/vp8
 
       # screen/codec/vp8 is excluded for its 53 deliberate int->int16 narrowings
       # in the forward DCT and quantiser, where the VP8 spec bounds the values by
