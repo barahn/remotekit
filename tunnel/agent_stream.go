@@ -536,7 +536,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			sha, _ := signal["sha256"].(string)
 			if id != "" && name != "" {
 				transferMgr.StartSession(id, name, int64(size), sha)
-				log.Printf("[AgentStream] Started file transfer session %s (%s, %.0f bytes)\n", logSafe(id), logSafe(name), size)
+				log.Printf("[AgentStream] Started file transfer session %s (%s, %d bytes)\n", logSafe(id), logSafe(name), int64(size))
 			}
 
 		case "file_chunk":
