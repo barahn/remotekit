@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -23,6 +24,10 @@ type darwinServiceManager struct {
 func NewServiceManager(name string) ServiceManager {
 	if name == "" {
 		name = "com.mendsec.barahn-agent"
+	}
+	validName := regexp.MustCompile(`^[a-zA-Z0-9_\-\.]+$`)
+	if !validName.MatchString(name) {
+		panic(fmt.Errorf("invalid service name"))
 	}
 	return &darwinServiceManager{name: name}
 }
