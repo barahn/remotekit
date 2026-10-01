@@ -130,13 +130,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `2582d87`** — docs: refresh the handoff status block
+**`develop` is at `539e12c`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (103 commits) — Merge pull request #31 from barahn/claude/sharp-wright-u0s07v | `develop` | no checks reported |
+| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (103 commits) — Merge pull request #31 from barahn/claude/sharp-wright-u0s07v | `develop` | CodeQL ✅<br>Build, Test & SAST ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36912581055/job/110539104845)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36912580982/job/110539104499)<br>Analyze (Go) ✅<br>Review dependency changes ✅<br>gitleaks ✅<br>Build, Test & SAST ⏳ (in_progress) |
+| [#32](https://github.com/barahn/remotekit/pull/32) | agent_stream: strip line breaks from peer-supplied values before logging | `claude/sharp-wright-u0s07v` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36913139760/job/110540496026)<br>Refresh the handoff status block ⏳ (in_progress)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36913139840/job/110540495269)<br>gitleaks ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
