@@ -35,8 +35,12 @@ type TunnelServer struct {
 	// time on, enrolment without a device key is refused, and so is a
 	// connection from an agent that has none.
 	//
-	// It covers only agents without a key. An agent with a registered device
-	// key must prove possession of it on every connection, whatever the date.
+	// It also covers an agent whose registered key is Ed25519 but which sends
+	// no proof at all -- one enrolled with plain Enroll before device keys
+	// existed, which has no key file to sign with. Until the deadline it too
+	// is accepted on its token and logged. A proof that is sent but wrong,
+	// stale or replayed is refused whatever the date, and so is any enrolment
+	// that offers a device key without a valid key proof.
 	TokenOnlyUntil time.Time
 
 	// replay refuses a connect proof presented a second time.
@@ -321,8 +325,8 @@ func (ts *TunnelServer) OpenReverseStream(agentID string, targetPort int) (net.C
 }
 
 // checkDeviceProof holds an agent with a registered device key to the proof
-// of possession sent in the connect headers, and refuses an agent without
-// one once TokenOnlyUntil has passed.
+// of possession sent in the connect headers. An agent without a key, or with
+// one but sending no proof, is accepted on its token until TokenOnlyUntil.
 func (ts *TunnelServer) checkDeviceProof(agent AgentIdentity, r *http.Request) error {
 	now := time.Now()
 	pub, ok := ParseDevicePublicKey(agent.PublicKey)
@@ -333,7 +337,12 @@ func (ts *TunnelServer) checkDeviceProof(agent AgentIdentity, r *http.Request) e
 		log.Printf("[Tunnel] agent %s has no device key; accepting on token alone, %s", agent.ID, ts.tokenOnlyDeadline())
 		return nil
 	}
-	return VerifyConnect(pub, AudienceTunnel, agent.ID, ConnectProofFromHeader(r.Header), now, &ts.replay)
+	err := VerifyConnect(pub, AudienceTunnel, agent.ID, ConnectProofFromHeader(r.Header), now, &ts.replay)
+	if errors.Is(err, ErrConnectSigMissing) && ts.tokenOnlyAllowed(now) {
+		log.Printf("[Tunnel] agent %s has a device key but sent no proof; accepting on token alone, %s", agent.ID, ts.tokenOnlyDeadline())
+		return nil
+	}
+	return err
 }
 
 // checkEnrolKey decides whether an enrolment may redeem pc with publicKey.

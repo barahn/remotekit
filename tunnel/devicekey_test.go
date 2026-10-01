@@ -210,13 +210,10 @@ func TestCheckDeviceProof(t *testing.T) {
 	ended := &TunnelServer{TokenOnlyUntil: now.Add(-time.Hour)}
 	unset := &TunnelServer{} // no deadline
 
-	// A keyed agent is held to its proof whatever the date.
+	// A keyed agent that sends a proof is held to it whatever the date.
 	for name, ts := range map[string]*TunnelServer{"transition": transition, "ended": ended, "unset": unset} {
 		if err := ts.checkDeviceProof(keyed, proofRequest(t, priv, AudienceTunnel, "agent-1", now)); err != nil {
 			t.Errorf("%s: valid proof refused: %v", name, err)
-		}
-		if err := ts.checkDeviceProof(keyed, proofRequest(t, nil, "", "", now)); !errors.Is(err, ErrConnectSigMissing) {
-			t.Errorf("%s: missing proof: want ErrConnectSigMissing, got %v", name, err)
 		}
 		if err := ts.checkDeviceProof(keyed, proofRequest(t, strangerPriv, AudienceTunnel, "agent-1", now)); !errors.Is(err, ErrConnectSigInvalid) {
 			t.Errorf("%s: stranger's proof: want ErrConnectSigInvalid, got %v", name, err)
@@ -242,6 +239,17 @@ func TestCheckDeviceProof(t *testing.T) {
 	}
 	if err := ended.checkDeviceProof(legacy, proofRequest(t, nil, "", "", now)); !errors.Is(err, ErrDeviceKeyRequired) {
 		t.Errorf("ended: legacy agent: want ErrDeviceKeyRequired, got %v", err)
+	}
+
+	// A keyed agent sending no proof at all (enrolled with plain Enroll, so
+	// it has no key file) gets the same transition as a keyless one.
+	for name, ts := range map[string]*TunnelServer{"transition": transition, "unset": unset} {
+		if err := ts.checkDeviceProof(keyed, proofRequest(t, nil, "", "", now)); err != nil {
+			t.Errorf("%s: keyed agent without proof refused: %v", name, err)
+		}
+	}
+	if err := ended.checkDeviceProof(keyed, proofRequest(t, nil, "", "", now)); !errors.Is(err, ErrConnectSigMissing) {
+		t.Errorf("ended: keyed agent without proof: want ErrConnectSigMissing, got %v", err)
 	}
 }
 
@@ -323,7 +331,7 @@ func TestHandlePairing_BoundCodeSurvivesWrongKey(t *testing.T) {
 func TestEnrollWithDeviceKey_ConnectsUnderRequiredProof(t *testing.T) {
 	store := NewMemStore()
 	store.SeedPairingCode(HashCredential("DEVKEY01"), PairingCode{ID: "pc-dk", ExpiresAt: time.Now().Add(10 * time.Minute)})
-	ts := NewTunnelServer(store) // the device key is held to its proof whatever TokenOnlyUntil says
+	ts := NewTunnelServer(store) // a proof that is sent is checked whatever TokenOnlyUntil says
 	mux := http.NewServeMux()
 	mux.HandleFunc("/tunnel/pair", ts.HandlePairing)
 	mux.HandleFunc("/tunnel/connect", ts.HandleConnect)
