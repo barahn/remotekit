@@ -6,6 +6,7 @@ package tunnel
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -68,6 +69,12 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 		return
 	}
 
+	signKey, err := signalSigningKey(r.creds)
+	if err != nil {
+		log.Printf("[AgentStream Error] %v; not connecting\n", err)
+		return
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -91,7 +98,7 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 			ws.SetReadLimit(10 * 1024 * 1024) // 10MB limit for fallback JPEG frames
 
 			log.Printf("[AgentStream] Connected to signaling channel for agent %s\n", r.creds.AgentID)
-			r.runSignalingLoop(ctx, ws)
+			r.runSignalingLoop(ctx, ws, signKey)
 			_ = ws.Close()
 			time.Sleep(1 * time.Second)
 		}
@@ -116,7 +123,54 @@ func signalHeaders(creds *AgentCredentials) (http.Header, error) {
 	return h, nil
 }
 
-func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.Conn) {
+// signalTTL is how long a signed answer or candidate stays valid. Negotiation
+// finishes in seconds; the margin covers a slow relay and clock skew without
+// leaving a long replay window.
+const signalTTL = 2 * time.Minute
+
+// signalSigningKey loads the device key the agent signs its answers and ICE
+// candidates with, or returns nil for an agent enrolled without one, whose
+// messages go out unsigned as before. It is loaded once per Start rather than
+// per message.
+func signalSigningKey(creds *AgentCredentials) (ed25519.PrivateKey, error) {
+	if creds == nil || creds.DeviceKeyPath == "" {
+		return nil, nil
+	}
+	priv, err := LoadDeviceKey(creds.DeviceKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("agent_stream: loading device key: %w", err)
+	}
+	return priv, nil
+}
+
+// encodeSignal encodes an outgoing answer or candidate for one viewer.
+//
+// With a key, the message is signed with webrtc.SignalMessage.Sign, so a
+// viewer that knows the agent's device key can tell the SDP and candidates
+// came from the agent and not from the relay in between. The viewer is put in
+// TargetID, which the signature covers, so a message signed for one viewer
+// cannot be replayed to another. viewer_id is still set alongside it, since
+// that is what the server routes on.
+func encodeSignal(m webrtc.SignalMessage, viewerID string, key ed25519.PrivateKey, now time.Time) ([]byte, error) {
+	if key != nil {
+		m.TargetID = viewerID
+		if err := m.Sign(key, now, signalTTL); err != nil {
+			return nil, err
+		}
+	}
+	data, err := m.Encode()
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]interface{}
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return nil, err
+	}
+	fields["viewer_id"] = viewerID
+	return json.Marshal(fields)
+}
+
+func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.Conn, signKey ed25519.PrivateKey) {
 	var stateMu sync.RWMutex
 	// One WebRTC negotiation per connected viewer (keyed by the server-assigned viewer_id,
 	// or "" for legacy/unattributed messages), so multiple technicians can view the same
@@ -240,26 +294,30 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 					videoEncoder.Reset()
 
 					peer.OnICECandidate(func(candJSON string) {
-						candMsg := map[string]interface{}{
-							"type":       "candidate",
-							"session_id": r.creds.AgentID,
-							"viewer_id":  viewerID,
-							"candidate":  candJSON,
+						data, err := encodeSignal(webrtc.SignalMessage{
+							Type:      webrtc.SignalCandidate,
+							SessionID: r.creds.AgentID,
+							Candidate: candJSON,
+						}, viewerID, signKey, time.Now())
+						if err != nil {
+							log.Printf("[AgentStream] not sending ICE candidate to viewer %s: %v\n", viewerID, err)
+							return
 						}
-						data, _ := json.Marshal(candMsg)
 						_ = safeWrite(data)
 					})
 
 					answerSDP, aErr := peer.CreateAnswer(sdp)
 					if aErr == nil {
-						ansMsg := map[string]interface{}{
-							"type":       "answer",
-							"session_id": r.creds.AgentID,
-							"viewer_id":  viewerID,
-							"sdp":        answerSDP,
+						ansBytes, sErr := encodeSignal(webrtc.SignalMessage{
+							Type:      webrtc.SignalAnswer,
+							SessionID: r.creds.AgentID,
+							SDP:       answerSDP,
+						}, viewerID, signKey, time.Now())
+						if sErr != nil {
+							log.Printf("[AgentStream] not sending answer to viewer %s: %v\n", viewerID, sErr)
+						} else {
+							_ = safeWrite(ansBytes)
 						}
-						ansBytes, _ := json.Marshal(ansMsg)
-						_ = safeWrite(ansBytes)
 					} else {
 						log.Printf("[AgentStream] WebRTC answer note (direct WebSocket stream active): %v\n", aErr)
 					}
