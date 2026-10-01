@@ -145,19 +145,37 @@ func TestThrottleIsPerOrigin(t *testing.T) {
 	}
 }
 
-func TestSuccessClearsTheOrigin(t *testing.T) {
-	r, _ := newRegistry(t, 3, time.Minute)
+// A success does not refund failures. If it did, anyone holding a code of
+// their own -- and a link mints one on demand -- could reset their budget
+// after every few guesses and sweep the keyspace unthrottled.
+func TestSuccessDoesNotResetTheBudget(t *testing.T) {
+	r, c := newRegistry(t, 3, time.Minute)
+	link, err := r.IssueLink("attacker", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const origin = "192.0.2.50"
 	for i := 0; i < 2; i++ {
-		_, _ = r.Redeem("000000", "192.0.2.50")
+		_, _ = r.Redeem("000000", origin)
 	}
-	c, _ := r.Allocate("peer-2", time.Minute)
-	if _, err := r.Redeem(string(c), "192.0.2.50"); err != nil {
-		t.Fatalf("redeem after two fumbles: %v", err)
+	own, err := r.MintFromLink(link, origin, time.Minute)
+	if err != nil {
+		t.Fatalf("minting from one's own link: %v", err)
 	}
-	for i := 0; i < 3; i++ {
-		if _, err := r.Redeem("000000", "192.0.2.50"); !errors.Is(err, rendezvous.ErrNotFound) {
-			t.Fatalf("attempt %d after success = %v, want the full budget back", i+1, err)
-		}
+	if _, err := r.Redeem(string(own), origin); err != nil {
+		t.Fatalf("redeeming one's own code: %v", err)
+	}
+	if _, err := r.Redeem("000000", origin); !errors.Is(err, rendezvous.ErrNotFound) {
+		t.Fatalf("third failure = %v, want ErrNotFound", err)
+	}
+	if _, err := r.Redeem("000000", origin); !errors.Is(err, rendezvous.ErrThrottled) {
+		t.Fatalf("after three failures and a success in between = %v, want ErrThrottled", err)
+	}
+
+	// The budget comes back when the window closes, and only then.
+	c.advance(time.Minute)
+	if _, err := r.Redeem("000000", origin); !errors.Is(err, rendezvous.ErrNotFound) {
+		t.Fatalf("after the window = %v, want ErrNotFound", err)
 	}
 }
 

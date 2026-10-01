@@ -61,12 +61,6 @@ func (t *throttle) fail(origin string, now time.Time) {
 	a.failures++
 }
 
-// clear forgets an origin after it succeeds, so someone who mistypes a code
-// once and then gets it right starts clean.
-func (t *throttle) clear(origin string) {
-	delete(t.byOrig, originKey(origin))
-}
-
 // sweep drops closed windows, so an attacker cycling origins cannot grow the
 // map without bound.
 func (t *throttle) sweep(now time.Time) {

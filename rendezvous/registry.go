@@ -175,7 +175,12 @@ func (r *Registry) allocateLocked(owner PeerID, ttl time.Duration, now time.Time
 // Every outcome other than success costs origin one attempt -- a malformed
 // code, an unknown one, an expired one -- and an origin out of attempts is
 // refused even when its next guess is a live code; otherwise a throttled
-// guesser still wins the moment it guesses right. Success clears the origin.
+// guesser still wins the moment it guesses right.
+//
+// Success does not clear the origin's failures; they lapse when the window
+// does. Clearing them would let anyone holding a code of their own -- every
+// peer has one, and a link mints more -- reset their budget at will and sweep
+// the keyspace in bursts of MaxFailures-1.
 func (r *Registry) Redeem(input, origin string) (Match, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -199,7 +204,6 @@ func (r *Registry) Redeem(input, origin string) (Match, error) {
 		r.thr.fail(origin, now)
 		return Match{}, ErrExpired
 	}
-	r.thr.clear(origin)
 	return Match{Owner: e.owner, Code: c}, nil
 }
 
@@ -256,7 +260,6 @@ func (r *Registry) MintFromLink(t Token, origin string, codeTTL time.Duration) (
 	if err != nil {
 		return "", err
 	}
-	r.thr.clear(origin)
 	return c, nil
 }
 
