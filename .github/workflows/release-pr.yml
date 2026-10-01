@@ -63,7 +63,10 @@ jobs:
           if len(title) > 120:
               title = title[:117] + "..."
 
-          body = textwrap.dedent(f"""\
+          # The template is dedented before the commit log goes in. Substituting
+          # first left the log's lines at column 0, so dedent found no common
+          # indent and the whole body rendered as an indented code block.
+          template = textwrap.dedent("""\
               ## 🚀 Automated Release PR: `develop` → `main`
 
               Automated Pull Request created by `github-actions[bot]` to propose merging accumulated development changes into production.
@@ -77,19 +80,23 @@ jobs:
               ### 📝 Commit Log
               {commit_lines}
 
-              ### 🧪 Automated Quality Checks
-              - [x] DCO Sign-off validation
-              - [x] NOTICE coverage for vendored code
-              - [x] Go Build & Vet (`go build ./...`, `go vet ./...`)
-              - [x] Cross-compile Check (Windows & macOS)
-              - [x] Linter (`golangci-lint`)
-              - [x] Unit Tests & VP8 Oracle (`go test -race ./...`)
-              - [x] Firefox Browser WebRTC Decode Test
-              - [x] SAST Security Scans (`gosec` / `govulncheck`)
+              ### 🧪 Quality checks
+              These run on this pull request. Their verdict is in the Checks tab,
+              not in this list, which is written before any of them has finished.
+              - DCO Sign-off validation
+              - NOTICE coverage for vendored code
+              - Go Build & Vet (`go build ./...`, `go vet ./...`)
+              - Cross-compile Check (Windows & macOS)
+              - Linter (`golangci-lint`)
+              - Unit Tests & VP8 Oracle (`go test -race ./...`)
+              - Firefox Browser WebRTC Decode Test
+              - SAST Security Scans (`gosec` / `govulncheck`)
+              - CodeQL and dependency review
 
               ---
               > 👥 **Reviewer Requested**: `@mendsec` — Manual review and approval are strictly required before merging into `main`. Auto-merge is disabled.
-          """).strip()
+          """)
+          body = template.format(count=count, latest=latest, commit_lines=commit_lines).strip()
 
           pr_num = subprocess.check_output(["gh", "pr", "list", "--head", "develop", "--base", "main", "--json", "number", "-q", ".[0].number"]).decode().strip()
           if not pr_num or pr_num == "null":
