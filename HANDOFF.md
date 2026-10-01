@@ -130,15 +130,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `d168121`** — Merge pull request #25 from barahn/dependabot/github_actions/develop/github/codeql-action/analyze-2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2
+**`develop` is at `d4a5d73`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (78 commits) — Merge pull request #29 from barahn/claude/sharp-wright-u0s07v | `develop` | no checks reported |
-| [#26](https://github.com/barahn/remotekit/pull/26) | ci: bump anchore/sbom-action from 006b7ce8314066bdf1765b4500370d40fa6917a3 to 3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 | `dependabot/github_actions/develop/anchore/sbom-action-3ad7283483fc7af8ff2b4ea19663c2d5ca935e26` | Refresh the handoff status block ✅<br>[Review dependency changes ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36780920228/job/110110668185)<br>[Analyze (Go) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36780919881/job/110110667660)<br>Dependency review (disabled) ✅<br>gitleaks ✅<br>CodeQL (disabled) ✅<br>Build, Test & SAST ✅ |
-| [#27](https://github.com/barahn/remotekit/pull/27) | ci: bump actions/checkout from 4.4.0 to 7.0.1 | `dependabot/github_actions/develop/actions/checkout-7.0.1` | Refresh the handoff status block ✅<br>[Analyze (Go) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36780961536/job/110110806212)<br>gitleaks ✅<br>[Review dependency changes ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36780961621/job/110110805404)<br>CodeQL (disabled) ✅<br>Build, Test & SAST ✅<br>Dependency review (disabled) ✅ |
+| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (92 commits) — Merge pull request #27 from barahn/dependabot/github_actions/deve... | `develop` | no checks reported |
 
 <!-- END GENERATED: handoff status -->
 
