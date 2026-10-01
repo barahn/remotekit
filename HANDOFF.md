@@ -130,13 +130,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `a75d1dd`** — Merge pull request #32 from barahn/claude/sharp-wright-u0s07v
+**`develop` is at `27efeab`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (103 commits) — Merge pull request #31 from barahn/claude/sharp-wright-u0s07v | `develop` | [Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36914841360/job/110546150360)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36914840824/job/110546148359)<br>Review dependency changes ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ⏳ (queued)<br>Analyze (Go) ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36914831599/job/110546121230)<br>open-pr ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>gitleaks ⏳ (in_progress) |
+| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (110 commits) — Merge pull request #32 from barahn/claude/sharp-wright-u0s07v | `develop` | no checks reported |
 
 <!-- END GENERATED: handoff status -->
 
