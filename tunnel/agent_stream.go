@@ -123,6 +123,17 @@ func signalHeaders(creds *AgentCredentials) (http.Header, error) {
 	return h, nil
 }
 
+// logSafe strips line breaks from a value that came off the wire before it
+// is logged. viewer_id is chosen by whoever is on the other end of the
+// signalling socket; logged as is, a "\n" in it would forge log lines.
+// Numbers and booleans decoded from a message go through it too, formatted
+// first: they cannot carry a line break, but CodeQL's log-injection query
+// cannot tell, and one rule for every peer-supplied value is easier to keep.
+func logSafe(s string) string {
+	s = strings.ReplaceAll(s, "\n", "")
+	return strings.ReplaceAll(s, "\r", "")
+}
+
 // signalTTL is how long a signed answer or candidate stays valid. Negotiation
 // finishes in seconds; the margin covers a slow relay and clock skew without
 // leaving a long replay window.
@@ -277,7 +288,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 					// answer carries no video and the browser waits forever for
 					// a stream that was never offered back.
 					if tErr := peer.CreateVideoTrack("barahn-screen", "screen"); tErr != nil {
-						log.Printf("[AgentStream] video track unavailable for viewer %s, falling back to WebSocket frames: %v\n", viewerID, tErr)
+						log.Printf("[AgentStream] video track unavailable for viewer %s, falling back to WebSocket frames: %v\n", logSafe(viewerID), tErr)
 					} else {
 						// A receiver that cannot decode asks for an intra frame.
 						// Reset is the right answer to that: it forces a key
@@ -300,7 +311,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 							Candidate: candJSON,
 						}, viewerID, signKey, time.Now())
 						if err != nil {
-							log.Printf("[AgentStream] not sending ICE candidate to viewer %s: %v\n", viewerID, err)
+							log.Printf("[AgentStream] not sending ICE candidate to viewer %s: %v\n", logSafe(viewerID), err)
 							return
 						}
 						_ = safeWrite(data)
@@ -314,7 +325,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 							SDP:       answerSDP,
 						}, viewerID, signKey, time.Now())
 						if sErr != nil {
-							log.Printf("[AgentStream] not sending answer to viewer %s: %v\n", viewerID, sErr)
+							log.Printf("[AgentStream] not sending answer to viewer %s: %v\n", logSafe(viewerID), sErr)
 						} else {
 							_ = safeWrite(ansBytes)
 						}
@@ -474,10 +485,10 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			stateMu.Lock()
 			if msgType == "video_ok" {
 				videoConfirmed[viewerID] = true
-				log.Printf("[AgentStream] viewer %s is decoding WebRTC video; stopping its JPEG fallback\n", viewerID)
+				log.Printf("[AgentStream] viewer %s is decoding WebRTC video; stopping its JPEG fallback\n", logSafe(viewerID))
 			} else {
 				delete(videoConfirmed, viewerID)
-				log.Printf("[AgentStream] viewer %s reports stalled video; resuming the JPEG fallback\n", viewerID)
+				log.Printf("[AgentStream] viewer %s reports stalled video; resuming the JPEG fallback\n", logSafe(viewerID))
 			}
 			stateMu.Unlock()
 
@@ -501,17 +512,17 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			w, _ := signal["width"].(float64)
 			h, _ := signal["height"].(float64)
 			if w > 0 && h > 0 {
-				log.Printf("[AgentStream] Technician browser viewport size: %.0fx%.0f\n", w, h)
+				log.Printf("[AgentStream] Technician browser viewport size: %sx%s\n", logSafe(fmt.Sprintf("%.0f", w)), logSafe(fmt.Sprintf("%.0f", h)))
 			}
 
 		case "chat":
 			text, _ := signal["text"].(string)
 			sender, _ := signal["sender"].(string)
-			log.Printf("[AgentStream] Chat message from %s: %s\n", sender, text)
+			log.Printf("[AgentStream] Chat message from %s: %s\n", logSafe(sender), logSafe(text))
 
 		case "focus_state":
 			focused, _ := signal["focused"].(bool)
-			log.Printf("[AgentStream] Session focus state changed: focused=%v\n", focused)
+			log.Printf("[AgentStream] Session focus state changed: focused=%s\n", logSafe(fmt.Sprint(focused)))
 
 		case "clipboard":
 			text, _ := signal["text"].(string)
@@ -528,7 +539,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			sha, _ := signal["sha256"].(string)
 			if id != "" && name != "" {
 				transferMgr.StartSession(id, name, int64(size), sha)
-				log.Printf("[AgentStream] Started file transfer session %s (%s, %.0f bytes)\n", id, name, size)
+				log.Printf("[AgentStream] Started file transfer session %s (%s, %s bytes)\n", logSafe(id), logSafe(name), logSafe(fmt.Sprintf("%.0f", size)))
 			}
 
 		case "file_chunk":
@@ -556,9 +567,9 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				errStr := ""
 				if err != nil {
 					errStr = err.Error()
-					log.Printf("[AgentStream] File assembly error for %s: %v\n", id, err)
+					log.Printf("[AgentStream] File assembly error for %s: %v\n", logSafe(id), err)
 				} else {
-					log.Printf("[AgentStream] File transfer %s completed! Saved to: %s (SHA: %s)\n", id, destPath, sha)
+					log.Printf("[AgentStream] File transfer %s completed! Saved to: %s (SHA: %s)\n", logSafe(id), logSafe(destPath), sha)
 				}
 				resMsg, _ := json.Marshal(map[string]interface{}{
 					"type":        "file_saved",

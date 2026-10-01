@@ -96,3 +96,9 @@ func TestSignalSigningKey(t *testing.T) {
 		t.Error("missing key file: want an error rather than signing nothing")
 	}
 }
+
+func TestLogSafeStripsLineBreaks(t *testing.T) {
+	if got := logSafe("v1\n[AgentStream] forged\r\nline"); got != "v1[AgentStream] forgedline" {
+		t.Errorf("logSafe = %q", got)
+	}
+}
