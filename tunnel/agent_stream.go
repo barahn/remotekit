@@ -126,6 +126,9 @@ func signalHeaders(creds *AgentCredentials) (http.Header, error) {
 // logSafe strips line breaks from a value that came off the wire before it
 // is logged. viewer_id is chosen by whoever is on the other end of the
 // signalling socket; logged as is, a "\n" in it would forge log lines.
+// Numbers and booleans decoded from a message go through it too, formatted
+// first: they cannot carry a line break, but CodeQL's log-injection query
+// cannot tell, and one rule for every peer-supplied value is easier to keep.
 func logSafe(s string) string {
 	s = strings.ReplaceAll(s, "\n", "")
 	return strings.ReplaceAll(s, "\r", "")
@@ -509,7 +512,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			w, _ := signal["width"].(float64)
 			h, _ := signal["height"].(float64)
 			if w > 0 && h > 0 {
-				log.Printf("[AgentStream] Technician browser viewport size: %.0fx%.0f\n", w, h)
+				log.Printf("[AgentStream] Technician browser viewport size: %sx%s\n", logSafe(fmt.Sprintf("%.0f", w)), logSafe(fmt.Sprintf("%.0f", h)))
 			}
 
 		case "chat":
@@ -519,7 +522,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 
 		case "focus_state":
 			focused, _ := signal["focused"].(bool)
-			log.Printf("[AgentStream] Session focus state changed: focused=%v\n", focused)
+			log.Printf("[AgentStream] Session focus state changed: focused=%s\n", logSafe(fmt.Sprint(focused)))
 
 		case "clipboard":
 			text, _ := signal["text"].(string)
@@ -536,7 +539,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			sha, _ := signal["sha256"].(string)
 			if id != "" && name != "" {
 				transferMgr.StartSession(id, name, int64(size), sha)
-				log.Printf("[AgentStream] Started file transfer session %s (%s, %d bytes)\n", logSafe(id), logSafe(name), int64(size))
+				log.Printf("[AgentStream] Started file transfer session %s (%s, %s bytes)\n", logSafe(id), logSafe(name), logSafe(fmt.Sprintf("%.0f", size)))
 			}
 
 		case "file_chunk":
@@ -564,7 +567,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				errStr := ""
 				if err != nil {
 					errStr = err.Error()
-					log.Printf("[AgentStream] File assembly error for %s: %v\n", id, err)
+					log.Printf("[AgentStream] File assembly error for %s: %v\n", logSafe(id), err)
 				} else {
 					log.Printf("[AgentStream] File transfer %s completed! Saved to: %s (SHA: %s)\n", logSafe(id), logSafe(destPath), sha)
 				}
