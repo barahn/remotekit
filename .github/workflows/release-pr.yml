@@ -83,7 +83,7 @@ jobs:
               ### 🧪 Quality checks
               These run on this pull request. Their verdict is in the Checks tab,
               not in this list, which is written before any of them has finished.
-              - DCO Sign-off validation
+              - DCO Sign-off validation (bot-authored commits are exempt)
               - NOTICE coverage for vendored code
               - Go Build & Vet (`go build ./...`, `go vet ./...`)
               - Cross-compile Check (Windows & macOS)
