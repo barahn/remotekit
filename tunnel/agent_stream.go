@@ -33,6 +33,12 @@ type AgentStreamRunner struct {
 	// handlers holds message types layered on top of the core session by a
 	// consumer; see Handle.
 	handlers map[string]MessageHandler
+
+	// granted is what the person at the machine has consented to; see Grant.
+	// warned remembers which refusals have been logged.
+	consentMu sync.RWMutex
+	granted   map[string]bool
+	warned    map[string]bool
 }
 
 func NewAgentStreamRunner(creds *AgentCredentials, insecureSkipVerify bool) *AgentStreamRunner {
@@ -220,6 +226,9 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 	defer clipCancel()
 
 	go clipWatcher.Start(clipCtx, func(newText string) {
+		if !r.allow(PermissionClipboard, "host clipboard sync") {
+			return
+		}
 		clipMsg, err := json.Marshal(map[string]interface{}{
 			"type":       "clipboard",
 			"session_id": r.creds.AgentID,
@@ -526,7 +535,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 
 		case "clipboard":
 			text, _ := signal["text"].(string)
-			if text != "" {
+			if text != "" && r.allow(PermissionClipboard, "clipboard write") {
 				clipWatcher.UpdateLastText(text)
 				_ = clipMgr.SetText(ctx, text)
 				log.Printf("[AgentStream] Received and applied clipboard sync (%d bytes)\n", len(text))
@@ -537,7 +546,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			name, _ := signal["name"].(string)
 			size, _ := signal["size"].(float64)
 			sha, _ := signal["sha256"].(string)
-			if id != "" && name != "" {
+			if id != "" && name != "" && r.allow(PermissionFileTransfer, "file transfer") {
 				transferMgr.StartSession(id, name, int64(size), sha)
 				log.Printf("[AgentStream] Started file transfer session %s (%s, %s bytes)\n", logSafe(id), logSafe(name), logSafe(fmt.Sprintf("%.0f", size)))
 			}
@@ -546,7 +555,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			id, _ := signal["transfer_id"].(string)
 			idx, _ := signal["index"].(float64)
 			b64Data, _ := signal["data"].(string)
-			if id != "" {
+			if id != "" && r.allow(PermissionFileTransfer, "file chunk") {
 				prog, done, err := transferMgr.AddChunkBase64(id, int(idx), b64Data)
 				if err != nil {
 					log.Printf("[AgentStream] File chunk error: %v\n", err)
@@ -562,7 +571,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 
 		case "file_complete":
 			id, _ := signal["transfer_id"].(string)
-			if id != "" {
+			if id != "" && r.allow(PermissionFileTransfer, "file save") {
 				destPath, sha, err := transferMgr.AssembleFile(id)
 				errStr := ""
 				if err != nil {
@@ -582,6 +591,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			}
 
 		case "close":
+			r.Revoke()
 			stateMu.Lock()
 			for id, peer := range peers {
 				_ = peer.Close()
@@ -614,6 +624,9 @@ func boolPayload(payload map[string]interface{}, key string) bool {
 }
 
 func (r *AgentStreamRunner) handleInputPayload(payload map[string]interface{}) {
+	if !r.allow(PermissionRemoteControl, "input") {
+		return
+	}
 	evtType, _ := payload["type"].(string)
 
 	switch evtType {
