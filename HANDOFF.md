@@ -130,14 +130,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `4313493`** — docs: refresh the handoff status block
+**`develop` is at `a8692bd`** — Merge pull request #30 from barahn/claude/sharp-wright-u0s07v
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (93 commits) — docs: refresh the handoff status block | `develop` | Build, Test & SAST ✅<br>[Analyze (Go) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36879352903/job/110431171778)<br>CodeQL (disabled) ✅<br>[Review dependency changes ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36879352531/job/110431169471)<br>Dependency review (disabled) ✅<br>gitleaks ✅<br>Build, Test & SAST ✅ |
-| [#30](https://github.com/barahn/remotekit/pull/30) | rendezvous throttle bypass; bot commits signed by GitHub | `claude/sharp-wright-u0s07v` | Build, Test & SAST ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>[Analyze (Go) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36882282330/job/110436785399)<br>[Review dependency changes ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36882282371/job/110436784658)<br>gitleaks ⏳ (in_progress)<br>CodeQL (disabled) ✅<br>Dependency review (disabled) ✅ |
+| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (93 commits) — docs: refresh the handoff status block | `develop` | [Analyze (Go) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36884274216/job/110443475954)<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>[Review dependency changes ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36884274208/job/110443474724)<br>CodeQL (disabled) ⏳ (in_progress)<br>Dependency review (disabled) ✅<br>gitleaks ⏳ (in_progress)<br>open-pr ⏳ (in_progress)<br>[Analyze (Go) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36884270177/job/110443459348)<br>CodeQL (disabled) ✅<br>Build, Test & SAST ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
