@@ -12,7 +12,14 @@ import (
 // TestRateControlHitsItsTarget checks that the bitrate parameter means what it
 // says: over a second of frames the stream should land near the target rather
 // than wherever the content happens to put it.
+//
+// It drives a second of scrolling 720p through the encoder twice, which under
+// -race costs minutes and exercises no concurrency the wavefront tests do not,
+// so -short skips it; the CI job that runs it in full does so without -race.
 func TestRateControlHitsItsTarget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("rate-control run takes minutes under -race; skipped under -short")
+	}
 	path := os.Getenv("REAL_SRC")
 	w, h := 3840, 2160
 	if os.Getenv("W") != "" {

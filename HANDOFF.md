@@ -131,13 +131,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `27efeab`** — docs: refresh the handoff status block
+**`develop` is at `8431040`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (110 commits) — Merge pull request #32 from barahn/claude/sharp-wright-u0s07v | `develop` | no checks reported |
+| [#33](https://github.com/barahn/remotekit/pull/33) | tunnel: enforce session consent in AgentStreamRunner | `feat/phase-0-consent-enforcement` | Build, Test & SAST ✅<br>CodeQL ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36923350289/job/110574594288)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36923350291/job/110574533551)<br>Review dependency changes ✅<br>gitleaks ✅<br>Analyze (Go) ✅ |
+| [#37](https://github.com/barahn/remotekit/pull/37) | chore(release): merge develop → main (131 commits) — Merge pull request #34 from barahn/fix/aikido-security-sast-1310... | `develop` | Build, Test & SAST ⏳ (queued) |
 
 <!-- END GENERATED: handoff status -->
 
