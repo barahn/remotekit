@@ -131,13 +131,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `0be6b5f`** — Merge pull request #33 from barahn/feat/phase-0-consent-enforcement
+**`develop` is at `13ab89b`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#37](https://github.com/barahn/remotekit/pull/37) | chore(release): merge develop → main (131 commits) — Merge pull request #34 from barahn/fix/aikido-security-sast-1310... | `develop` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36974745242/job/110736022231)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36974745283/job/110736021753)<br>Build, Test & SAST ⏳ (in_progress)<br>DCO Sign-off ⏳ (queued)<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36974741094/job/110736008833)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36974741117/job/110736008343)<br>Build, Test & SAST ⏳ (in_progress)<br>open-pr ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress) |
+| [#37](https://github.com/barahn/remotekit/pull/37) | chore(release): merge develop → main (137 commits) — Merge pull request #33 from barahn/feat/phase-0-consent-enforcement | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36974758699/job/110736079914)<br>Build, Test & SAST ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
