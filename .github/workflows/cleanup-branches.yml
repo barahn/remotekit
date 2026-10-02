@@ -1,0 +1,187 @@
+name: Cleanup Stale Branches
+
+on:
+  # Automatically clean up the branch when a pull request is merged or closed.
+  pull_request:
+    types: [closed]
+  # Periodic cleanup to catch any leftover merged branches or branches merged outside the UI.
+  schedule:
+    - cron: '0 3 * * 0' # Every Sunday at 03:00 UTC
+  # Manual dispatch for maintainers, with dry-run support.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (preview branches to delete without modifying anything)'
+        type: boolean
+        default: false
+      delete_unmerged_closed:
+        description: 'Also delete branches associated with closed-unmerged PRs'
+        type: boolean
+        default: false
+
+concurrency:
+  group: cleanup-branches
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  cleanup-pr-branch:
+    name: Cleanup merged PR branch
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - name: Delete head branch if safe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          IS_FORK: ${{ github.event.pull_request.head.repo.full_name != github.repository }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          IS_MERGED: ${{ github.event.pull_request.merged }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # 1. Do not touch forks
+          if [ "$IS_FORK" = "true" ]; then
+            echo "Branch belongs to an external fork ($HEAD_REF); skipping."
+            exit 0
+          fi
+
+          # 2. Never touch protected branches
+          case "$HEAD_REF" in
+            main|master|develop)
+              echo "Protected branch $HEAD_REF cannot be deleted; skipping."
+              exit 0
+              ;;
+          esac
+
+          # 3. Only delete if PR was merged
+          if [ "$IS_MERGED" != "true" ]; then
+            echo "PR #$PR_NUMBER was closed without being merged; keeping branch $HEAD_REF."
+            exit 0
+          fi
+
+          echo "Deleting merged head branch '$HEAD_REF' for PR #$PR_NUMBER..."
+          gh api --method DELETE "repos/$REPO/git/refs/heads/$HEAD_REF" || {
+            echo "Branch $HEAD_REF already deleted or inaccessible."
+          }
+
+  cleanup-batch:
+    name: Batch cleanup of merged branches
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Scan and cleanup stale branches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          DELETE_CLOSED: ${{ github.event.inputs.delete_unmerged_closed || 'false' }}
+        run: |
+          set -euo pipefail
+
+          DEFAULT_BRANCH="$(gh repo view "$REPO" --json defaultBranchRef -q .defaultBranchRef.name)"
+          echo "Repository: $REPO"
+          echo "Default branch: $DEFAULT_BRANCH"
+          echo "Dry run: $DRY_RUN"
+
+          is_protected() {
+            local b="$1"
+            case "$b" in
+              main|master|develop|"$DEFAULT_BRANCH") return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          # Pre-fetch all PRs in a single query
+          PRS_JSON="$(gh pr list --repo "$REPO" --state all --limit 500 --json number,headRefName,state)"
+
+          # Pre-fetch all remote branches
+          BRANCHES="$(gh api "repos/$REPO/branches" --paginate -q '.[].name')"
+
+          TO_DELETE=()
+
+          while IFS= read -r branch; do
+            [ -z "$branch" ] && continue
+            if is_protected "$branch"; then
+              continue
+            fi
+
+            # Check if there is an active open PR
+            open_prs="$(jq -r --arg b "$branch" '.[] | select(.headRefName == $b and .state == "OPEN") | .number' <<<"$PRS_JSON")"
+            if [ -n "$open_prs" ]; then
+              echo "Branch $branch has open PR(s) #$open_prs; keeping."
+              continue
+            fi
+
+            # Check if branch has merged PRs
+            merged_prs="$(jq -r --arg b "$branch" '.[] | select(.headRefName == $b and .state == "MERGED") | .number' <<<"$PRS_JSON")"
+
+            is_eligible=false
+            reason=""
+
+            if [ -n "$merged_prs" ]; then
+              is_eligible=true
+              merged_list="$(echo "$merged_prs" | paste -sd, - | sed 's/,/, #/g')"
+              reason="PR #${merged_list} merged"
+            elif git rev-parse --verify --quiet "origin/$DEFAULT_BRANCH" >/dev/null && \
+                 git rev-parse --verify --quiet "origin/$branch" >/dev/null && \
+                 git merge-base --is-ancestor "origin/$branch" "origin/$DEFAULT_BRANCH" 2>/dev/null; then
+              is_eligible=true
+              reason="git ancestor of $DEFAULT_BRANCH"
+            elif [ "$DELETE_CLOSED" = "true" ]; then
+              closed_prs="$(jq -r --arg b "$branch" '.[] | select(.headRefName == $b and .state == "CLOSED") | .number' <<<"$PRS_JSON")"
+              if [ -n "$closed_prs" ]; then
+                is_eligible=true
+                closed_list="$(echo "$closed_prs" | paste -sd, - | sed 's/,/, #/g')"
+                reason="PR #${closed_list} closed without merge"
+              fi
+            fi
+
+            if [ "$is_eligible" = true ]; then
+              TO_DELETE+=("$branch ($reason)")
+            fi
+          done <<<"$BRANCHES"
+
+          if [ ${#TO_DELETE[@]} -eq 0 ]; then
+            echo "No stale branches to clean."
+            exit 0
+          fi
+
+          echo "Found ${#TO_DELETE[@]} stale branch(es):"
+          for item in "${TO_DELETE[@]}"; do
+            echo "  - $item"
+          done
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry-run mode: skipping actual deletion."
+            exit 0
+          fi
+
+          echo "Deleting stale branches..."
+          DELETED_COUNT=0
+          FAILED_COUNT=0
+          for item in "${TO_DELETE[@]}"; do
+            b_name="${item%% *}"
+            if gh api --method DELETE "repos/$REPO/git/refs/heads/$b_name"; then
+              echo "✅ Deleted $b_name"
+              DELETED_COUNT=$((DELETED_COUNT + 1))
+            else
+              echo "❌ Failed to delete $b_name"
+              FAILED_COUNT=$((FAILED_COUNT + 1))
+            fi
+          done
+
+          echo "Cleanup summary: $DELETED_COUNT branch(es) deleted, $FAILED_COUNT failed."
