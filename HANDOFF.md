@@ -131,9 +131,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `6135432`** — docs: refresh the handoff status block
+**`develop` is at `36df25f`** — docs: refresh the handoff status block
 
-No open pull requests.
+### Open pull requests
+
+| PR | Title | Branch | CI on head |
+|---|---|---|---|
+| [#38](https://github.com/barahn/remotekit/pull/38) | ci: automate stale branch cleanup and add developer script | `ci/stale-branch-cleanup` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37041604357/job/110952806442)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37041604447/job/110952806437)<br>Refresh the handoff status block ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>DCO Sign-off ✅<br>Build, Test & SAST ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
