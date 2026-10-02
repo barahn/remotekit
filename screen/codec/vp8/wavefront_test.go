@@ -21,9 +21,15 @@ func TestWavefrontIsBitExact(t *testing.T) {
 		{320, 192}, // small: several rows, few columns, so rows block often
 		{640, 480},
 		{1280, 720},
+		{1920, 1080}, // 1080 is not a multiple of 16: the last row is partial
 	}
 
 	for _, size := range sizes {
+		// 720p and above add nothing the two smaller sizes do not already
+		// cover, and under -race they are nearly all of this test's time.
+		if testing.Short() && size.w >= 1280 {
+			continue
+		}
 		encode := func(threshold int) [][]byte {
 			saved := wavefrontThreshold
 			wavefrontThreshold = threshold
