@@ -73,7 +73,8 @@ Report vulnerabilities privately to
 [SECURITY.md](SECURITY.md). Every push and pull request runs gosec,
 govulncheck, gitleaks, a dependency licence gate and the NOTICE check, with
 every action pinned to a commit SHA; CodeQL and dependency review are wired in
-and turn on when the repository has code scanning available. What each gate is
+and turn on when the repository has code scanning available, and Aikido Security
+provides unified SAST, dependency and secret scanning. What each gate is
 for is in [docs/devsecops.md](docs/devsecops.md).
 
 ## Licence

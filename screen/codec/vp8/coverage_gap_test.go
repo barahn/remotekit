@@ -40,6 +40,11 @@ func TestConformanceAcrossContentAndSize(t *testing.T) {
 	for name, src := range sources {
 		for _, size := range sizes {
 			t.Run(fmt.Sprintf("%s/%dx%d", name, size.w, size.h), func(t *testing.T) {
+				// 720p is most of this test's time under -race and adds no
+				// concurrency; CI runs it in full in a step without -race.
+				if testing.Short() && size.w >= 1280 {
+					t.Skip("720p takes tens of seconds under -race; skipped under -short")
+				}
 				enc, err := NewEncoder(size.w, size.h, 30)
 				if err != nil {
 					t.Fatal(err)

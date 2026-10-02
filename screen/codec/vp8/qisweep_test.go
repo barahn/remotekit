@@ -27,7 +27,13 @@ func TestConformanceAcrossQuantisers(t *testing.T) {
 	}
 
 	const w, h = 320, 240
-	for _, qi := range []int{0, 4, 24, 63, 64, 96, 127} {
+	qis := []int{0, 4, 24, 63, 64, 96, 127}
+	if testing.Short() {
+		// The ends and the start of the coarse half; CI runs the full sweep
+		// in a step without -race.
+		qis = []int{0, 64, 127}
+	}
+	for _, qi := range qis {
 		enc, err := NewEncoder(w, h, 30)
 		if err != nil {
 			t.Fatal(err)

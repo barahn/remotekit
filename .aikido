@@ -1,0 +1,14 @@
+# Aikido Security repository configuration
+# Reference: https://docs.aikido.dev/
+
+# Path exclusions: paths matching these substrings are excluded from Aikido scans.
+# Note: Aikido uses simple substring matching for paths and respects .gitignore by default.
+exclude:
+  paths:
+    - .aikidotmp/
+
+# Specific CVE ignores with documented justification:
+# ignore:
+#   cves:
+#     CVE-YYYY-XXXXX:
+#       reason: "Explanation of why this CVE is not applicable or mitigated"

@@ -81,9 +81,10 @@ so; the signalling proposal (`docs/decentralised-signalling.md`) and its
 engineering breakdown (`docs/implementation-phases.md`); this brief with its
 generated status block; the `develop`/`main` branch model with the
 release-PR and sync workflows; and CI extended to `develop` and to the commits
-those workflows push; and Phase 0a plus the Phase 0 signing primitive
-(barahn/remotekit#17), described in §5. Nothing past that has been
-implemented.
+those workflows push; Phase 0a plus the Phase 0 signing primitive
+(barahn/remotekit#17), described in §5; and Aikido Security integration
+via the GitHub App with repository configuration in `.aikido`. Nothing past
+that has been implemented.
 
 ### The CI pipeline (`.github/workflows/ci.yml`, single job, 20 min cap)
 
@@ -130,13 +131,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `27efeab`** — docs: refresh the handoff status block
+**`develop` is at `13ab89b`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#14](https://github.com/barahn/remotekit/pull/14) | chore(release): merge develop → main (110 commits) — Merge pull request #32 from barahn/claude/sharp-wright-u0s07v | `develop` | no checks reported |
+| [#37](https://github.com/barahn/remotekit/pull/37) | chore(release): merge develop → main (137 commits) — Merge pull request #33 from barahn/feat/phase-0-consent-enforcement | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36974758699/job/110736079914)<br>Build, Test & SAST ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
@@ -160,9 +161,12 @@ Ordered work, as proposed:
   `bark.ConsentRequestPayload.RequestedPermissions` (`bark/bark.go`, *defined
   and never enforced*) in `handleInputPayload`, clipboard writes,
   `file_complete` and `OpenReverseStream`. **Already done:** the signing
-  primitive itself — see "What #17 landed" below. **Still open:** the device
-  keypair, wiring `Sign`/`VerifyFrom` into the signalling loop, verifying
-  `PublicKey`, and consent enforcement.
+  primitive, the device keypair at enrolment, signing of the agent's outgoing
+  answers and candidates, and consent enforcement for input, clipboard and
+  file transfer — see "What #17 landed" and "Consent enforcement" below.
+  **Still open:** verifying signed messages on receipt (`VerifyFrom` plus a
+  `NonceCache`), verifying `PublicKey` server-side, and consent on
+  `OpenReverseStream`.
 - **Phase 1 — move the data plane off the server.** Add a DataChannel to
   `webrtc/peer.go` (video track only today) and carry input, clipboard and
   `transfer` over it with `bark.Envelope` as the format. Keep the JPEG fallback
@@ -211,14 +215,32 @@ work above.
   ACME renewal onto a new key, or a load balancer with differing backend keys,
   into a fleet-wide outage recoverable only by re-enrolling every agent. Do
   not "tighten" this without solving key rotation first.
-- **Signing primitive, not yet wired in.** `webrtc/signed.go`: `SignalMessage`
+- **Signing primitive.** `webrtc/signed.go`: `SignalMessage`
   gains `PubKey`, `Nonce`, `IssuedAt`, `ExpiresAt`, `Sig` (Ed25519), with
   `Sign`, `Verify`, `VerifyFrom` and a `NonceCache`. Gate actions on
   `VerifyFrom` with the peer's known key, never on `Verify` alone, and call
   `NonceCache.CheckAndRecord` only after verification succeeds. Signed bytes
   are a length-prefixed layout behind the `remotekit/signal/v1` domain tag, not
   JSON; bump the tag if that layout ever changes. Unsigned messages encode
-  exactly as before. Nothing calls `Sign` or `Verify` yet.
+  exactly as before. The agent signs its outgoing answers and candidates
+  (`encodeSignal`); nothing yet calls `VerifyFrom` or `NonceCache` on a message
+  it receives.
+
+### Consent enforcement — a behaviour change for consumers
+
+`AgentStreamRunner` keeps the permissions the person at the machine has
+granted (`tunnel/consent.go`) and is **deny-by-default**: `remote_control`
+gates `handleInputPayload`, `clipboard` gates clipboard writes and the
+host-to-technician clipboard watcher, `file_transfer` gates `file_start`,
+`file_chunk` and `file_complete`. A consumer must show its own consent prompt
+(a `bark.ConsentRequestPayload` arrives through `Handle`) and call
+`Grant(...)` with what the user accepted; without it input, clipboard and
+files silently do nothing, with one log line per refused permission. Chirp and
+the platform both need that change when they take this version. Nothing on the
+signalling socket can grant — the server is not who consents — and a `close`
+message revokes everything. `screen_view` is declared but not enforced, and
+`TunnelClient.OpenReverseStream` has no consent check beyond the port
+allowlist.
 
 Also open, unrelated to the above: macOS is stubbed out —
 `input/input_darwin.go` and `screen/capture_darwin.go` both return
@@ -235,12 +257,12 @@ hard part; discuss before starting.
    The roadmap is structured into Phase 0a (defect remediation), Phase 0b (enrolment
    identity & signing), Phase 1 (DataChannel data plane), Phase 2 (pluggable signalling),
    and Phase 3 (relays & transports).
-3. Phase 0a is done (#17). The next slice is Phase 0b: generate a device
-   keypair at enrolment, send its public key in the `public_key` field that
-   enrolment already carries, verify `AgentRegistration.PublicKey` server-side,
-   and wire `Sign`/`VerifyFrom` plus a `NonceCache` into the signalling loop.
-   Consent enforcement (`RequestedPermissions`) is independent of that and can
-   go first or alongside.
+3. Phase 0a is done (#17), and so is consent enforcement for input, clipboard
+   and file transfer. The next slice is the rest of Phase 0b: verify
+   `AgentRegistration.PublicKey` server-side and wire `VerifyFrom` plus a
+   `NonceCache` into the receiving side of the signalling loop. Check the
+   current code before starting — the device keypair and outgoing signing
+   already exist.
 
 Before every push: run the repo's own checks locally —
 `go build ./...`, `go vet ./...`, `golangci-lint run`, and

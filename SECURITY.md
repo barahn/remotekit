@@ -85,10 +85,12 @@ which, report here; it will be routed.
 | DCO sign-off | Is the origin of each commit certified | every PR |
 | CodeQL (`security-extended`) | Does untrusted data reach a dangerous sink | once `CODE_SCANNING` is set |
 | Dependency Review | What does this pull request *add* | once `CODE_SCANNING` is set |
+| Aikido Security | Unified SAST, dependency vulnerabilities, and secrets | every push and PR (via GitHub App) |
 
 CodeQL and dependency review need GitHub Advanced Security on a private
 repository, so they are wired in but off until the `CODE_SCANNING` variable is
-set; see [docs/devsecops.md](docs/devsecops.md).
+set; Aikido Security provides unified scanning across SAST, dependencies, and
+secrets; see [docs/devsecops.md](docs/devsecops.md).
 
 None of these is a substitute for reading the diff. They catch the classes of
 mistake a reviewer reliably misses; they do not catch an injection check that
