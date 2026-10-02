@@ -130,7 +130,7 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `98aaa46`** — docs: refresh the handoff status block
+**`develop` is at `15b2efc`** — Merge pull request #35 from barahn/ci/dco-job-skip-bots
 
 ### Open pull requests
 
@@ -138,8 +138,7 @@ _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 |---|---|---|---|
 | [#33](https://github.com/barahn/remotekit/pull/33) | tunnel: enforce session consent in AgentStreamRunner | `feat/phase-0-consent-enforcement` | Build, Test & SAST ✅<br>CodeQL ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36923350289/job/110574594288)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36923350291/job/110574533551)<br>Review dependency changes ✅<br>gitleaks ✅<br>Analyze (Go) ✅ |
 | [#34](https://github.com/barahn/remotekit/pull/34) | [Aikido] AI Fix for Possible command injection via shell script | `fix/aikido-security-sast-131086227-kj8m` | CodeQL ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36925877081/job/110582983245)<br>Refresh the handoff status block ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36925877077/job/110582941933)<br>Review dependency changes ✅<br>Analyze (Go) ✅<br>[Build, Test & SAST ❌ failure](https://github.com/barahn/remotekit/actions/runs/36925877041/job/110582939066)<br>gitleaks ✅ |
-| [#35](https://github.com/barahn/remotekit/pull/35) | ci: move DCO check to its own job and skip bot-authored commits | `ci/dco-job-skip-bots` | CodeQL ✅<br>Refresh the handoff status block ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36927135668/job/110587132392)<br>DCO Sign-off ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36927135495/job/110587132096)<br>Build, Test & SAST ✅<br>gitleaks ✅<br>Analyze (Go) ✅<br>Review dependency changes ✅ |
-| [#36](https://github.com/barahn/remotekit/pull/36) | ci: stop running the two slowest vp8 tests under -race | `ci/speed-up-vp8-tests` | Refresh the handoff status block ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36930085312/job/110596923738)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36930085318/job/110596923156)<br>Analyze (Go) ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress) |
+| [#36](https://github.com/barahn/remotekit/pull/36) | ci: stop running the two slowest vp8 tests under -race | `ci/speed-up-vp8-tests` | CodeQL ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36933986575/job/110609797594)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36933986587/job/110609796842)<br>gitleaks ✅<br>Analyze (Go) ✅<br>Build, Test & SAST ✅<br>Review dependency changes ✅ |
 
 <!-- END GENERATED: handoff status -->
 
