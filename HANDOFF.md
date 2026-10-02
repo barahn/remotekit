@@ -82,9 +82,11 @@ engineering breakdown (`docs/implementation-phases.md`); this brief with its
 generated status block; the `develop`/`main` branch model with the
 release-PR and sync workflows; and CI extended to `develop` and to the commits
 those workflows push; Phase 0a plus the Phase 0 signing primitive
-(barahn/remotekit#17), described in §5; and Aikido Security integration
-via the GitHub App with repository configuration in `.aikido`. Nothing past
-that has been implemented.
+(barahn/remotekit#17), described in §5; Aikido Security integration
+via the GitHub App with repository configuration in `.aikido`; and
+automated stale branch cleanup via `.github/workflows/cleanup-branches.yml`,
+`scripts/cleanup-branches.sh`, and GitHub repository `delete_branch_on_merge`.
+Nothing past that has been implemented.
 
 ### The CI pipeline (`.github/workflows/ci.yml`, single job, 20 min cap)
 
@@ -131,7 +133,7 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `6135432`** — docs: refresh the handoff status block
+**`develop` is at `36df25f`** — docs: refresh the handoff status block
 
 No open pull requests.
 
