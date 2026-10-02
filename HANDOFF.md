@@ -131,13 +131,9 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `13ab89b`** — docs: refresh the handoff status block
+**`develop` is at `d12928f`** — Merge main into develop after the release
 
-### Open pull requests
-
-| PR | Title | Branch | CI on head |
-|---|---|---|---|
-| [#37](https://github.com/barahn/remotekit/pull/37) | chore(release): merge develop → main (137 commits) — Merge pull request #33 from barahn/feat/phase-0-consent-enforcement | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36974758699/job/110736079914)<br>Build, Test & SAST ⏳ (in_progress) |
+No open pull requests.
 
 <!-- END GENERATED: handoff status -->
 
