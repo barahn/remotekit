@@ -54,3 +54,6 @@ web/static/js/*.map
 
 # Design canvases (working files for UI mockups, not part of the build)
 .design/
+
+# Security tooling temporary files
+.aikidotmp/
