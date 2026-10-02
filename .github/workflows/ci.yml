@@ -27,6 +27,58 @@ permissions:
   contents: read
 
 jobs:
+  # CONTRIBUTING.md requires a DCO Signed-off-by trailer on every commit. It is
+  # a job of its own so a missing sign-off reads as a policy failure, not a
+  # broken build, and so it can be made required independently of the build.
+  # Merge commits are exempt: they carry no contribution of their own. So are
+  # commits authored by a bot (Aikido autofix, Dependabot, ...): a bot cannot
+  # certify the DCO, and a human reviews and merges the pull request anyway.
+  dco:
+    name: DCO Sign-off
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Both ends of the DCO commit range have to be local, and nothing is
+          # fetched later: persist-credentials is false, so a fetch would
+          # prompt for a username and hang the step.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate DCO Sign-off
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "::error::Base commit $BASE_SHA is not available locally."
+            exit 1
+          fi
+
+          MISSING=0
+          while read -r sha || [ -n "$sha" ]; do
+            [ -z "$sha" ] && continue
+            author=$(git show -s --format='%an <%ae>' "$sha")
+            if [[ "$author" == *"[bot]"* ]]; then
+              echo "- $sha skipped, authored by a bot: $author"
+              continue
+            fi
+            if git show -s --format='%(trailers:key=Signed-off-by,valueonly)' "$sha" | grep -q '[^[:space:]]'; then
+              echo "✓ $sha is signed off."
+            else
+              echo "::error::Commit $sha has no 'Signed-off-by' trailer: $(git show -s --format='%s' "$sha")"
+              MISSING=1
+            fi
+          done < <(git log --no-merges "${BASE_SHA}..${HEAD_SHA:-HEAD}" --pretty=format:"%H")
+
+          if [ "$MISSING" -eq 1 ]; then
+            echo "::error::DCO validation failed. Sign your commits with 'git commit -s'. See CONTRIBUTING.md."
+            exit 1
+          fi
+          echo "✓ All human-authored commits carry a DCO sign-off."
+
   test:
     name: Build, Test & SAST
     runs-on: ubuntu-latest
@@ -45,45 +97,11 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Both ends of the DCO commit range have to be local, and nothing is
-          # fetched later: persist-credentials is false, so a fetch would
-          # prompt for a username and hang the step.
-          fetch-depth: 0
           persist-credentials: false
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: '1.26'
-
-      # CONTRIBUTING.md requires a DCO Signed-off-by trailer on every commit.
-      # Merge commits are exempt: they carry no contribution of their own.
-      - name: Validate DCO Sign-off
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-            echo "::error::Base commit $BASE_SHA is not available locally."
-            exit 1
-          fi
-
-          MISSING=0
-          while read -r sha || [ -n "$sha" ]; do
-            [ -z "$sha" ] && continue
-            if git show -s --format='%(trailers:key=Signed-off-by,valueonly)' "$sha" | grep -q '[^[:space:]]'; then
-              echo "✓ $sha is signed off."
-            else
-              echo "::error::Commit $sha has no 'Signed-off-by' trailer: $(git show -s --format='%s' "$sha")"
-              MISSING=1
-            fi
-          done < <(git log --no-merges "${BASE_SHA}..${HEAD_SHA:-HEAD}" --pretty=format:"%H")
-
-          if [ "$MISSING" -eq 1 ]; then
-            echo "::error::DCO validation failed. Sign your commits with 'git commit -s'. See CONTRIBUTING.md."
-            exit 1
-          fi
-          echo "✓ All commits carry a DCO sign-off."
 
       # Apache-2.0 section 4(d) makes NOTICE binding on redistributors, so a
       # vendored dependency losing its attribution is a licence breach, not a
@@ -215,14 +233,20 @@ jobs:
           # conformance gate that silently skips is how an encoder ends up with
           # an inter-frame path no test ever decoded.
           VP8_CONFORMANCE_REQUIRED: '1'
-        # Go's default is 10 minutes per package, and screen/codec/vp8 now
-        # exceeds it: the rate-control test drives a second of scrolling 720p
-        # through the encoder twice, and under -race with coverage
-        # instrumentation that alone is five minutes -- before the conformance
-        # sweep across seven quantisers and the soak run in the same package.
-        # barahn/barahn runs the same test inside the default and fits only
-        # because it has no vpxdec, so everything that needs the oracle skips.
-        run: xvfb-run -a go test -race -timeout 30m -coverprofile=coverage.out ./...
+        # -short skips the rate-control test, the 720p wavefront and conformance
+        # cases and most of the quantiser sweep: under -race they cost over
+        # eight minutes (about a second without it) and gain nothing from the
+        # detector. The next step runs them in full.
+        # The timeout stays generous because screen/codec/vp8 is still slow
+        # under -race with coverage.
+        run: xvfb-run -a go test -race -short -timeout 30m -coverprofile=coverage.out ./...
+
+      # The tests -short skipped above, without the race detector. The
+      # wavefront's concurrency is still raced at 320x192 and 640x480 above.
+      - name: Test (VP8 slow tests, full size, no race)
+        env:
+          VP8_CONFORMANCE_REQUIRED: '1'
+        run: go test -timeout 10m -run 'TestRateControlHitsItsTarget|TestWavefrontIsBitExact|TestConformanceAcrossContentAndSize|TestConformanceAcrossQuantisers' ./screen/codec/vp8
 
       # screen/codec/vp8 is excluded for its 53 deliberate int->int16 narrowings
       # in the forward DCT and quantiser, where the VP8 spec bounds the values by
