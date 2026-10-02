@@ -131,14 +131,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `8431040`** — docs: refresh the handoff status block
+**`develop` is at `0be6b5f`** — Merge pull request #33 from barahn/feat/phase-0-consent-enforcement
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#33](https://github.com/barahn/remotekit/pull/33) | tunnel: enforce session consent in AgentStreamRunner | `feat/phase-0-consent-enforcement` | Build, Test & SAST ✅<br>CodeQL ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36923350289/job/110574594288)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36923350291/job/110574533551)<br>Review dependency changes ✅<br>gitleaks ✅<br>Analyze (Go) ✅ |
-| [#37](https://github.com/barahn/remotekit/pull/37) | chore(release): merge develop → main (131 commits) — Merge pull request #34 from barahn/fix/aikido-security-sast-1310... | `develop` | Build, Test & SAST ⏳ (queued) |
+| [#37](https://github.com/barahn/remotekit/pull/37) | chore(release): merge develop → main (131 commits) — Merge pull request #34 from barahn/fix/aikido-security-sast-1310... | `develop` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36974745242/job/110736022231)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36974745283/job/110736021753)<br>Build, Test & SAST ⏳ (in_progress)<br>DCO Sign-off ⏳ (queued)<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36974741094/job/110736008833)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36974741117/job/110736008343)<br>Build, Test & SAST ⏳ (in_progress)<br>open-pr ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
