@@ -144,7 +144,7 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `55c01cc`** — docs: refresh the handoff status block
+**`develop` is at `733a15c`** — docs: drop the retired Go Report Card badge
 
 ### Open pull requests
 
