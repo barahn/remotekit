@@ -285,7 +285,9 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			case "offer", "session_start", "candidate":
 				if err := r.viewerAuth.check(msgBytes, r.creds.AgentID, time.Now()); err != nil {
 					viewerID, _ := signal["viewer_id"].(string)
-					log.Printf("[AgentStream] refusing %s from viewer %s: %v\n", msgType, logSafe(viewerID), err)
+					// The error can carry peer-supplied text, such as the
+					// TargetID a message was signed for.
+					log.Printf("[AgentStream] refusing %s from viewer %s: %s\n", logSafe(msgType), logSafe(viewerID), logSafe(err.Error()))
 					continue
 				}
 			}
