@@ -137,14 +137,13 @@ func TestViewerAuth_Check(t *testing.T) {
 	})
 }
 
-// runLoopAgainst serves one WebSocket, hands it to runSignalingLoop, sends msg
-// to the agent and reports whether the agent wrote anything back within wait.
-// A session_start makes the agent either stream frames or announce that no
-// capture backend exists, so any reply other than the agent_ready it sends on
-// connecting means the session was started.
-func runLoopAgainst(t *testing.T, r *AgentStreamRunner, msg []byte, wait time.Duration) bool {
+// firstReply serves one WebSocket, hands it to runSignalingLoop, sends msg to
+// the agent and returns the first message the agent writes back within wait,
+// or nil if none arrives. The agent_ready it sends on every connection is not
+// a reply and is skipped.
+func firstReply(t *testing.T, r *AgentStreamRunner, msg []byte, wait time.Duration) []byte {
 	t.Helper()
-	replied := make(chan struct{}, 1)
+	replied := make(chan []byte, 1)
 	upgrader := websocket.Upgrader{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		c, err := upgrader.Upgrade(w, req, nil)
@@ -161,12 +160,10 @@ func runLoopAgainst(t *testing.T, r *AgentStreamRunner, msg []byte, wait time.Du
 			if err != nil {
 				return
 			}
-			// The agent announces itself on every connection; that is not
-			// a reply to msg.
 			if bytes.Contains(data, []byte(`"agent_ready"`)) {
 				continue
 			}
-			replied <- struct{}{}
+			replied <- data
 			return
 		}
 	}))
@@ -184,16 +181,23 @@ func runLoopAgainst(t *testing.T, r *AgentStreamRunner, msg []byte, wait time.Du
 		close(done)
 	}()
 
-	var got bool
+	var got []byte
 	select {
-	case <-replied:
-		got = true
+	case got = <-replied:
 	case <-time.After(wait + time.Second):
 	}
 	cancel()
 	_ = ws.Close()
 	<-done
 	return got
+}
+
+// runLoopAgainst reports whether the agent replied to msg at all. A
+// session_start makes the agent either stream frames or announce that no
+// capture backend exists, so any reply means the session was started.
+func runLoopAgainst(t *testing.T, r *AgentStreamRunner, msg []byte, wait time.Duration) bool {
+	t.Helper()
+	return firstReply(t, r, msg, wait) != nil
 }
 
 // End to end through the signalling loop: with signed viewers required, a

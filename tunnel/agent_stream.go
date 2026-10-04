@@ -43,6 +43,10 @@ type AgentStreamRunner struct {
 	// viewerAuth, when set, restricts negotiation to signed viewers; see
 	// RequireSignedViewers.
 	viewerAuth *viewerAuth
+
+	// requireScreenView, when set, withholds the screen until screen_view is
+	// granted; see RequireScreenViewConsent.
+	requireScreenView bool
 }
 
 func NewAgentStreamRunner(creds *AgentCredentials, insecureSkipVerify bool) *AgentStreamRunner {
@@ -295,6 +299,16 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 
 		switch msgType {
 		case "offer", "session_start":
+			if r.requireScreenView && !r.allow(PermissionScreenView, "screen view") {
+				// Tell the viewer why nothing arrives, instead of leaving it
+				// waiting on a negotiation the agent will not answer.
+				notice, _ := json.Marshal(map[string]string{
+					"type":       "consent_required",
+					"permission": PermissionScreenView,
+				})
+				_ = safeWrite(notice)
+				continue
+			}
 			sdp, _ := signal["sdp"].(string)
 			viewerID, _ := signal["viewer_id"].(string)
 
@@ -412,6 +426,12 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 							return
 						}
 						if frame == nil || frame.Image == nil {
+							continue
+						}
+						// Consent can be withdrawn mid-session. Capture keeps
+						// running so a fresh Grant resumes at once, but no
+						// frame leaves the machine while it is revoked.
+						if r.requireScreenView && !r.Granted(PermissionScreenView) {
 							continue
 						}
 						if frameCount == 1 && r.injector != nil {

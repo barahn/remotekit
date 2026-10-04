@@ -171,13 +171,10 @@ Ordered work, as proposed:
   and candidates on receipt (`AgentStreamRunner.RequireSignedViewers`,
   opt-in; a consumer supplies which viewer keys it trusts), and consent on
   reverse streams (`TunnelClient.ConsentReverseStream`, opt-in, asked after
-  the port allowlist).
-  **Still open:** enforcing `screen_view`,
-  which is recorded but not enforced (capture starts as soon as a viewer
-  negotiates), and which every consumer would have to `Grant` once enforced —
-  a breaking change to decide with the owner first; and signing input,
-  clipboard and file messages, deferred to Phase 1, which moves them off the
-  signalling socket.
+  the port allowlist), and consent on the screen itself
+  (`AgentStreamRunner.RequireScreenViewConsent`, opt-in).
+  **Still open:** signing input, clipboard and file messages, deferred to
+  Phase 1, which moves them off the signalling socket.
 - **Phase 1 — move the data plane off the server.** Add a DataChannel to
   `webrtc/peer.go` (video track only today) and carry input, clipboard and
   `transfer` over it with `bark.Envelope` as the format. Keep the JPEG fallback
@@ -249,7 +246,16 @@ host-to-technician clipboard watcher, `file_transfer` gates `file_start`,
 files silently do nothing, with one log line per refused permission. Chirp and
 the platform both need that change when they take this version. Nothing on the
 signalling socket can grant — the server is not who consents — and a `close`
-message revokes everything. `screen_view` is declared but not enforced.
+message revokes everything.
+
+`screen_view` is enforced only when a consumer calls
+`RequireScreenViewConsent(true)`, deliberately opt-in: enforcing it for
+everyone would stop the screen for every consumer that does not `Grant` it.
+With it on, an `offer` or `session_start` is refused until `screen_view` is
+granted, the viewer is sent `{"type":"consent_required","permission":"screen_view"}`
+so it can say why, and frames stop as soon as the permission is revoked.
+Signature checks (`RequireSignedViewers`) run first, so an unsigned message
+learns nothing about consent.
 
 Reverse streams (SSH through the tunnel) belong to `TunnelClient`, not the
 session, so they follow a separate, opt-in rule. `AllowedReversePorts` is the
@@ -274,15 +280,14 @@ hard part; discuss before starting.
    The roadmap is structured into Phase 0a (defect remediation), Phase 0b (enrolment
    identity & signing), Phase 1 (DataChannel data plane), Phase 2 (pluggable signalling),
    and Phase 3 (relays & transports).
-3. Phase 0a is done (#17), and most of Phase 0 with it: device keys, the
-   server verifying them, signing in both directions, and consent for input,
-   clipboard, file transfer and reverse streams. What remains of Phase 0 is
-   `screen_view` enforcement (ask the owner first: it breaks every consumer
-   that does not `Grant` it). Signed viewers and reverse-stream consent only
-   protect a deployment once a consumer turns them on
-   (`RequireSignedViewers`, `ConsentReverseStream`); that wiring lives in the
-   products, not here. After Phase 0,
-   Phase 1 moves input, clipboard and file transfer onto a DataChannel.
+3. Phase 0 is done in this module: device keys, the server verifying them,
+   signing in both directions, and consent for input, clipboard, file
+   transfer, reverse streams and the screen. Three of those protections are
+   opt-in and only protect a deployment once a consumer turns them on —
+   `RequireSignedViewers`, `ConsentReverseStream` and
+   `RequireScreenViewConsent`; that wiring lives in the products, not here.
+   The next phase is Phase 1, which moves input, clipboard and file transfer
+   onto a DataChannel.
 
 Before every push: run the repo's own checks locally —
 `go build ./...`, `go vet ./...`, `golangci-lint run`, and
