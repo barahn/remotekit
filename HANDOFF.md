@@ -131,13 +131,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `36df25f`** — docs: refresh the handoff status block
+**`develop` is at `77ef16c`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#38](https://github.com/barahn/remotekit/pull/38) | ci: automate stale branch cleanup and add developer script | `ci/stale-branch-cleanup` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37041604357/job/110952806442)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37041604447/job/110952806437)<br>Refresh the handoff status block ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>DCO Sign-off ✅<br>Build, Test & SAST ⏳ (in_progress) |
+| [#38](https://github.com/barahn/remotekit/pull/38) | ci: automate stale branch cleanup and add developer script | `ci/stale-branch-cleanup` | CodeQL ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37041604357/job/110952806442)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37041604447/job/110952806437)<br>Refresh the handoff status block ✅<br>Analyze (Go) ✅<br>Review dependency changes ✅<br>gitleaks ✅<br>DCO Sign-off ✅<br>Build, Test & SAST ✅ |
+| [#39](https://github.com/barahn/remotekit/pull/39) | feat(tunnel): let the agent require signed viewers before it negotiates | `claude/tender-feynman-zqy5d1` | Refresh the handoff status block ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37167929430/job/111334709372)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37167929405/job/111334709097)<br>Build, Test & SAST ⏳ (in_progress)<br>DCO Sign-off ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
