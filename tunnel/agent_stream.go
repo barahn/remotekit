@@ -39,6 +39,10 @@ type AgentStreamRunner struct {
 	consentMu sync.RWMutex
 	granted   map[string]bool
 	warned    map[string]bool
+
+	// viewerAuth, when set, restricts negotiation to signed viewers; see
+	// RequireSignedViewers.
+	viewerAuth *viewerAuth
 }
 
 func NewAgentStreamRunner(creds *AgentCredentials, insecureSkipVerify bool) *AgentStreamRunner {
@@ -275,6 +279,17 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 		}
 
 		msgType, _ := signal["type"].(string)
+
+		if r.viewerAuth != nil {
+			switch msgType {
+			case "offer", "session_start", "candidate":
+				if err := r.viewerAuth.check(msgBytes, r.creds.AgentID, time.Now()); err != nil {
+					viewerID, _ := signal["viewer_id"].(string)
+					log.Printf("[AgentStream] refusing %s from viewer %s: %v\n", msgType, logSafe(viewerID), err)
+					continue
+				}
+			}
+		}
 
 		switch msgType {
 		case "offer", "session_start":
