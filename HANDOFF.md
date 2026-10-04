@@ -163,11 +163,18 @@ Ordered work, as proposed:
   and never enforced*) in `handleInputPayload`, clipboard writes,
   `file_complete` and `OpenReverseStream`. **Already done:** the signing
   primitive, the device keypair at enrolment, signing of the agent's outgoing
-  answers and candidates, and consent enforcement for input, clipboard and
-  file transfer — see "What #17 landed" and "Consent enforcement" below.
-  **Still open:** verifying signed messages on receipt (`VerifyFrom` plus a
-  `NonceCache`), verifying `PublicKey` server-side, and consent on
-  `OpenReverseStream`.
+  answers and candidates, consent enforcement for input, clipboard and
+  file transfer — see "What #17 landed" and "Consent enforcement" below — the
+  server verifying `PublicKey` (a proof of possession on every connection and
+  enrolment bound to the key, #18), and the agent verifying viewers' offers
+  and candidates on receipt (`AgentStreamRunner.RequireSignedViewers`,
+  opt-in; a consumer supplies which viewer keys it trusts).
+  **Still open:** consent on `OpenReverseStream`; enforcing `screen_view`,
+  which is recorded but not enforced (capture starts as soon as a viewer
+  negotiates), and which every consumer would have to `Grant` once enforced —
+  a breaking change to decide with the owner first; and signing input,
+  clipboard and file messages, deferred to Phase 1, which moves them off the
+  signalling socket.
 - **Phase 1 — move the data plane off the server.** Add a DataChannel to
   `webrtc/peer.go` (video track only today) and carry input, clipboard and
   `transfer` over it with `bark.Envelope` as the format. Keep the JPEG fallback
@@ -258,12 +265,14 @@ hard part; discuss before starting.
    The roadmap is structured into Phase 0a (defect remediation), Phase 0b (enrolment
    identity & signing), Phase 1 (DataChannel data plane), Phase 2 (pluggable signalling),
    and Phase 3 (relays & transports).
-3. Phase 0a is done (#17), and so is consent enforcement for input, clipboard
-   and file transfer. The next slice is the rest of Phase 0b: verify
-   `AgentRegistration.PublicKey` server-side and wire `VerifyFrom` plus a
-   `NonceCache` into the receiving side of the signalling loop. Check the
-   current code before starting — the device keypair and outgoing signing
-   already exist.
+3. Phase 0a is done (#17), and most of Phase 0 with it: device keys, the
+   server verifying them, signing in both directions, and consent for input,
+   clipboard and file transfer. What remains of Phase 0 is consent on
+   `OpenReverseStream` and `screen_view` enforcement (ask the owner first: it
+   breaks every consumer that does not `Grant` it). Signed viewers only
+   protect a deployment once a consumer calls `RequireSignedViewers` with the
+   keys it trusts; that wiring lives in the products, not here. After Phase 0,
+   Phase 1 moves input, clipboard and file transfer onto a DataChannel.
 
 Before every push: run the repo's own checks locally —
 `go build ./...`, `go vet ./...`, `golangci-lint run`, and
