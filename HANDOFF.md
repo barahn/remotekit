@@ -131,14 +131,15 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `84848ee`** — docs: refresh the handoff status block
+**`develop` is at `cc6ec19`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
 | [#38](https://github.com/barahn/remotekit/pull/38) | ci: automate stale branch cleanup and add developer script | `ci/stale-branch-cleanup` | CodeQL ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37041604357/job/110952806442)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37041604447/job/110952806437)<br>Refresh the handoff status block ✅<br>Analyze (Go) ✅<br>Review dependency changes ✅<br>gitleaks ✅<br>DCO Sign-off ✅<br>Build, Test & SAST ✅ |
-| [#40](https://github.com/barahn/remotekit/pull/40) | chore(release): merge develop → main (152 commits) — Merge pull request #41 from barahn/claude/tender-feynman-zqy5d1 | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37170880384/job/111343438505)<br>Build, Test & SAST ⏳ (in_progress) |
+| [#40](https://github.com/barahn/remotekit/pull/40) | chore(release): merge develop → main (152 commits) — Merge pull request #41 from barahn/claude/tender-feynman-zqy5d1 | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37170892948/job/111343482312)<br>Build, Test & SAST ⏳ (in_progress) |
+| [#42](https://github.com/barahn/remotekit/pull/42) | feat(tunnel): let consumers put the screen under consent too | `claude/tender-feynman-zqy5d1` | Refresh the handoff status block ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37171035167/job/111343860850)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37171035139/job/111343860635)<br>Analyze (Go) ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>DCO Sign-off ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
