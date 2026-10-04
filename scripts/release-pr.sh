@@ -92,7 +92,14 @@ last=$(gh api "repos/$REPO/pulls?state=closed&base=main&per_page=100" \
 if [ -n "$last" ]; then
   read -r last_ref last_sha <<<"$last"
   if [ "$last_ref" != develop ]; then
-    last_sha=$(gh api "repos/$REPO/git/commits/$last_sha" --jq .message | develop_head)
+    # An "Update branch" on the release pull request puts a merge on top of
+    # the release commit, which is then its first parent.
+    head_sha=$last_sha
+    last_sha=$(gh api "repos/$REPO/git/commits/$head_sha" --jq .message | develop_head)
+    if [ -z "$last_sha" ]; then
+      first_parent=$(gh api "repos/$REPO/git/commits/$head_sha" --jq '.parents[0].sha')
+      last_sha=$(gh api "repos/$REPO/git/commits/$first_parent" --jq .message | develop_head)
+    fi
   fi
   if [ -n "$last_sha" ] && git merge-base --is-ancestor "$last_sha" "$develop" 2>/dev/null; then
     since=$last_sha
@@ -115,7 +122,10 @@ fi
 # Reuse the release commit when it already carries this develop on this main,
 # so a rerun neither moves the branch nor runs CI again for nothing.
 release=
-if [ "$current_parent" = "$main" ] && [ "$current_head" = "$develop" ]; then
+# The trailer alone is not trusted: the tree has to be develop's too, or a
+# commit pushed to release/next by hand with a copied trailer would be kept.
+if [ "$current_parent" = "$main" ] && [ "$current_head" = "$develop" ] &&
+  [ "$(gh api "repos/$REPO/git/commits/$current" --jq .tree.sha)" = "$tree" ]; then
   release=$current
   echo "$RELEASE_BRANCH already carries develop at ${develop:0:7} on main at ${main:0:7}."
   # Unless the run that made it never got as far as dispatching CI.
