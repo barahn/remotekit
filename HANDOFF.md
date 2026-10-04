@@ -144,13 +144,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `5a32bac`** — Merge pull request #45 from barahn/fix/firefox-test-connect-retry
+**`develop` is at `da3d80e`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#48](https://github.com/barahn/remotekit/pull/48) | chore(release): merge develop → main (6 commits) — Merge pull request #45 from barahn/fix/firefox-test-connect-retry | `develop` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37209325490/job/111457090708)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37209325474/job/111457090244)<br>Analyze (Go) ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37209321469/job/111457079709)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37209321456/job/111457079334)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37209321456/job/111457079247)<br>gitleaks ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>open-pr ✅<br>Analyze (Go) ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress) |
+| [#48](https://github.com/barahn/remotekit/pull/48) | chore(release): merge develop → main (6 commits) — Merge pull request #45 from barahn/fix/firefox-test-connect-retry | `develop` | no checks reported |
 
 <!-- END GENERATED: handoff status -->
 
