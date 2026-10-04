@@ -144,13 +144,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `d381b40`** — docs: drop the archive tag from the handoff brief
+**`develop` is at `48dcef6`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#48](https://github.com/barahn/remotekit/pull/48) | chore(release): merge develop → main (9 commits) — docs: drop the archive tag from the handoff brief | `develop` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37219867620/job/111487849537)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37219867596/job/111487849207)<br>gitleaks ⏳ (in_progress)<br>[DCO Sign-off ❌ failure](https://github.com/barahn/remotekit/actions/runs/37219867588/job/111487848363)<br>Analyze (Go) ⏳ (in_progress)<br>Release source ✅<br>Build, Test & SAST ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37219866291/job/111487845245)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37219866310/job/111487845236)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37219866291/job/111487844894)<br>gitleaks ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>open-pr ⏳ (in_progress) |
+| [#48](https://github.com/barahn/remotekit/pull/48) | chore(release): merge develop → main (10 commits) — docs: refresh the handoff status block | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37224131569/job/111500191611)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37224132782/job/111500176550)<br>Release source ✅<br>DCO Sign-off ⏳ (in_progress)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37224132773/job/111500176046)<br>Build, Test & SAST ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37224131547/job/111500173181)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37224131569/job/111500173093)<br>open-pr ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
