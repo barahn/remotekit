@@ -44,6 +44,11 @@ const (
 	// Enough frames that a decoder which only manages the first key frame and
 	// then stalls is not mistaken for one that is working.
 	ffWantFrames = 45
+
+	// On loopback the page connects in a second or two; this is headroom for
+	// a busy runner, not an expected wait.
+	ffConnectTimeout  = 20 * time.Second
+	ffConnectAttempts = 2
 )
 
 func TestFirefoxDecodesTheStream(t *testing.T) {
@@ -61,26 +66,39 @@ func TestFirefoxDecodesTheStream(t *testing.T) {
 		}
 	}
 
-	srv := newViewerHarness(t)
-	defer srv.stop()
-
 	driver := startGeckodriver(t)
 	defer driver.stop()
 
 	session := driver.newSession(t)
 	defer driver.deleteSession(session)
 
-	driver.navigate(t, session, srv.url())
+	// Setting up the connection is not what is under test, and on a loaded CI
+	// runner it occasionally stalls with ICE connected and the DTLS handshake
+	// never finishing. So a page that never connects gets one more try with a
+	// fresh peer; a page that connects and then fails to decode does not.
+	var srv *viewerHarness
+	for attempt := 1; ; attempt++ {
+		srv = newViewerHarness(t)
+		driver.navigate(t, session, srv.url())
+		if driver.waitConnected(t, session, ffConnectTimeout) {
+			break
+		}
+		state := driver.evalString(t, session, pageStateScript)
+		srv.stop()
+		if attempt == ffConnectAttempts {
+			t.Fatalf("Firefox did not connect in %d attempts of %s each (page state: %s)",
+				ffConnectAttempts, ffConnectTimeout, state)
+		}
+		t.Logf("attempt %d: Firefox did not connect within %s (page state: %s); retrying with a fresh page",
+			attempt, ffConnectTimeout, state)
+	}
+	defer srv.stop()
 
 	deadline := time.Now().Add(45 * time.Second)
-	var decoded, lastState float64
+	var decoded float64
 	for time.Now().Before(deadline) {
 		decoded = driver.evalNumber(t, session, "return window.__framesDecoded || 0")
-		lastState = driver.evalNumber(t, session, "return window.__error ? -1 : 0")
-		if lastState < 0 {
-			t.Fatalf("the page reported an error: %s",
-				driver.evalString(t, session, "return String(window.__error)"))
-		}
+		driver.failOnPageError(t, session)
 		if decoded >= ffWantFrames {
 			break
 		}
@@ -500,6 +518,30 @@ func (g *gecko) evalNumber(t *testing.T, id, script string) float64 {
 		return 0
 	}
 	return v
+}
+
+// failOnPageError ends the test if the page's script has thrown.
+func (g *gecko) failOnPageError(t *testing.T, id string) {
+	t.Helper()
+	if g.evalNumber(t, id, "return window.__error ? -1 : 0") < 0 {
+		t.Fatalf("the page reported an error: %s",
+			g.evalString(t, id, "return String(window.__error)"))
+	}
+}
+
+// waitConnected reports whether the page's peer connection reaches
+// "connected" within timeout.
+func (g *gecko) waitConnected(t *testing.T, id string, timeout time.Duration) bool {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		g.failOnPageError(t, id)
+		if g.evalString(t, id, "return String(window.__conn)") == "connected" {
+			return true
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+	return false
 }
 
 func (g *gecko) evalString(t *testing.T, id, script string) string {
