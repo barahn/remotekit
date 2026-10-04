@@ -62,8 +62,8 @@ Packages (each usable on its own):
   branches. `scripts/release-pr.sh` and `scripts/sync-develop.sh` have the
   details. Both `develop` and `main` require signed commits. `develop` was
   rebuilt on `main` on 2026-10-04 to get there: its history until then
-  carried 39 unsigned handoff refreshes, which `main` cannot take, and is
-  kept under the tag `archive/develop-2026-10-04`.
+  carried 39 unsigned handoff refreshes, which `main` cannot take, and was
+  not kept.
 - **Every commit needs a DCO `Signed-off-by` trailer** (`git commit -s`). CI
   enforces it on every non-merge commit in a pull request, and a missing
   trailer has already turned one pull request red. `CONTRIBUTING.md` also carries a CLA; sign-off is not the CLA.
