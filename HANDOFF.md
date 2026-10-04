@@ -144,13 +144,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `b0c3bb2`** — docs: add code quality and security badges to the README
+**`develop` is at `5c15463`** — ci(release): merge develop into main with a merge commit
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
 | [#45](https://github.com/barahn/remotekit/pull/45) | test(tunnel): give the Firefox test a second try at connecting | `fix/firefox-test-connect-retry` | CodeQL ✅<br>Build, Test & SAST ✅<br>DCO Sign-off ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37206571373/job/111448881688)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37206571283/job/111448881359)<br>Review dependency changes ✅<br>Analyze (Go) ✅<br>gitleaks ✅ |
+| [#46](https://github.com/barahn/remotekit/pull/46) | chore(release): merge develop → main (7 commits) — docs: add code quality and security badges to the README | `release/next` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37207207185/job/111450781809)<br>Build, Test & SAST ✅ |
 
 <!-- END GENERATED: handoff status -->
 
