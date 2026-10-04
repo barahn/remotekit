@@ -169,8 +169,10 @@ Ordered work, as proposed:
   server verifying `PublicKey` (a proof of possession on every connection and
   enrolment bound to the key, #18), and the agent verifying viewers' offers
   and candidates on receipt (`AgentStreamRunner.RequireSignedViewers`,
-  opt-in; a consumer supplies which viewer keys it trusts).
-  **Still open:** consent on `OpenReverseStream`; enforcing `screen_view`,
+  opt-in; a consumer supplies which viewer keys it trusts), and consent on
+  reverse streams (`TunnelClient.ConsentReverseStream`, opt-in, asked after
+  the port allowlist).
+  **Still open:** enforcing `screen_view`,
   which is recorded but not enforced (capture starts as soon as a viewer
   negotiates), and which every consumer would have to `Grant` once enforced —
   a breaking change to decide with the owner first; and signing input,
@@ -247,9 +249,15 @@ host-to-technician clipboard watcher, `file_transfer` gates `file_start`,
 files silently do nothing, with one log line per refused permission. Chirp and
 the platform both need that change when they take this version. Nothing on the
 signalling socket can grant — the server is not who consents — and a `close`
-message revokes everything. `screen_view` is declared but not enforced, and
-`TunnelClient.OpenReverseStream` has no consent check beyond the port
-allowlist.
+message revokes everything. `screen_view` is declared but not enforced.
+
+Reverse streams (SSH through the tunnel) belong to `TunnelClient`, not the
+session, so they follow a separate, opt-in rule. `AllowedReversePorts` is the
+administrator's policy and always applies. `ConsentReverseStream`, when set, is
+asked after the allowlist passes and before each stream is opened; leave it nil
+on unattended fleet hosts, where nobody is there to ask. To tie it to the
+session, set it to `runner.Granted(tunnel.PermissionReverseStream)`, so the
+stream is refused until the user grants it and again once the session revokes.
 
 Also open, unrelated to the above: macOS is stubbed out —
 `input/input_darwin.go` and `screen/capture_darwin.go` both return
@@ -268,11 +276,12 @@ hard part; discuss before starting.
    and Phase 3 (relays & transports).
 3. Phase 0a is done (#17), and most of Phase 0 with it: device keys, the
    server verifying them, signing in both directions, and consent for input,
-   clipboard and file transfer. What remains of Phase 0 is consent on
-   `OpenReverseStream` and `screen_view` enforcement (ask the owner first: it
-   breaks every consumer that does not `Grant` it). Signed viewers only
-   protect a deployment once a consumer calls `RequireSignedViewers` with the
-   keys it trusts; that wiring lives in the products, not here. After Phase 0,
+   clipboard, file transfer and reverse streams. What remains of Phase 0 is
+   `screen_view` enforcement (ask the owner first: it breaks every consumer
+   that does not `Grant` it). Signed viewers and reverse-stream consent only
+   protect a deployment once a consumer turns them on
+   (`RequireSignedViewers`, `ConsentReverseStream`); that wiring lives in the
+   products, not here. After Phase 0,
    Phase 1 moves input, clipboard and file transfer onto a DataChannel.
 
 Before every push: run the repo's own checks locally —

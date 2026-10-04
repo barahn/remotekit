@@ -14,6 +14,11 @@ const (
 	PermissionRemoteControl = "remote_control"
 	PermissionClipboard     = "clipboard"
 	PermissionFileTransfer  = "file_transfer"
+	// PermissionReverseStream covers reverse streams through the tunnel, such
+	// as SSH. AgentStreamRunner never checks it itself: a reverse stream is
+	// the TunnelClient's, and consults it only through
+	// TunnelClient.ConsentReverseStream when a consumer wires that up.
+	PermissionReverseStream = "reverse_stream"
 )
 
 // Grant records permissions the person at the machine has agreed to. It is for
