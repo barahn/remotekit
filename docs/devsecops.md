@@ -109,13 +109,16 @@ half of DevSecOps a pull request cannot deliver:
 
 1. **Branch protection on `develop` and `main`** — require pull requests,
    review from code owners (which is what makes `.github/CODEOWNERS` a gate
-   rather than a suggestion), passing checks, and block force pushes.
+   rather than a suggestion), passing checks, and block force pushes. Signed
+   commits are already required on both, by the `main` and `develop`
+   rulesets; every workflow that writes to either commits through the API,
+   which GitHub signs.
 
    > **Three workflows here push directly, and branch protection would refuse
    > them.** `handoff.yml` commits the regenerated status block straight to the
    > default branch; `sync-develop.yml` pushes `main` back into `develop` after
-   > a release; `release-pr.yml` opens the release pull request (that one is
-   > compatible). Under a pull-request-only rule the first two fail on every
+   > a release; `release-pr.yml` rebuilds `release/next` and opens the release
+   > pull request (that one is compatible). Under a pull-request-only rule the first two fail on every
    > run. Resolve that before protecting the branches — Chirp faced the same
    > choice and replaced its bot commit with a CI check that the generated
    > block is current.

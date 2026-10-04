@@ -7,13 +7,18 @@ import "log"
 
 // The permissions a session can be granted, as named in
 // bark.ConsentRequestPayload.RequestedPermissions. PermissionScreenView is
-// recorded like the others but not enforced yet: the screen is captured as soon
-// as a viewer negotiates.
+// enforced only when the consumer opts in with RequireScreenViewConsent;
+// otherwise the screen is captured as soon as a viewer negotiates, as before.
 const (
 	PermissionScreenView    = "screen_view"
 	PermissionRemoteControl = "remote_control"
 	PermissionClipboard     = "clipboard"
 	PermissionFileTransfer  = "file_transfer"
+	// PermissionReverseStream covers reverse streams through the tunnel, such
+	// as SSH. AgentStreamRunner never checks it itself: a reverse stream is
+	// the TunnelClient's, and consults it only through
+	// TunnelClient.ConsentReverseStream when a consumer wires that up.
+	PermissionReverseStream = "reverse_stream"
 )
 
 // Grant records permissions the person at the machine has agreed to. It is for
@@ -73,4 +78,23 @@ func (r *AgentStreamRunner) allow(permission, what string) bool {
 		log.Printf("[AgentStream] Refusing %s: %s has not been granted\n", what, permission)
 	}
 	return false
+}
+
+// RequireScreenViewConsent makes the screen subject to consent like input,
+// clipboard and files: a viewer's offer or session_start is refused until
+// PermissionScreenView is granted, and frames stop the moment it is revoked.
+// A refused viewer is sent {"type":"consent_required","permission":"screen_view"}
+// so it can say why nothing arrives, rather than wait on a negotiation the
+// agent will not answer.
+//
+// It is opt-in, because turning it on changes what every consumer must do:
+// one that does not Grant PermissionScreenView would stop showing the screen.
+// Without it, capture starts as soon as a viewer negotiates, as it always has.
+// Where somebody is at the machine to ask, turn it on and Grant screen_view
+// with the rest of what they accept; where nobody is, as on an unattended
+// fleet host, leave it off.
+//
+// Call it before Start.
+func (r *AgentStreamRunner) RequireScreenViewConsent(required bool) {
+	r.requireScreenView = required
 }
