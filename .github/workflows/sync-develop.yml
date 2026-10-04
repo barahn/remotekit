@@ -13,14 +13,12 @@ permissions: {}
 
 jobs:
   sync-develop:
-    # release/next is what release-pr.yml opens; develop is what it opened
-    # before, kept so a release pull request from then still syncs. Either
-    # has to be this repository's own branch, not a fork's of the same name.
+    # main only takes develop, and it has to be this repository's own
+    # develop, not a fork's branch of the same name.
     if: >-
       github.event.pull_request.merged == true &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      (github.event.pull_request.head.ref == 'release/next' ||
-       github.event.pull_request.head.ref == 'develop')
+      github.event.pull_request.head.ref == 'develop'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -36,21 +34,16 @@ jobs:
           ref: ${{ github.event.pull_request.merge_commit_sha }}
           persist-credentials: false
 
-      # The merge goes through the REST API, not git push: develop and main
-      # require signed commits, and GitHub signs the commits it creates there,
-      # while one made in the runner and pushed would carry no signature. For
-      # a release from release/next it keeps develop's tree rather than merging
-      # three ways, which would conflict in HANDOFF.md; the script says why.
+      # Through the REST API, not git push: develop requires signed commits,
+      # and GitHub signs the merge it creates there when the fast-forward is
+      # refused; the script says when.
       - name: Sync develop with main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          RELEASE_BRANCH: release/next
         run: scripts/sync-develop.sh
 
-      # The merge commit just created is develop's new tip. Made with
+      # develop's new tip, fast-forwarded or merged, was moved with
       # GITHUB_TOKEN, it triggers no workflow, so CI is dispatched explicitly
       # rather than leaving the tip without checks.
       - name: Run CI on the new tip

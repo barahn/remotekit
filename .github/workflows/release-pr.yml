@@ -17,31 +17,22 @@ jobs:
     timeout-minutes: 10
     if: github.actor != 'github-actions[bot]'
     permissions:
-      # The release commit and the release branch.
-      contents: write
+      contents: read
       pull-requests: write
-      # To dispatch ci.yml on the release branch; see scripts/release-pr.sh.
-      actions: write
 
     steps:
       # Full history: the commit log is computed locally, and both main and
-      # develop have to be there. No credentials stay on disk; every write
-      # goes through the API.
+      # develop have to be there. No credentials stay on disk; the pull
+      # request is written through the API.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      # The pull request is headed by release/next, one commit GitHub signs
-      # whose tree is develop's, rather than by develop itself: main takes
-      # releases squashed, so develop's own history -- with the handoff
-      # refreshes pushed unsigned before that workflow moved to the API --
-      # would otherwise be listed on every release pull request, forever. The
-      # script says how.
+      # Headed by develop and merged with a merge commit; the script says why.
       - name: Create or update the release pull request
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          RELEASE_BRANCH: release/next
           REVIEWER: mendsec
         run: scripts/release-pr.sh
