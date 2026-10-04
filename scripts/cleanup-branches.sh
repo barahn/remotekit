@@ -270,17 +270,24 @@ if [ "$CLEAN_REMOTE" = true ]; then
     # Check if branch has merged PRs
     merged_prs="$(jq -r --arg b "$branch" '.[] | select(.headRefName == $b and .state == "MERGED") | .number' <<<"$local_prs_json")"
 
+    # A branch is stale only when everything on it is already in the
+    # default branch. A merged PR is not enough on its own: branches get
+    # reused, and one can carry new commits after an earlier PR merged,
+    # before the next PR is opened. Deleting it then loses that work.
     is_merged=false
     reason=""
-    if [ -n "$merged_prs" ]; then
+    if git rev-parse --verify --quiet "origin/$DEFAULT_BRANCH" >/dev/null && \
+       git rev-parse --verify --quiet "origin/$branch" >/dev/null && \
+       git merge-base --is-ancestor "origin/$branch" "origin/$DEFAULT_BRANCH" 2>/dev/null; then
       is_merged=true
-      merged_list="$(echo "$merged_prs" | paste -sd, - | sed 's/,/, #/g')"
-      reason="PR #${merged_list} merged"
-    elif git rev-parse --verify --quiet "origin/$DEFAULT_BRANCH" >/dev/null && \
-         git rev-parse --verify --quiet "origin/$branch" >/dev/null && \
-         git merge-base --is-ancestor "origin/$branch" "origin/$DEFAULT_BRANCH" 2>/dev/null; then
-      is_merged=true
-      reason="ancestor of $DEFAULT_BRANCH"
+      if [ -n "$merged_prs" ]; then
+        merged_list="$(echo "$merged_prs" | paste -sd, - | sed 's/,/, #/g')"
+        reason="PR #${merged_list} merged, fully contained in $DEFAULT_BRANCH"
+      else
+        reason="ancestor of $DEFAULT_BRANCH"
+      fi
+    elif [ -n "$merged_prs" ]; then
+      echo -e "  ${YELLOW}keeping $branch: a PR from it merged, but it has commits not in $DEFAULT_BRANCH${RESET}"
     fi
 
     if [ "$is_merged" = true ]; then

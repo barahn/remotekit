@@ -132,15 +132,23 @@ jobs:
             is_eligible=false
             reason=""
 
-            if [ -n "$merged_prs" ]; then
+            # Stale only when everything on the branch is already in the
+            # default branch. A merged PR alone is not enough: branches get
+            # reused, and one can carry new commits after an earlier PR
+            # merged, before the next PR is opened. A Sunday run in that
+            # window would otherwise delete unmerged work.
+            if git rev-parse --verify --quiet "origin/$DEFAULT_BRANCH" >/dev/null && \
+               git rev-parse --verify --quiet "origin/$branch" >/dev/null && \
+               git merge-base --is-ancestor "origin/$branch" "origin/$DEFAULT_BRANCH" 2>/dev/null; then
               is_eligible=true
-              merged_list="$(echo "$merged_prs" | paste -sd, - | sed 's/,/, #/g')"
-              reason="PR #${merged_list} merged"
-            elif git rev-parse --verify --quiet "origin/$DEFAULT_BRANCH" >/dev/null && \
-                 git rev-parse --verify --quiet "origin/$branch" >/dev/null && \
-                 git merge-base --is-ancestor "origin/$branch" "origin/$DEFAULT_BRANCH" 2>/dev/null; then
-              is_eligible=true
-              reason="git ancestor of $DEFAULT_BRANCH"
+              if [ -n "$merged_prs" ]; then
+                merged_list="$(echo "$merged_prs" | paste -sd, - | sed 's/,/, #/g')"
+                reason="PR #${merged_list} merged, fully contained in $DEFAULT_BRANCH"
+              else
+                reason="git ancestor of $DEFAULT_BRANCH"
+              fi
+            elif [ -n "$merged_prs" ]; then
+              echo "Branch $branch had a PR merged but carries commits not in $DEFAULT_BRANCH; keeping."
             elif [ "$DELETE_CLOSED" = "true" ]; then
               closed_prs="$(jq -r --arg b "$branch" '.[] | select(.headRefName == $b and .state == "CLOSED") | .number' <<<"$PRS_JSON")"
               if [ -n "$closed_prs" ]; then
