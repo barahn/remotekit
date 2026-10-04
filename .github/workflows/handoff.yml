@@ -101,10 +101,9 @@ jobs:
           echo "::error::Could not commit the refreshed handoff after 4 attempts."
           exit 1
 
-      # The commit just pushed is now the branch tip, and the head of the
-      # release pull request. Pushed with GITHUB_TOKEN, it triggers no workflow,
-      # so without this the tip carries no checks and the release pull request
-      # shows none. Dispatching CI on the branch attaches them to that commit.
+      # The commit just pushed is now the branch tip. Pushed with GITHUB_TOKEN,
+      # it triggers no workflow, so without this the tip carries no checks.
+      # Dispatching CI on the branch attaches them to that commit.
       - name: Run CI on the new tip
         if: steps.commit.outputs.pushed == 'true'
         env:

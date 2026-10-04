@@ -10,10 +10,10 @@ on:
   pull_request:
     branches: [ main, develop ]
   # A push made with GITHUB_TOKEN triggers no workflow, so a commit a workflow
-  # pushes -- the handoff refresh, the develop sync -- would otherwise leave the
-  # branch tip, and the release pull request whose head it is, with no checks.
-  # Those workflows dispatch this one explicitly; the exemption for
-  # workflow_dispatch is what makes that possible.
+  # writes -- the handoff refresh and the develop sync on develop, the release
+  # commit on release/next, which heads the release pull request -- would
+  # otherwise carry no checks. Those workflows dispatch this one explicitly;
+  # the exemption for workflow_dispatch is what makes that possible.
   workflow_dispatch:
 
 concurrency:

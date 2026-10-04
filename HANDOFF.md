@@ -52,9 +52,20 @@ Packages (each usable on its own):
   against `develop`, and never push directly to either. Push with
   `git push -u origin <branch-name>`. You never open the release pull request
   yourself: `.github/workflows/release-pr.yml` opens or updates a single
-  `develop` → `main` pull request on every push to `develop`, and
+  release pull request into `main` on every push to `develop`, and
   `.github/workflows/sync-develop.yml` merges `main` back into `develop` once
-  that release pull request is merged.
+  that release pull request is merged. Its head is `release/next`, not
+  `develop`: one commit GitHub creates and signs, whose tree is `develop`'s.
+  `main` requires verified signatures and linear history, so releases are
+  squash-merged and `develop`'s own commits never reach `main`; headed by
+  `develop`, every release pull request would list all of `develop`'s history,
+  including the handoff refreshes pushed unsigned before that workflow moved
+  to the API. After a release, `sync-develop` records `main` in `develop`'s
+  history but keeps `develop`'s tree, since `main` holds nothing `develop`
+  lacks; a three-way merge there would conflict in the generated block below.
+  `scripts/release-pr.sh` and `scripts/sync-develop.sh` have the details.
+  Never push to `release/next`; the workflow rebuilds it. Both `develop` and
+  `main` require signed commits.
 - **Every commit needs a DCO `Signed-off-by` trailer** (`git commit -s`). CI
   enforces it on every non-merge commit in a pull request, and a missing
   trailer has already turned one pull request red. `CONTRIBUTING.md` also carries a CLA; sign-off is not the CLA.
@@ -104,8 +115,11 @@ need extra care: a push made with `GITHUB_TOKEN` starts no workflow, and a
 pull request run it causes waits in *action_required* for a human to approve.
 The handoff refresh and the `sync-develop` merge both push that way, so each
 dispatches `ci.yml` on the branch afterwards (`workflow_dispatch` is exempt from
-that rule), and the result attaches to the new tip, which is what the release
-pull request shows. If you add a workflow that pushes, give it the same
+that rule), and the result attaches to the new tip. The release commit on
+`release/next` is made the same way and gets the same dispatch, which gives
+the release pull request its `Build, Test & SAST` check; DCO, CodeQL, secret
+scanning and dependency review come only from its `pull_request` runs, which
+wait in *action_required* until a maintainer approves them. If you add a workflow that pushes, give it the same
 dispatch step, or its commits will go unchecked. Whatever the cause, an absent
 check is never a pass.
 

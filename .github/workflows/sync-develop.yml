@@ -13,7 +13,14 @@ permissions: {}
 
 jobs:
   sync-develop:
-    if: github.event.pull_request.merged == true && github.event.pull_request.head.ref == 'develop'
+    # release/next is what release-pr.yml opens; develop is what it opened
+    # before, kept so a release pull request from then still syncs. Either
+    # has to be this repository's own branch, not a fork's of the same name.
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (github.event.pull_request.head.ref == 'release/next' ||
+       github.event.pull_request.head.ref == 'develop')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -21,20 +28,27 @@ jobs:
       # To dispatch ci.yml after pushing; see the last step.
       actions: write
     steps:
+      # Only for the script: it reads history through the API, not from here.
+      # The commit is the one main just received, so the script is the
+      # version that was released.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          persist-credentials: false
+
       # The merge goes through the REST API, not git push: develop and main
-      # require signed commits, and GitHub signs the merge commit it creates
-      # here, while one made in the runner and pushed would carry no signature.
-      # No checkout is needed for that. A 204 means develop already contains
-      # main; a 409 is a real conflict and fails the job.
+      # require signed commits, and GitHub signs the commits it creates there,
+      # while one made in the runner and pushed would carry no signature. For
+      # a release from release/next it keeps develop's tree rather than merging
+      # three ways, which would conflict in HANDOFF.md; the script says why.
       - name: Sync develop with main
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh api --method POST "repos/${{ github.repository }}/merges" \
-            -f base=develop -f head=main \
-            -f commit_message="Merge main into develop after the release
-
-          Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          REPO: ${{ github.repository }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RELEASE_BRANCH: release/next
+        run: scripts/sync-develop.sh
 
       # The merge commit just created is develop's new tip. Made with
       # GITHUB_TOKEN, it triggers no workflow, so CI is dispatched explicitly
