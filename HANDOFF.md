@@ -147,14 +147,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `8539dd6`** — docs: refresh the handoff status block
+**`develop` is at `bc16e67`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#40](https://github.com/barahn/remotekit/pull/40) | chore(release): merge develop → main (163 commits) — docs: refresh the handoff status block | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37171637496/job/111345607024)<br>Build, Test & SAST ✅ |
-| [#43](https://github.com/barahn/remotekit/pull/43) | ci(release): head the release pull request with one signed commit | `claude/zen-hawking-bp5of6` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37182458985/job/111377602866)<br>Refresh the handoff status block ⏳ (in_progress)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37182458987/job/111377602556)<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ⏳ (queued)<br>Analyze (Go) ⏳ (in_progress)<br>DCO Sign-off ✅<br>Review dependency changes ⏳ (in_progress) |
+| [#45](https://github.com/barahn/remotekit/pull/45) | test(tunnel): give the Firefox test a second try at connecting | `fix/firefox-test-connect-retry` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37206459555/job/111448552146)<br>Refresh the handoff status block ⏳ (in_progress)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37206459532/job/111448551518)<br>gitleaks ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>[DCO Sign-off ❌ failure](https://github.com/barahn/remotekit/actions/runs/37206459516/job/111448550979)<br>Build, Test & SAST ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
