@@ -5,6 +5,16 @@ input injection, clipboard sync, chunked file transfer, a WebRTC wrapper, a
 WSS/Yamux reverse tunnel, a system tray and OS service installation — each
 usable on its own.
 
+[![CI](https://github.com/barahn/remotekit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/barahn/remotekit/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/barahn/remotekit/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/barahn/remotekit/actions/workflows/codeql.yml)
+[![Secret Scan](https://github.com/barahn/remotekit/actions/workflows/secret-scan.yml/badge.svg?branch=main)](https://github.com/barahn/remotekit/actions/workflows/secret-scan.yml)
+[![Dependency Review](https://github.com/barahn/remotekit/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/barahn/remotekit/actions/workflows/dependency-review.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/barahn/remotekit?style=flat-square)](https://goreportcard.com/report/github.com/barahn/remotekit)
+[![Go Reference](https://pkg.go.dev/badge/github.com/barahn/remotekit.svg)](https://pkg.go.dev/github.com/barahn/remotekit)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/barahn/remotekit?style=flat-square)](go.mod)
+[![Checked with gosec](https://img.shields.io/badge/security-gosec-blue?style=flat-square)](https://github.com/securego/gosec)
+[![Checked with govulncheck](https://img.shields.io/badge/vulns-govulncheck-blue?style=flat-square)](https://go.dev/doc/security/vuln/)
+[![Lint: golangci-lint](https://img.shields.io/badge/lint-golangci--lint-brightgreen?style=flat-square)](.golangci.yml)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green.svg?style=flat-square)](LICENSE)
 
 ```
