@@ -52,20 +52,18 @@ Packages (each usable on its own):
   against `develop`, and never push directly to either. Push with
   `git push -u origin <branch-name>`. You never open the release pull request
   yourself: `.github/workflows/release-pr.yml` opens or updates a single
-  release pull request into `main` on every push to `develop`, and
-  `.github/workflows/sync-develop.yml` merges `main` back into `develop` once
-  that release pull request is merged. Its head is `release/next`, not
-  `develop`: one commit GitHub creates and signs, whose tree is `develop`'s.
-  `main` requires verified signatures and linear history, so releases are
-  squash-merged and `develop`'s own commits never reach `main`; headed by
-  `develop`, every release pull request would list all of `develop`'s history,
-  including the handoff refreshes pushed unsigned before that workflow moved
-  to the API. After a release, `sync-develop` records `main` in `develop`'s
-  history but keeps `develop`'s tree, since `main` holds nothing `develop`
-  lacks; a three-way merge there would conflict in the generated block below.
-  `scripts/release-pr.sh` and `scripts/sync-develop.sh` have the details.
-  Never push to `release/next`; the workflow rebuilds it. Both `develop` and
-  `main` require signed commits.
+  release pull request, `develop` into `main`, on every push to `develop`.
+  `main` takes pull requests from `develop` only (the required `Release
+  source` check refuses any other head) and only as a merge commit, so
+  `develop`'s commits become part of `main`. Once it merges,
+  `.github/workflows/sync-develop.yml` fast-forwards `develop` to `main`, or
+  merges `main` into it if `develop` moved meanwhile; `main` is then behind
+  `develop` by exactly what is unreleased. There are no other long-lived
+  branches. `scripts/release-pr.sh` and `scripts/sync-develop.sh` have the
+  details. Both `develop` and `main` require signed commits. `develop` was
+  rebuilt on `main` on 2026-10-04 to get there: its history until then
+  carried 39 unsigned handoff refreshes, which `main` cannot take, and is
+  kept under the tag `archive/develop-2026-10-04`.
 - **Every commit needs a DCO `Signed-off-by` trailer** (`git commit -s`). CI
   enforces it on every non-merge commit in a pull request, and a missing
   trailer has already turned one pull request red. `CONTRIBUTING.md` also carries a CLA; sign-off is not the CLA.
@@ -115,11 +113,10 @@ need extra care: a push made with `GITHUB_TOKEN` starts no workflow, and a
 pull request run it causes waits in *action_required* for a human to approve.
 The handoff refresh and the `sync-develop` merge both push that way, so each
 dispatches `ci.yml` on the branch afterwards (`workflow_dispatch` is exempt from
-that rule), and the result attaches to the new tip. The release commit on
-`release/next` is made the same way and gets the same dispatch, which gives
-the release pull request its `Build, Test & SAST` check; DCO, CodeQL, secret
-scanning and dependency review come only from its `pull_request` runs, which
-wait in *action_required* until a maintainer approves them. If you add a workflow that pushes, give it the same
+that rule), and the result attaches to the new tip. The release pull request
+is opened the same way, so its `pull_request` runs -- `Release source`, DCO,
+CodeQL, secret scanning and dependency review -- wait in *action_required*
+until a maintainer approves them. If you add a workflow that pushes, give it the same
 dispatch step, or its commits will go unchecked. Whatever the cause, an absent
 check is never a pass.
 
@@ -147,14 +144,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `8539dd6`** — docs: refresh the handoff status block
+**`develop` is at `8279a3f`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#40](https://github.com/barahn/remotekit/pull/40) | chore(release): merge develop → main (163 commits) — docs: refresh the handoff status block | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37171637496/job/111345607024)<br>Build, Test & SAST ✅ |
-| [#43](https://github.com/barahn/remotekit/pull/43) | ci(release): head the release pull request with one signed commit | `claude/zen-hawking-bp5of6` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37182458985/job/111377602866)<br>Refresh the handoff status block ⏳ (in_progress)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37182458987/job/111377602556)<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ⏳ (queued)<br>Analyze (Go) ⏳ (in_progress)<br>DCO Sign-off ✅<br>Review dependency changes ⏳ (in_progress) |
+| [#45](https://github.com/barahn/remotekit/pull/45) | test(tunnel): give the Firefox test a second try at connecting | `fix/firefox-test-connect-retry` | CodeQL ✅<br>Build, Test & SAST ✅<br>DCO Sign-off ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37206571373/job/111448881688)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37206571283/job/111448881359)<br>Review dependency changes ✅<br>Analyze (Go) ✅<br>gitleaks ✅ |
+| [#47](https://github.com/barahn/remotekit/pull/47) | chore(release): merge develop → main (2 commits) — ci(release): merge develop into main with a merge commit | `develop` | [Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37207951727/job/111453029593)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37207951727/job/111453029387)<br>Build, Test & SAST ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
