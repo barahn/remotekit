@@ -64,20 +64,54 @@ type TunnelClient struct {
 	// this host's loopback, which is exactly where services that trust local
 	// callers live. Name the ports you mean to expose, typically just 22.
 	AllowedReversePorts []int
+
+	// ConsentReverseStream, if set, is asked before every reverse stream that
+	// AllowedReversePorts already permits, and the stream is opened only if it
+	// returns true. It is called on the stream's own goroutine, so it may
+	// block -- to show a prompt, say -- but must be safe for concurrent use.
+	//
+	// AllowedReversePorts is the administrator's policy: which services this
+	// host exposes at all. ConsentReverseStream is the person at the machine:
+	// whether one is opened right now. Leave it nil where nobody is there to
+	// ask, as on an unattended fleet host; the allowlist alone then decides,
+	// as before. Where somebody is, wire it to the session's consent, for
+	// example
+	//
+	//	tc.ConsentReverseStream = func(int) bool {
+	//		return runner.Granted(tunnel.PermissionReverseStream)
+	//	}
+	//
+	// so a reverse stream is refused until the user grants it and again as
+	// soon as the session ends, since Revoke runs then.
+	ConsentReverseStream func(port int) bool
 }
 
 // ErrPortNotPermitted is returned for a reverse stream to a port that
 // AllowedReversePorts does not list.
 var ErrPortNotPermitted = errors.New("tunnel: reverse stream port not permitted")
 
-// checkReversePort decides whether a reverse stream may dial port.
+// ErrReverseStreamNotConsented is returned for a reverse stream that
+// ConsentReverseStream declined.
+var ErrReverseStreamNotConsented = errors.New("tunnel: reverse stream not consented to")
+
+// checkReversePort decides whether a reverse stream may dial port: the
+// allowlist first, then consent. Consent is not asked about a port the
+// allowlist refuses, so a server cannot use refused ports to prompt the user.
 func (tc *TunnelClient) checkReversePort(port int) error {
+	allowed := false
 	for _, p := range tc.AllowedReversePorts {
 		if p == port {
-			return nil
+			allowed = true
+			break
 		}
 	}
-	return fmt.Errorf("%w: %d", ErrPortNotPermitted, port)
+	if !allowed {
+		return fmt.Errorf("%w: %d", ErrPortNotPermitted, port)
+	}
+	if tc.ConsentReverseStream != nil && !tc.ConsentReverseStream(port) {
+		return fmt.Errorf("%w: %d", ErrReverseStreamNotConsented, port)
+	}
+	return nil
 }
 
 func NewTunnelClient(credsPath string, insecureSkipVerify bool) *TunnelClient {

@@ -94,6 +94,31 @@ proprietary code alike. What it asks:
 Adding another MPL-2.0 dependency is allowed by the list, but should be
 deliberate: each one extends the obligations above.
 
+## Branch management and cleanup
+
+remotekit uses `develop` as the default integration branch and `main` as the
+release branch. New contributions should be branched off `develop` and targeted
+at `develop` via pull request.
+
+- **Automated branch deletion on merge:** GitHub is configured to automatically
+  delete head branches upon merge (`delete_branch_on_merge`). A workflow
+  ([.github/workflows/cleanup-branches.yml](.github/workflows/cleanup-branches.yml))
+  also cleans up merged branches on PR close and performs scheduled weekly sweeps.
+- **Local and remote cleanup script:** Contributors and maintainers can clean
+  up obsolete local branches (merged or tracking deleted `[gone]` remotes) and
+  merged remote branches using:
+
+```bash
+# Preview what would be cleaned without modifying anything:
+./scripts/cleanup-branches.sh --all --dry-run
+
+# Clean stale local branches:
+./scripts/cleanup-branches.sh --local
+
+# Clean merged remote branches on origin:
+./scripts/cleanup-branches.sh --remote
+```
+
 ## Reporting security vulnerabilities
 
 Do **not** open a public issue for a security-sensitive bug. Email

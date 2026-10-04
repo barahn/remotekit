@@ -52,9 +52,20 @@ Packages (each usable on its own):
   against `develop`, and never push directly to either. Push with
   `git push -u origin <branch-name>`. You never open the release pull request
   yourself: `.github/workflows/release-pr.yml` opens or updates a single
-  `develop` → `main` pull request on every push to `develop`, and
+  release pull request into `main` on every push to `develop`, and
   `.github/workflows/sync-develop.yml` merges `main` back into `develop` once
-  that release pull request is merged.
+  that release pull request is merged. Its head is `release/next`, not
+  `develop`: one commit GitHub creates and signs, whose tree is `develop`'s.
+  `main` requires verified signatures and linear history, so releases are
+  squash-merged and `develop`'s own commits never reach `main`; headed by
+  `develop`, every release pull request would list all of `develop`'s history,
+  including the handoff refreshes pushed unsigned before that workflow moved
+  to the API. After a release, `sync-develop` records `main` in `develop`'s
+  history but keeps `develop`'s tree, since `main` holds nothing `develop`
+  lacks; a three-way merge there would conflict in the generated block below.
+  `scripts/release-pr.sh` and `scripts/sync-develop.sh` have the details.
+  Never push to `release/next`; the workflow rebuilds it. Both `develop` and
+  `main` require signed commits.
 - **Every commit needs a DCO `Signed-off-by` trailer** (`git commit -s`). CI
   enforces it on every non-merge commit in a pull request, and a missing
   trailer has already turned one pull request red. `CONTRIBUTING.md` also carries a CLA; sign-off is not the CLA.
@@ -82,9 +93,11 @@ engineering breakdown (`docs/implementation-phases.md`); this brief with its
 generated status block; the `develop`/`main` branch model with the
 release-PR and sync workflows; and CI extended to `develop` and to the commits
 those workflows push; Phase 0a plus the Phase 0 signing primitive
-(barahn/remotekit#17), described in §5; and Aikido Security integration
-via the GitHub App with repository configuration in `.aikido`. Nothing past
-that has been implemented.
+(barahn/remotekit#17), described in §5; Aikido Security integration
+via the GitHub App with repository configuration in `.aikido`; and
+automated stale branch cleanup via `.github/workflows/cleanup-branches.yml`,
+`scripts/cleanup-branches.sh`, and GitHub repository `delete_branch_on_merge`.
+Nothing past that has been implemented.
 
 ### The CI pipeline (`.github/workflows/ci.yml`, single job, 20 min cap)
 
@@ -102,8 +115,11 @@ need extra care: a push made with `GITHUB_TOKEN` starts no workflow, and a
 pull request run it causes waits in *action_required* for a human to approve.
 The handoff refresh and the `sync-develop` merge both push that way, so each
 dispatches `ci.yml` on the branch afterwards (`workflow_dispatch` is exempt from
-that rule), and the result attaches to the new tip, which is what the release
-pull request shows. If you add a workflow that pushes, give it the same
+that rule), and the result attaches to the new tip. The release commit on
+`release/next` is made the same way and gets the same dispatch, which gives
+the release pull request its `Build, Test & SAST` check; DCO, CodeQL, secret
+scanning and dependency review come only from its `pull_request` runs, which
+wait in *action_required* until a maintainer approves them. If you add a workflow that pushes, give it the same
 dispatch step, or its commits will go unchecked. Whatever the cause, an absent
 check is never a pass.
 
@@ -131,13 +147,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `13ab89b`** — docs: refresh the handoff status block
+**`develop` is at `8539dd6`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#37](https://github.com/barahn/remotekit/pull/37) | chore(release): merge develop → main (137 commits) — Merge pull request #33 from barahn/feat/phase-0-consent-enforcement | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/36974758699/job/110736079914)<br>Build, Test & SAST ⏳ (in_progress) |
+| [#40](https://github.com/barahn/remotekit/pull/40) | chore(release): merge develop → main (163 commits) — docs: refresh the handoff status block | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37171637496/job/111345607024)<br>Build, Test & SAST ✅ |
+| [#43](https://github.com/barahn/remotekit/pull/43) | ci(release): head the release pull request with one signed commit | `claude/zen-hawking-bp5of6` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37182458985/job/111377602866)<br>Refresh the handoff status block ⏳ (in_progress)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37182458987/job/111377602556)<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ⏳ (queued)<br>Analyze (Go) ⏳ (in_progress)<br>DCO Sign-off ✅<br>Review dependency changes ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
@@ -162,11 +179,17 @@ Ordered work, as proposed:
   and never enforced*) in `handleInputPayload`, clipboard writes,
   `file_complete` and `OpenReverseStream`. **Already done:** the signing
   primitive, the device keypair at enrolment, signing of the agent's outgoing
-  answers and candidates, and consent enforcement for input, clipboard and
-  file transfer — see "What #17 landed" and "Consent enforcement" below.
-  **Still open:** verifying signed messages on receipt (`VerifyFrom` plus a
-  `NonceCache`), verifying `PublicKey` server-side, and consent on
-  `OpenReverseStream`.
+  answers and candidates, consent enforcement for input, clipboard and
+  file transfer — see "What #17 landed" and "Consent enforcement" below — the
+  server verifying `PublicKey` (a proof of possession on every connection and
+  enrolment bound to the key, #18), and the agent verifying viewers' offers
+  and candidates on receipt (`AgentStreamRunner.RequireSignedViewers`,
+  opt-in; a consumer supplies which viewer keys it trusts), and consent on
+  reverse streams (`TunnelClient.ConsentReverseStream`, opt-in, asked after
+  the port allowlist), and consent on the screen itself
+  (`AgentStreamRunner.RequireScreenViewConsent`, opt-in).
+  **Still open:** signing input, clipboard and file messages, deferred to
+  Phase 1, which moves them off the signalling socket.
 - **Phase 1 — move the data plane off the server.** Add a DataChannel to
   `webrtc/peer.go` (video track only today) and carry input, clipboard and
   `transfer` over it with `bark.Envelope` as the format. Keep the JPEG fallback
@@ -238,9 +261,24 @@ host-to-technician clipboard watcher, `file_transfer` gates `file_start`,
 files silently do nothing, with one log line per refused permission. Chirp and
 the platform both need that change when they take this version. Nothing on the
 signalling socket can grant — the server is not who consents — and a `close`
-message revokes everything. `screen_view` is declared but not enforced, and
-`TunnelClient.OpenReverseStream` has no consent check beyond the port
-allowlist.
+message revokes everything.
+
+`screen_view` is enforced only when a consumer calls
+`RequireScreenViewConsent(true)`, deliberately opt-in: enforcing it for
+everyone would stop the screen for every consumer that does not `Grant` it.
+With it on, an `offer` or `session_start` is refused until `screen_view` is
+granted, the viewer is sent `{"type":"consent_required","permission":"screen_view"}`
+so it can say why, and frames stop as soon as the permission is revoked.
+Signature checks (`RequireSignedViewers`) run first, so an unsigned message
+learns nothing about consent.
+
+Reverse streams (SSH through the tunnel) belong to `TunnelClient`, not the
+session, so they follow a separate, opt-in rule. `AllowedReversePorts` is the
+administrator's policy and always applies. `ConsentReverseStream`, when set, is
+asked after the allowlist passes and before each stream is opened; leave it nil
+on unattended fleet hosts, where nobody is there to ask. To tie it to the
+session, set it to `runner.Granted(tunnel.PermissionReverseStream)`, so the
+stream is refused until the user grants it and again once the session revokes.
 
 Also open, unrelated to the above: macOS is stubbed out —
 `input/input_darwin.go` and `screen/capture_darwin.go` both return
@@ -257,12 +295,14 @@ hard part; discuss before starting.
    The roadmap is structured into Phase 0a (defect remediation), Phase 0b (enrolment
    identity & signing), Phase 1 (DataChannel data plane), Phase 2 (pluggable signalling),
    and Phase 3 (relays & transports).
-3. Phase 0a is done (#17), and so is consent enforcement for input, clipboard
-   and file transfer. The next slice is the rest of Phase 0b: verify
-   `AgentRegistration.PublicKey` server-side and wire `VerifyFrom` plus a
-   `NonceCache` into the receiving side of the signalling loop. Check the
-   current code before starting — the device keypair and outgoing signing
-   already exist.
+3. Phase 0 is done in this module: device keys, the server verifying them,
+   signing in both directions, and consent for input, clipboard, file
+   transfer, reverse streams and the screen. Three of those protections are
+   opt-in and only protect a deployment once a consumer turns them on —
+   `RequireSignedViewers`, `ConsentReverseStream` and
+   `RequireScreenViewConsent`; that wiring lives in the products, not here.
+   The next phase is Phase 1, which moves input, clipboard and file transfer
+   onto a DataChannel.
 
 Before every push: run the repo's own checks locally —
 `go build ./...`, `go vet ./...`, `golangci-lint run`, and
