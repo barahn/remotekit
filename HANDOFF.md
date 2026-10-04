@@ -133,13 +133,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `d94da18`** — docs: refresh the handoff status block
+**`develop` is at `8539dd6`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#40](https://github.com/barahn/remotekit/pull/40) | chore(release): merge develop → main (162 commits) — Merge pull request #38 from barahn/ci/stale-branch-cleanup | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37171626571/job/111345571507)<br>Build, Test & SAST ⏳ (in_progress) |
+| [#40](https://github.com/barahn/remotekit/pull/40) | chore(release): merge develop → main (163 commits) — docs: refresh the handoff status block | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37171637496/job/111345607024)<br>Build, Test & SAST ✅ |
+| [#43](https://github.com/barahn/remotekit/pull/43) | ci(release): head the release pull request with one signed commit | `claude/zen-hawking-bp5of6` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37182458985/job/111377602866)<br>Refresh the handoff status block ⏳ (in_progress)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37182458987/job/111377602556)<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ⏳ (queued)<br>Analyze (Go) ⏳ (in_progress)<br>DCO Sign-off ✅<br>Review dependency changes ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
