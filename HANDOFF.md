@@ -144,7 +144,7 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `9e65b1d`** — Merge pull request #51 from barahn/feat/peer-datachannel
+**`develop` is at `e41684e`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
@@ -155,7 +155,7 @@ _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 | [#54](https://github.com/barahn/remotekit/pull/54) | ci: bump actions/setup-go from 5.6.0 to 7.0.0 | `dependabot/github_actions/develop/actions/setup-go-7.0.0` | CodeQL ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37358839330/job/111928031964)<br>Analyze (Go) ✅<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37358839241/job/111928024377)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37358839134/job/111928023431)<br>Build, Test & SAST ✅<br>DCO Sign-off ✅<br>gitleaks ✅<br>Review dependency changes ✅<br>Refresh the handoff status block ✅ |
 | [#55](https://github.com/barahn/remotekit/pull/55) | ci: bump anchore/sbom-action from 0.24.2 to 0.24.3 | `dependabot/github_actions/develop/anchore/sbom-action-0.24.3` | CodeQL ✅<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37358877158/job/111928153513)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37358877383/job/111928153325)<br>DCO Sign-off ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37358877164/job/111928151586)<br>Build, Test & SAST ✅<br>gitleaks ✅<br>Analyze (Go) ✅<br>Review dependency changes ✅<br>Refresh the handoff status block ✅ |
 | [#56](https://github.com/barahn/remotekit/pull/56) | feat(tunnel): announce the JPEG relay fallback, and let a consumer refuse it | `feat/relay-mode-notice` | Refresh the handoff status block ✅ |
-| [#57](https://github.com/barahn/remotekit/pull/57) | chore(release): merge develop → main (10 commits) — Merge pull request #51 from barahn/feat/peer-datachannel | `develop` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37362364584/job/111939773244)<br>open-pr ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Analyze (Go) ⏳ (queued) |
+| [#57](https://github.com/barahn/remotekit/pull/57) | chore(release): merge develop → main (10 commits) — Merge pull request #51 from barahn/feat/peer-datachannel | `develop` | no checks reported |
 
 <!-- END GENERATED: handoff status -->
 
