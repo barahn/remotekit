@@ -62,8 +62,8 @@ Packages (each usable on its own):
   branches. `scripts/release-pr.sh` and `scripts/sync-develop.sh` have the
   details. Both `develop` and `main` require signed commits. `develop` was
   rebuilt on `main` on 2026-10-04 to get there: its history until then
-  carried 39 unsigned handoff refreshes, which `main` cannot take, and is
-  kept under the tag `archive/develop-2026-10-04`.
+  carried 39 unsigned handoff refreshes, which `main` cannot take, and was
+  not kept.
 - **Every commit needs a DCO `Signed-off-by` trailer** (`git commit -s`). CI
   enforces it on every non-merge commit in a pull request, and a missing
   trailer has already turned one pull request red. `CONTRIBUTING.md` also carries a CLA; sign-off is not the CLA.
@@ -144,14 +144,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `8279a3f`** — docs: refresh the handoff status block
+**`develop` is at `f3cfb57`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#45](https://github.com/barahn/remotekit/pull/45) | test(tunnel): give the Firefox test a second try at connecting | `fix/firefox-test-connect-retry` | CodeQL ✅<br>Build, Test & SAST ✅<br>DCO Sign-off ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37206571373/job/111448881688)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37206571283/job/111448881359)<br>Review dependency changes ✅<br>Analyze (Go) ✅<br>gitleaks ✅ |
-| [#47](https://github.com/barahn/remotekit/pull/47) | chore(release): merge develop → main (2 commits) — ci(release): merge develop into main with a merge commit | `develop` | [Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37207951727/job/111453029593)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37207951727/job/111453029387)<br>Build, Test & SAST ⏳ (in_progress) |
+| [#48](https://github.com/barahn/remotekit/pull/48) | chore(release): merge develop → main (15 commits) — Merge pull request #49 from barahn/feat/standing-permissions | `develop` | no checks reported |
 
 <!-- END GENERATED: handoff status -->
 
@@ -258,7 +257,10 @@ host-to-technician clipboard watcher, `file_transfer` gates `file_start`,
 files silently do nothing, with one log line per refused permission. Chirp and
 the platform both need that change when they take this version. Nothing on the
 signalling socket can grant — the server is not who consents — and a `close`
-message revokes everything.
+message revokes everything `Grant` gave. Where nobody is at the machine to ask,
+as on an unattended fleet host, the consumer names what its own policy allows
+with `SetStandingPermissions`; those hold across sessions, and neither `close`
+nor `Revoke` withdraws them.
 
 `screen_view` is enforced only when a consumer calls
 `RequireScreenViewConsent(true)`, deliberately opt-in: enforcing it for

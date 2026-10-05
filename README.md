@@ -9,7 +9,6 @@ usable on its own.
 [![CodeQL](https://github.com/barahn/remotekit/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/barahn/remotekit/actions/workflows/codeql.yml)
 [![Secret Scan](https://github.com/barahn/remotekit/actions/workflows/secret-scan.yml/badge.svg?branch=main)](https://github.com/barahn/remotekit/actions/workflows/secret-scan.yml)
 [![Dependency Review](https://github.com/barahn/remotekit/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/barahn/remotekit/actions/workflows/dependency-review.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/barahn/remotekit?style=flat-square)](https://goreportcard.com/report/github.com/barahn/remotekit)
 [![Go Reference](https://pkg.go.dev/badge/github.com/barahn/remotekit.svg)](https://pkg.go.dev/github.com/barahn/remotekit)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/barahn/remotekit?style=flat-square)](go.mod)
 [![Checked with gosec](https://img.shields.io/badge/security-gosec-blue?style=flat-square)](https://github.com/securego/gosec)
