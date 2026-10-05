@@ -216,11 +216,27 @@ These fixes address immediate security issues present in the current codebase, i
     agent keeps accepting the same messages over the signalling socket.
 
 #### 2. Encapsulate Data Plane Messages in `bark.Envelope`
-* **Package:** `bark`, `tunnel`
+* **Package:** `bark`, `tunnel` ([`tunnel/dataplane.go`](../tunnel/dataplane.go))
 * **Details:**
-  - Migrate input injection payloads, clipboard sync packets, and file transfer blocks from the WebSocket loop in [`tunnel/agent_stream.go`](../tunnel/agent_stream.go#L410) onto `PeerSession.SendData()`.
-  - Format every packet using standard `bark.Envelope`.
-  - The central server now only relays opaque SDP and ICE candidate messages during handshake; it sees zero input or clipboard bytes.
+  - Input, clipboard and file transfer (`input`, `clipboard`, `file_start`,
+    `file_chunk`, `file_complete`) arrive over the viewer's data channels as
+    `bark.Envelope`s whose payload has the same fields as the socket message
+    of the same type. Replies (`file_progress`, `file_saved`) go back on the
+    channel the message came on, as envelopes too. The host's clipboard goes
+    to every viewer with an open `bark-control` channel.
+  - Both paths go through one handler, so the consent checks from Phase 0
+    apply identically whichever way a message arrives.
+  - **Transition:** the products' viewers have to open the channels before
+    the socket path can go. Until then the agent accepts both, and the host
+    clipboard still goes over the socket while any viewer has no channel.
+    `AgentStreamRunner.RequireDataChannel(true)` is the opt-in end state:
+    user data on the socket is refused (the viewer is sent
+    `{"type":"data_channel_required","message_type":...}` once per type),
+    and the server only relays SDP and ICE candidates.
+  - No separate signature is needed on these messages: the channel runs
+    inside the DTLS session the offer and answer set up, and with
+    `RequireSignedViewers` on, the relay cannot put itself in the middle of
+    that session.
 
 #### 3. Explicit Degraded Mode for JPEG Fallback
 * **File:** [`tunnel/agent_stream.go`](../tunnel/agent_stream.go#L83)

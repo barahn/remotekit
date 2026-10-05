@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/barahn/remotekit/bark"
 	"github.com/barahn/remotekit/screen/codec/vp8"
 	"github.com/barahn/remotekit/webrtc"
 )
@@ -116,6 +117,47 @@ func TestFirefoxDecodesTheStream(t *testing.T) {
 	if sent := srv.framesSent(); sent == 0 {
 		t.Fatal("the harness never sent a frame, so the count above is not ours")
 	}
+
+	checkFirefoxDataChannel(t, driver, session, srv)
+}
+
+// checkFirefoxDataChannel proves the data plane works with a real browser on
+// the other end: the page opens bark-control before offering, as a product's
+// viewer will, and sends a bark envelope on it; the agent's PeerSession
+// accepts the channel, receives the envelope and answers on it.
+func checkFirefoxDataChannel(t *testing.T, driver *gecko, session string, srv *viewerHarness) {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	var reply string
+	for time.Now().Before(deadline) {
+		reply = driver.evalString(t, session, "return window.__dcReply || ''")
+		if reply != "" && srv.dataReceived() != "" {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	got := srv.dataReceived()
+	if got == "" {
+		t.Fatalf("no message from Firefox on %s within 15s (page channel state: %s)",
+			webrtc.DataChannelControl, driver.evalString(t, session, "return String(window.__dcState)"))
+	}
+	var env bark.Envelope
+	if err := json.Unmarshal([]byte(got), &env); err != nil {
+		t.Fatalf("Firefox's message is not a bark envelope: %v (%q)", err, got)
+	}
+	var ev bark.InputEvent
+	if err := json.Unmarshal(env.Payload, &ev); err != nil || env.Type != bark.TypeInputEvent || ev.Type != "mouse_move" || ev.X != 0.25 {
+		t.Fatalf("Firefox sent %q, want an input envelope with a mouse_move to x=0.25", got)
+	}
+
+	if reply == "" {
+		t.Fatal("Firefox received no reply on the data channel within 15s")
+	}
+	if err := json.Unmarshal([]byte(reply), &env); err != nil || env.Type != bark.TypeClipboard {
+		t.Fatalf("Firefox received %q, want a clipboard envelope", reply)
+	}
+	t.Logf("Firefox and the agent exchanged bark envelopes over %s", webrtc.DataChannelControl)
 }
 
 // pageStateScript reports enough of the browser's view to tell a failure to
@@ -135,6 +177,13 @@ type viewerHarness struct {
 	stopOnce sync.Once
 	stopCh   chan struct{}
 	sent     atomic.Int64
+	// data is the first message the page sent on bark-control.
+	data atomic.Value
+}
+
+func (h *viewerHarness) dataReceived() string {
+	s, _ := h.data.Load().(string)
+	return s
 }
 
 func newViewerHarness(t *testing.T) *viewerHarness {
@@ -196,6 +245,15 @@ func (h *viewerHarness) serveOffer(w http.ResponseWriter, r *http.Request) {
 
 	var wantKeyFrame atomic.Bool
 	peer.OnKeyFrameRequest(func() { wantKeyFrame.Store(true) })
+	peer.OnDataMessage(func(label string, msg []byte) {
+		if label != webrtc.DataChannelControl || !h.data.CompareAndSwap(nil, string(msg)) {
+			return
+		}
+		reply, err := bark.EncodeEnvelope(bark.TypeClipboard, "", map[string]string{"text": "from the agent"})
+		if err == nil {
+			_ = peer.SendData(label, reply)
+		}
+	})
 	peer.OnICECandidate(func(c string) {
 		h.mu.Lock()
 		h.cands = append(h.cands, c)
@@ -316,6 +374,18 @@ window.__error = null;
     pc.oniceconnectionstatechange = () => { window.__ice = pc.iceConnectionState; };
     pc.onconnectionstatechange = () => { window.__conn = pc.connectionState; };
     pc.addTransceiver("video", { direction: "recvonly" });
+    // The viewer offers, so the viewer creates the data channel.
+    const dc = pc.createDataChannel("bark-control");
+    window.__dcState = "created";
+    dc.onopen = () => {
+      window.__dcState = "open";
+      dc.send(JSON.stringify({
+        type: "input",
+        timestamp: new Date().toISOString(),
+        payload: { type: "mouse_move", x: 0.25, y: 0.75 },
+      }));
+    };
+    dc.onmessage = (e) => { window.__dcReply = typeof e.data === "string" ? e.data : "binary"; };
     pc.ontrack = (e) => {
       const v = document.getElementById("v");
       v.srcObject = e.streams[0] || new MediaStream([e.track]);

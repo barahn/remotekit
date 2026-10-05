@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/barahn/remotekit/bark"
 	"github.com/barahn/remotekit/clipboard"
 	"github.com/barahn/remotekit/input"
 	"github.com/barahn/remotekit/screen"
@@ -50,6 +51,10 @@ type AgentStreamRunner struct {
 	// requireScreenView, when set, withholds the screen until screen_view is
 	// granted; see RequireScreenViewConsent.
 	requireScreenView bool
+
+	// requireDataChannel, when set, refuses user data over the signalling
+	// socket; see RequireDataChannel.
+	requireDataChannel bool
 }
 
 func NewAgentStreamRunner(creds *AgentCredentials, insecureSkipVerify bool) *AgentStreamRunner {
@@ -225,11 +230,21 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 	clipMgr := clipboard.NewManager()
 	clipWatcher := clipboard.NewWatcher(clipMgr, 500*time.Millisecond)
 	transferMgr, _ := transfer.NewManager("")
+	dp := &dataPlane{r: r, clipMgr: clipMgr, clipWatcher: clipWatcher, transfer: transferMgr}
+	var refusal relayRefusal
 
 	safeWrite := func(data []byte) error {
 		writeMu.Lock()
 		defer writeMu.Unlock()
 		return ws.WriteMessage(websocket.TextMessage, data)
+	}
+
+	// socketReply answers a data plane message that came over the socket.
+	socketReply := func(msgType string, fields map[string]interface{}) {
+		fields["type"] = msgType
+		if data, err := json.Marshal(fields); err == nil {
+			_ = safeWrite(data)
+		}
 	}
 
 	// Start clipboard watcher for continuous sync from host to technician
@@ -240,15 +255,41 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 		if !r.allow(PermissionClipboard, "host clipboard sync") {
 			return
 		}
-		clipMsg, err := json.Marshal(map[string]interface{}{
-			"type":       "clipboard",
-			"session_id": r.creds.AgentID,
-			"text":       newText,
-		})
-		if err == nil {
-			_ = safeWrite(clipMsg)
-			log.Printf("[AgentStream] Dispatched host clipboard change to remote (%d bytes)\n", len(newText))
+
+		// Every viewer with a control channel gets the clipboard there.
+		// The socket reaches every viewer at once, the server included,
+		// so it is used only while some viewer has no channel to take it.
+		stateMu.RLock()
+		withChannel := make([]*webrtc.PeerSession, 0, len(peers))
+		viaSocket := len(peers) == 0
+		for _, p := range peers {
+			if p.DataChannelOpen(webrtc.DataChannelControl) {
+				withChannel = append(withChannel, p)
+			} else {
+				viaSocket = true
+			}
 		}
+		stateMu.RUnlock()
+
+		if env, err := bark.EncodeEnvelope(bark.TypeClipboard, r.creds.AgentID, map[string]string{"text": newText}); err == nil {
+			for _, p := range withChannel {
+				if sErr := p.SendData(webrtc.DataChannelControl, env); sErr != nil {
+					viaSocket = true // the channel closed under us
+				}
+			}
+		}
+
+		if viaSocket && !r.requireDataChannel {
+			clipMsg, err := json.Marshal(map[string]interface{}{
+				"type":       "clipboard",
+				"session_id": r.creds.AgentID,
+				"text":       newText,
+			})
+			if err == nil {
+				_ = safeWrite(clipMsg)
+			}
+		}
+		log.Printf("[AgentStream] Dispatched host clipboard change to remote (%d bytes)\n", len(newText))
 	})
 
 	// Send agent_ready ping so any waiting browser viewer immediately initiates the WebRTC offer
@@ -346,6 +387,12 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 					// shown it can decode anything, so it starts unconfirmed.
 					delete(videoConfirmed, viewerID)
 					videoEncoder.Reset()
+
+					// The viewer creates the data channels in its offer, so
+					// the handler has to be in place before the answer.
+					peer.OnDataMessage(func(label string, msg []byte) {
+						dp.handleChannelMessage(ctx, peer, label, msg)
+					})
 
 					peer.OnICECandidate(func(candJSON string) {
 						data, err := encodeSignal(webrtc.SignalMessage{
@@ -551,10 +598,21 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				_ = peer.AddICECandidate(cand)
 			}
 
-		case "input":
-			if payload, ok := signal["payload"].(map[string]interface{}); ok {
-				r.handleInputPayload(payload)
+		case "input", "clipboard", "file_start", "file_chunk", "file_complete":
+			if r.requireDataChannel {
+				refusal.refuse(msgType, safeWrite)
+				continue
 			}
+			fields := signal
+			if msgType == "input" {
+				// Over the socket the input event is nested in payload.
+				payload, ok := signal["payload"].(map[string]interface{})
+				if !ok {
+					continue
+				}
+				fields = payload
+			}
+			dp.handle(ctx, msgType, fields, socketReply)
 
 		case "resize", "viewport_size":
 			// Informational signal indicating technician viewport dimensions
@@ -572,63 +630,6 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 		case "focus_state":
 			focused, _ := signal["focused"].(bool)
 			log.Printf("[AgentStream] Session focus state changed: focused=%s\n", logSafe(fmt.Sprint(focused)))
-
-		case "clipboard":
-			text, _ := signal["text"].(string)
-			if text != "" && r.allow(PermissionClipboard, "clipboard write") {
-				clipWatcher.UpdateLastText(text)
-				_ = clipMgr.SetText(ctx, text)
-				log.Printf("[AgentStream] Received and applied clipboard sync (%d bytes)\n", len(text))
-			}
-
-		case "file_start":
-			id, _ := signal["transfer_id"].(string)
-			name, _ := signal["name"].(string)
-			size, _ := signal["size"].(float64)
-			sha, _ := signal["sha256"].(string)
-			if id != "" && name != "" && r.allow(PermissionFileTransfer, "file transfer") {
-				transferMgr.StartSession(id, name, int64(size), sha)
-				log.Printf("[AgentStream] Started file transfer session %s (%s, %s bytes)\n", logSafe(id), logSafe(name), logSafe(fmt.Sprintf("%.0f", size)))
-			}
-
-		case "file_chunk":
-			id, _ := signal["transfer_id"].(string)
-			idx, _ := signal["index"].(float64)
-			b64Data, _ := signal["data"].(string)
-			if id != "" && r.allow(PermissionFileTransfer, "file chunk") {
-				prog, done, err := transferMgr.AddChunkBase64(id, int(idx), b64Data)
-				if err != nil {
-					log.Printf("[AgentStream] File chunk error: %v\n", err)
-				}
-				progMsg, _ := json.Marshal(map[string]interface{}{
-					"type":        "file_progress",
-					"transfer_id": id,
-					"progress":    prog,
-					"done":        done,
-				})
-				_ = safeWrite(progMsg)
-			}
-
-		case "file_complete":
-			id, _ := signal["transfer_id"].(string)
-			if id != "" && r.allow(PermissionFileTransfer, "file save") {
-				destPath, sha, err := transferMgr.AssembleFile(id)
-				errStr := ""
-				if err != nil {
-					errStr = err.Error()
-					log.Printf("[AgentStream] File assembly error for %s: %v\n", logSafe(id), err)
-				} else {
-					log.Printf("[AgentStream] File transfer %s completed! Saved to: %s (SHA: %s)\n", logSafe(id), logSafe(destPath), sha)
-				}
-				resMsg, _ := json.Marshal(map[string]interface{}{
-					"type":        "file_saved",
-					"transfer_id": id,
-					"path":        destPath,
-					"sha256":      sha,
-					"error":       errStr,
-				})
-				_ = safeWrite(resMsg)
-			}
 
 		case "close":
 			r.Revoke()
