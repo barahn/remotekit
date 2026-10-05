@@ -190,23 +190,30 @@ These fixes address immediate security issues present in the current codebase, i
 ### Technical Tasks
 
 #### 1. Add DataChannel to `webrtc.PeerSession`
-* **File:** [`webrtc/peer.go`](../webrtc/peer.go)
+* **File:** [`webrtc/datachannel.go`](../webrtc/datachannel.go)
+* **Direction:** the viewer makes the offer and the agent answers, so the
+  viewer creates the channels and the agent accepts them (`OnDataChannel`).
+  An earlier draft of this section had the agent call `OpenDataChannel`; a
+  channel created by the answering side would need a renegotiation the viewer
+  never starts.
 * **Implementation:**
-  - Introduce DataChannel initialization:
-    ```go
-    type PeerSession struct {
-        config PeerConfig
-        pc     *webrtc.PeerConnection
-        videoTrack *webrtc.TrackLocalStaticSample
+  ```go
+  const (
+      DataChannelControl  = "bark-control"  // input, clipboard
+      DataChannelTransfer = "bark-transfer" // file transfer
+  )
 
-        dataChannel   *webrtc.DataChannel
-        onDataMessage func(msg []byte)
-    }
-
-    func (s *PeerSession) OpenDataChannel(label string, onMsg func([]byte)) error
-    func (s *PeerSession) SendData(data []byte) error
-    ```
-  - Use ordered, reliable channels for control messages (`bark-control`) and file transfers (`bark-transfer`).
+  func (s *PeerSession) OnDataMessage(fn func(label string, msg []byte))
+  func (s *PeerSession) OnDataChannelOpen(fn func(label string))
+  func (s *PeerSession) DataChannelOpen(label string) bool
+  func (s *PeerSession) SendData(label string, data []byte) error
+  func (s *PeerSession) OpenDataChannel(label string) error // offering side: Go viewers, tests
+  ```
+  - Both channels are ordered and reliable. A channel the viewer opens as
+    unordered, or with a retransmit or lifetime limit, is closed on arrival.
+  - The viewer runs in the products (Chirp, Barahn), not in this module, so
+    each product's viewer has to open the channels too. Until they do, the
+    agent keeps accepting the same messages over the signalling socket.
 
 #### 2. Encapsulate Data Plane Messages in `bark.Envelope`
 * **Package:** `bark`, `tunnel`
