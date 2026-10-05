@@ -239,11 +239,20 @@ These fixes address immediate security issues present in the current codebase, i
     that session.
 
 #### 3. Explicit Degraded Mode for JPEG Fallback
-* **File:** [`tunnel/agent_stream.go`](../tunnel/agent_stream.go#L83)
+* **File:** [`tunnel/relaymode.go`](../tunnel/relaymode.go)
 * **Details:**
-  - The JPEG fallback currently operates silently whenever WebRTC is not confirmed (`video_ok`).
-  - Change this behavior so JPEG relay streaming requires an explicit user-acknowledged configuration flag (`AllowRelayFallback: true`).
-  - Emit an informational event when entering degraded relay mode so the operator and client UI display a clear indicator (*"Degraded Mode: Relayed through server"*).
+  - The JPEG fallback used to run silently whenever WebRTC was not confirmed
+    (`video_ok`). It is now always announced: entering it sends the viewer
+    `{"type":"relay_mode","active":true,"reason":...}`, leaving it sends
+    `active: false`, a viewer joining mid-relay is told again, and every
+    transition is logged and reported to `AgentStreamRunner.OnRelayMode`, so
+    the agent's own UI can show the person at the machine that the server
+    can see the screen.
+  - Refusing it is opt-in, not the default this section first proposed
+    (`AllowRelayFallback: true`): making it mandatory would leave every
+    viewer that cannot negotiate WebRTC or decode VP8 with no screen.
+    `AgentStreamRunner.DisableRelayFallback(true)` refuses it; such a viewer
+    is sent `{"type":"relay_fallback_refused"}` instead of frames.
 
 ---
 
