@@ -190,37 +190,69 @@ These fixes address immediate security issues present in the current codebase, i
 ### Technical Tasks
 
 #### 1. Add DataChannel to `webrtc.PeerSession`
-* **File:** [`webrtc/peer.go`](../webrtc/peer.go)
+* **File:** [`webrtc/datachannel.go`](../webrtc/datachannel.go)
+* **Direction:** the viewer makes the offer and the agent answers, so the
+  viewer creates the channels and the agent accepts them (`OnDataChannel`).
+  An earlier draft of this section had the agent call `OpenDataChannel`; a
+  channel created by the answering side would need a renegotiation the viewer
+  never starts.
 * **Implementation:**
-  - Introduce DataChannel initialization:
-    ```go
-    type PeerSession struct {
-        config PeerConfig
-        pc     *webrtc.PeerConnection
-        videoTrack *webrtc.TrackLocalStaticSample
+  ```go
+  const (
+      DataChannelControl  = "bark-control"  // input, clipboard
+      DataChannelTransfer = "bark-transfer" // file transfer
+  )
 
-        dataChannel   *webrtc.DataChannel
-        onDataMessage func(msg []byte)
-    }
-
-    func (s *PeerSession) OpenDataChannel(label string, onMsg func([]byte)) error
-    func (s *PeerSession) SendData(data []byte) error
-    ```
-  - Use ordered, reliable channels for control messages (`bark-control`) and file transfers (`bark-transfer`).
+  func (s *PeerSession) OnDataMessage(fn func(label string, msg []byte))
+  func (s *PeerSession) OnDataChannelOpen(fn func(label string))
+  func (s *PeerSession) DataChannelOpen(label string) bool
+  func (s *PeerSession) SendData(label string, data []byte) error
+  func (s *PeerSession) OpenDataChannel(label string) error // offering side: Go viewers, tests
+  ```
+  - Both channels are ordered and reliable. A channel the viewer opens as
+    unordered, or with a retransmit or lifetime limit, is closed on arrival.
+  - The viewer runs in the products (Chirp, Barahn), not in this module, so
+    each product's viewer has to open the channels too. Until they do, the
+    agent keeps accepting the same messages over the signalling socket.
 
 #### 2. Encapsulate Data Plane Messages in `bark.Envelope`
-* **Package:** `bark`, `tunnel`
+* **Package:** `bark`, `tunnel` ([`tunnel/dataplane.go`](../tunnel/dataplane.go))
 * **Details:**
-  - Migrate input injection payloads, clipboard sync packets, and file transfer blocks from the WebSocket loop in [`tunnel/agent_stream.go`](../tunnel/agent_stream.go#L410) onto `PeerSession.SendData()`.
-  - Format every packet using standard `bark.Envelope`.
-  - The central server now only relays opaque SDP and ICE candidate messages during handshake; it sees zero input or clipboard bytes.
+  - Input, clipboard and file transfer (`input`, `clipboard`, `file_start`,
+    `file_chunk`, `file_complete`) arrive over the viewer's data channels as
+    `bark.Envelope`s whose payload has the same fields as the socket message
+    of the same type. Replies (`file_progress`, `file_saved`) go back on the
+    channel the message came on, as envelopes too. The host's clipboard goes
+    to every viewer with an open `bark-control` channel.
+  - Both paths go through one handler, so the consent checks from Phase 0
+    apply identically whichever way a message arrives.
+  - **Transition:** the products' viewers have to open the channels before
+    the socket path can go. Until then the agent accepts both, and the host
+    clipboard still goes over the socket while any viewer has no channel.
+    `AgentStreamRunner.RequireDataChannel(true)` is the opt-in end state:
+    user data on the socket is refused (the viewer is sent
+    `{"type":"data_channel_required","message_type":...}` once per type),
+    and the server only relays SDP and ICE candidates.
+  - No separate signature is needed on these messages: the channel runs
+    inside the DTLS session the offer and answer set up, and with
+    `RequireSignedViewers` on, the relay cannot put itself in the middle of
+    that session.
 
 #### 3. Explicit Degraded Mode for JPEG Fallback
-* **File:** [`tunnel/agent_stream.go`](../tunnel/agent_stream.go#L83)
+* **File:** [`tunnel/relaymode.go`](../tunnel/relaymode.go)
 * **Details:**
-  - The JPEG fallback currently operates silently whenever WebRTC is not confirmed (`video_ok`).
-  - Change this behavior so JPEG relay streaming requires an explicit user-acknowledged configuration flag (`AllowRelayFallback: true`).
-  - Emit an informational event when entering degraded relay mode so the operator and client UI display a clear indicator (*"Degraded Mode: Relayed through server"*).
+  - The JPEG fallback used to run silently whenever WebRTC was not confirmed
+    (`video_ok`). It is now always announced: entering it sends the viewer
+    `{"type":"relay_mode","active":true,"reason":...}`, leaving it sends
+    `active: false`, a viewer joining mid-relay is told again, and every
+    transition is logged and reported to `AgentStreamRunner.OnRelayMode`, so
+    the agent's own UI can show the person at the machine that the server
+    can see the screen.
+  - Refusing it is opt-in, not the default this section first proposed
+    (`AllowRelayFallback: true`): making it mandatory would leave every
+    viewer that cannot negotiate WebRTC or decode VP8 with no screen.
+    `AgentStreamRunner.DisableRelayFallback(true)` refuses it; such a viewer
+    is sent `{"type":"relay_fallback_refused"}` instead of frames.
 
 ---
 

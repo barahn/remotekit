@@ -144,13 +144,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `f3cfb57`** — docs: refresh the handoff status block
+**`develop` is at `eaf8faf`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#48](https://github.com/barahn/remotekit/pull/48) | chore(release): merge develop → main (15 commits) — Merge pull request #49 from barahn/feat/standing-permissions | `develop` | no checks reported |
+| [#57](https://github.com/barahn/remotekit/pull/57) | chore(release): merge develop → main (25 commits) — Merge pull request #54 from barahn/dependabot/github_actions/deve... | `develop` | no checks reported |
 
 <!-- END GENERATED: handoff status -->
 
@@ -184,13 +184,18 @@ Ordered work, as proposed:
   reverse streams (`TunnelClient.ConsentReverseStream`, opt-in, asked after
   the port allowlist), and consent on the screen itself
   (`AgentStreamRunner.RequireScreenViewConsent`, opt-in).
-  **Still open:** signing input, clipboard and file messages, deferred to
-  Phase 1, which moves them off the signalling socket.
-- **Phase 1 — move the data plane off the server.** Add a DataChannel to
-  `webrtc/peer.go` (video track only today) and carry input, clipboard and
-  `transfer` over it with `bark.Envelope` as the format. Keep the JPEG fallback
-  but surface it as a declared degraded mode ("relay mode — the server can see
-  the screen") instead of a silent default.
+  Input, clipboard and file messages are not signed themselves: Phase 1
+  moves them onto a data channel inside the DTLS session the signed offer
+  and answer set up.
+- **Phase 1 — move the data plane off the server.** The viewer opens
+  `bark-control` and `bark-transfer` data channels, `webrtc.PeerSession`
+  accepts them (`webrtc/datachannel.go`), and input, clipboard and
+  `transfer` travel over them as `bark.Envelope`s (`tunnel/dataplane.go`).
+  The socket path stays until the products' viewers open the channels;
+  `AgentStreamRunner.RequireDataChannel` is the opt-in that refuses it.
+  The JPEG fallback is announced whenever it runs (`relay_mode` to the
+  viewer, `OnRelayMode` to the consumer) and refused with the opt-in
+  `DisableRelayFallback`.
 - **Phase 2 — pluggable signalling.** A `Signaler` interface
   (`Publish`/`Subscribe`) with `tunnel` as the WSS implementation and an
   *optional* `signal/nostr` as another. If Nostr: NIP-44 (not NIP-04), NIP-59

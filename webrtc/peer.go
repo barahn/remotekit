@@ -47,7 +47,8 @@ func DefaultPeerConfig() PeerConfig {
 	}
 }
 
-// PeerSession manages a Pion WebRTC PeerConnection for screen streaming.
+// PeerSession manages a Pion WebRTC PeerConnection for screen streaming and
+// for the data channels that carry input, clipboard and file transfer.
 type PeerSession struct {
 	config PeerConfig
 
@@ -63,6 +64,14 @@ type PeerSession struct {
 	// keyFrameRequestInterval and lastKeyFrameRequest coalesce request bursts.
 	keyFrameRequestInterval time.Duration
 	lastKeyFrameRequest     time.Time
+
+	// Data channels, keyed by label once open; see datachannel.go. They have
+	// their own lock because pion calls into them from its own goroutines
+	// while mu may be held across a negotiation.
+	dcMu              sync.RWMutex
+	dataChannels      map[string]*webrtc.DataChannel
+	onDataMessage     func(label string, msg []byte)
+	onDataChannelOpen func(label string)
 }
 
 // NewPeerSession creates and initializes a new WebRTC PeerSession.
@@ -101,6 +110,10 @@ func NewPeerSession(config PeerConfig) (*PeerSession, error) {
 		config: config,
 		pc:     pc,
 	}
+
+	// The viewer makes the offer, so it creates the data channels and they
+	// arrive here.
+	pc.OnDataChannel(session.acceptDataChannel)
 
 	// Register ICE candidate callback
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
