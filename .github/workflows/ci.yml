@@ -258,7 +258,7 @@ jobs:
         # detector. The next step runs them in full.
         # The timeout stays generous because screen/codec/vp8 is still slow
         # under -race with coverage.
-        run: xvfb-run -a go test -race -short -timeout 30m -coverprofile=coverage.out ./...
+        run: xvfb-run -a -s "-screen 0 1920x1080x24 -noreset" go test -race -short -timeout 30m -coverprofile=coverage.out ./...
 
       # The tests -short skipped above, without the race detector. The
       # wavefront's concurrency is still raced at 320x192 and 640x480 above.

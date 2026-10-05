@@ -12,6 +12,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/barahn/remotekit/internal/x11"
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/xproto"
 	"github.com/jezek/xgb/xtest"
@@ -65,12 +66,12 @@ func NewInjector() (Injector, error) {
 }
 
 func newX11Injector() (*linuxInjector, error) {
-	conn, err := xgb.NewConn()
+	conn, err := x11.NewConn()
 	if err != nil {
 		return nil, fmt.Errorf("%w: cannot connect to X11 display (is $DISPLAY set?): %v", ErrDeviceNotFound, err)
 	}
 
-	if err := xtest.Init(conn); err != nil {
+	if err := x11.Enable(conn, x11.XTest); err != nil {
 		conn.Close()
 		return nil, fmt.Errorf("input: XTest extension unavailable: %w", err)
 	}

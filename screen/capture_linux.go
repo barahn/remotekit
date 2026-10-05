@@ -24,6 +24,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/barahn/remotekit/internal/x11"
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/randr"
 	"github.com/jezek/xgb/shm"
@@ -112,7 +113,7 @@ func NewCapturer(config CaptureConfig) (Capturer, error) {
 }
 
 func newX11Capturer(config CaptureConfig) (*x11Capturer, error) {
-	conn, err := xgb.NewConn()
+	conn, err := x11.NewConn()
 	if err != nil {
 		return nil, fmt.Errorf("%w: cannot connect to X11 display (is $DISPLAY set?): %v", ErrCaptureNotReady, err)
 	}
@@ -135,7 +136,7 @@ func newX11Capturer(config CaptureConfig) (*x11Capturer, error) {
 
 	// RANDR is what makes the individual monitors visible. Without it the
 	// capturer still works, but only as a single spanned screen.
-	if rErr := randr.Init(conn); rErr == nil {
+	if rErr := x11.Enable(conn, x11.RANDR); rErr == nil {
 		c.randrReady = true
 	}
 
@@ -150,7 +151,7 @@ func newX11Capturer(config CaptureConfig) (*x11Capturer, error) {
 
 // initShm sets up the MIT-SHM shared memory segment for zero-copy capture.
 func (c *x11Capturer) initShm() error {
-	if err := shm.Init(c.conn); err != nil {
+	if err := x11.Enable(c.conn, x11.SHM); err != nil {
 		return fmt.Errorf("MIT-SHM extension not available: %w", err)
 	}
 
