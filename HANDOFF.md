@@ -144,14 +144,15 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `8ba719a`** — docs: refresh the handoff status block
+**`develop` is at `d98f9e6`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#48](https://github.com/barahn/remotekit/pull/48) | chore(release): merge develop → main (10 commits) — docs: refresh the handoff status block | `develop` | CodeQL ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37224149569/job/111645394371)<br>Analyze (Go) ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37224149543/job/111645392608)<br>DCO Sign-off ✅<br>Build, Test & SAST ✅<br>Release source ✅<br>Review dependency changes ✅<br>gitleaks ✅<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37224146009/job/111500228746)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37224146009/job/111500228685)<br>Build, Test & SAST ✅ |
-| [#49](https://github.com/barahn/remotekit/pull/49) | feat(tunnel): let a consumer name standing permissions for unattended hosts | `feat/standing-permissions` | [Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37281307786/job/111669802837)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37281307654/job/111669802500)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37281307708/job/111669802294)<br>Refresh the handoff status block ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>DCO Sign-off ⏳ (queued)<br>Build, Test & SAST ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress) |
+| [#48](https://github.com/barahn/remotekit/pull/48) | chore(release): merge develop → main (10 commits) — docs: refresh the handoff status block | `develop` | [Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37281331179/job/111669881489)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37281331179/job/111669880702)<br>Build, Test & SAST ✅ |
+| [#49](https://github.com/barahn/remotekit/pull/49) | feat(tunnel): let a consumer name standing permissions for unattended hosts | `feat/standing-permissions` | CodeQL ✅<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37281307786/job/111669802837)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37281307654/job/111669802500)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37281307708/job/111669802294)<br>Refresh the handoff status block ✅<br>gitleaks ✅<br>DCO Sign-off ✅<br>Build, Test & SAST ✅<br>Analyze (Go) ✅<br>Review dependency changes ✅ |
+| [#50](https://github.com/barahn/remotekit/pull/50) | fix(x11): register xgb extensions once, before any connection exists | `fix/xgb-extension-init-race` | [Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37282073267/job/111672220372)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37282073403/job/111672219307)<br>Refresh the handoff status block ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37282073305/job/111672218711)<br>DCO Sign-off ✅<br>Review dependency changes ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
