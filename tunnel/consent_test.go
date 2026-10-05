@@ -56,3 +56,49 @@ func TestGrantRevoke(t *testing.T) {
 		t.Fatal("selective revoke wrong")
 	}
 }
+
+func TestStandingPermissionsSurviveClose(t *testing.T) {
+	inj := &recordingInjector{}
+	r := &AgentStreamRunner{injector: inj}
+	ev := map[string]interface{}{"type": "mousemove", "x": 1.0, "y": 2.0}
+
+	r.SetStandingPermissions(PermissionRemoteControl)
+	r.handleInputPayload(ev)
+	if inj.moves != 1 {
+		t.Fatalf("moves = %d with a standing permission, want 1", inj.moves)
+	}
+
+	// A close revokes everything Grant gave, and only that.
+	r.Grant(PermissionClipboard)
+	r.Revoke()
+	r.handleInputPayload(ev)
+	if inj.moves != 2 {
+		t.Fatalf("standing permission lost on close: moves = %d, want 2", inj.moves)
+	}
+	if r.Granted(PermissionClipboard) {
+		t.Fatal("granted permission survived close")
+	}
+
+	r.Revoke(PermissionRemoteControl)
+	if !r.Granted(PermissionRemoteControl) {
+		t.Fatal("Revoke withdrew a standing permission")
+	}
+
+	r.SetStandingPermissions()
+	r.handleInputPayload(ev)
+	if inj.moves != 2 {
+		t.Fatalf("input injected after standing permissions were cleared")
+	}
+}
+
+func TestSetStandingPermissionsReplaces(t *testing.T) {
+	r := &AgentStreamRunner{}
+	r.SetStandingPermissions(PermissionRemoteControl, PermissionClipboard)
+	r.SetStandingPermissions(PermissionFileTransfer)
+	if r.Granted(PermissionRemoteControl) || r.Granted(PermissionClipboard) {
+		t.Fatal("earlier standing permissions kept")
+	}
+	if !r.Granted(PermissionFileTransfer) {
+		t.Fatal("new standing permission missing")
+	}
+}

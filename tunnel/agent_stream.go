@@ -36,8 +36,11 @@ type AgentStreamRunner struct {
 
 	// granted is what the person at the machine has consented to; see Grant.
 	// warned remembers which refusals have been logged.
+	// standing is what the consumer's own policy allows with nobody asked,
+	// and what a close does not revoke; see SetStandingPermissions.
 	consentMu sync.RWMutex
 	granted   map[string]bool
+	standing  map[string]bool
 	warned    map[string]bool
 
 	// viewerAuth, when set, restricts negotiation to signed viewers; see
