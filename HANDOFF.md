@@ -259,7 +259,10 @@ host-to-technician clipboard watcher, `file_transfer` gates `file_start`,
 files silently do nothing, with one log line per refused permission. Chirp and
 the platform both need that change when they take this version. Nothing on the
 signalling socket can grant — the server is not who consents — and a `close`
-message revokes everything.
+message revokes everything `Grant` gave. Where nobody is at the machine to ask,
+as on an unattended fleet host, the consumer names what its own policy allows
+with `SetStandingPermissions`; those hold across sessions, and neither `close`
+nor `Revoke` withdraws them.
 
 `screen_view` is enforced only when a consumer calls
 `RequireScreenViewConsent(true)`, deliberately opt-in: enforcing it for

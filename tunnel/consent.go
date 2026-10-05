@@ -24,8 +24,9 @@ const (
 // Grant records permissions the person at the machine has agreed to. It is for
 // whoever shows the consent prompt -- a bark.ConsentRequestPayload arrives
 // through Handle, the consumer asks the user, and calls Grant with what they
-// accepted. Nothing else grants: a message arriving on the signalling socket
-// never does, because the server is not who consents.
+// accepted. Nothing on the signalling socket grants, because the server is not
+// who consents; the only other source of permission is the consumer's own
+// policy, through SetStandingPermissions.
 func (r *AgentStreamRunner) Grant(permissions ...string) {
 	r.consentMu.Lock()
 	defer r.consentMu.Unlock()
@@ -39,7 +40,9 @@ func (r *AgentStreamRunner) Grant(permissions ...string) {
 }
 
 // Revoke withdraws the named permissions, or every permission if none are
-// named. It also runs when the server closes the session.
+// named. It also runs when the server closes the session. It withdraws only
+// what Grant gave; standing permissions are changed with
+// SetStandingPermissions.
 func (r *AgentStreamRunner) Revoke(permissions ...string) {
 	r.consentMu.Lock()
 	defer r.consentMu.Unlock()
@@ -52,12 +55,35 @@ func (r *AgentStreamRunner) Revoke(permissions ...string) {
 	}
 }
 
-// Granted reports whether permission has been granted. Everything is denied
-// until Grant says otherwise.
+// SetStandingPermissions replaces the permissions the consumer's own policy
+// allows without asking anyone; call it with none to clear them. Unlike Grant,
+// they hold across sessions: a close does not revoke them, and neither does
+// Revoke.
+//
+// It is for hosts where nobody is at the machine to consent, as on an
+// unattended fleet host, and where enrolling the machine is the decision that
+// lets an operator in. Making that call is the consumer's, which is why the
+// default stays deny: a consumer that wants a standing permission names it.
+// Where somebody is at the machine to ask, ask them and use Grant instead.
+func (r *AgentStreamRunner) SetStandingPermissions(permissions ...string) {
+	r.consentMu.Lock()
+	defer r.consentMu.Unlock()
+	r.standing = nil
+	for _, p := range permissions {
+		if r.standing == nil {
+			r.standing = make(map[string]bool)
+		}
+		r.standing[p] = true
+		delete(r.warned, p)
+	}
+}
+
+// Granted reports whether permission has been granted, by Grant or as a
+// standing permission. Everything is denied until one of them says otherwise.
 func (r *AgentStreamRunner) Granted(permission string) bool {
 	r.consentMu.RLock()
 	defer r.consentMu.RUnlock()
-	return r.granted[permission]
+	return r.granted[permission] || r.standing[permission]
 }
 
 // allow is Granted plus a log line when it refuses, so a session that does
@@ -67,7 +93,7 @@ func (r *AgentStreamRunner) Granted(permission string) bool {
 func (r *AgentStreamRunner) allow(permission, what string) bool {
 	r.consentMu.Lock()
 	defer r.consentMu.Unlock()
-	if r.granted[permission] {
+	if r.granted[permission] || r.standing[permission] {
 		return true
 	}
 	if !r.warned[permission] {
