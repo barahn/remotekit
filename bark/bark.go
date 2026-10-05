@@ -21,6 +21,15 @@ const (
 	TypeConsentRequest    MessageType = "consent_req"
 	TypeConsentResponse   MessageType = "consent_res"
 	TypeChirpSessionState MessageType = "chirp_state"
+
+	// Data plane messages carried over a WebRTC data channel; see
+	// tunnel.AgentStreamRunner.RequireDataChannel. Their payloads use the
+	// same field names as the signalling-socket messages of the same type.
+	TypeClipboard    MessageType = "clipboard"
+	TypeFileStart    MessageType = "file_start"
+	TypeFileComplete MessageType = "file_complete"
+	TypeFileProgress MessageType = "file_progress"
+	TypeFileSaved    MessageType = "file_saved"
 )
 
 // Envelope is the top-level wire format for Yamux Bark multiplexed streams.

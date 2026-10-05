@@ -189,11 +189,15 @@ Ordered work, as proposed:
   reverse streams (`TunnelClient.ConsentReverseStream`, opt-in, asked after
   the port allowlist), and consent on the screen itself
   (`AgentStreamRunner.RequireScreenViewConsent`, opt-in).
-  **Still open:** signing input, clipboard and file messages, deferred to
-  Phase 1, which moves them off the signalling socket.
-- **Phase 1 — move the data plane off the server.** Add a DataChannel to
-  `webrtc/peer.go` (video track only today) and carry input, clipboard and
-  `transfer` over it with `bark.Envelope` as the format. Keep the JPEG fallback
+  Input, clipboard and file messages are not signed themselves: Phase 1
+  moves them onto a data channel inside the DTLS session the signed offer
+  and answer set up.
+- **Phase 1 — move the data plane off the server.** The viewer opens
+  `bark-control` and `bark-transfer` data channels, `webrtc.PeerSession`
+  accepts them (`webrtc/datachannel.go`), and input, clipboard and
+  `transfer` travel over them as `bark.Envelope`s (`tunnel/dataplane.go`).
+  The socket path stays until the products' viewers open the channels;
+  `AgentStreamRunner.RequireDataChannel` is the opt-in that refuses it. Keep the JPEG fallback
   but surface it as a declared degraded mode ("relay mode — the server can see
   the screen") instead of a silent default.
 - **Phase 2 — pluggable signalling.** A `Signaler` interface
