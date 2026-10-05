@@ -21,7 +21,6 @@ func TestMonitorEnumeration(t *testing.T) {
 	if !hasDisplay() {
 		t.Skip("DISPLAY not set — skipping X11 capture test")
 	}
-	requireNoUpstreamRace(t)
 
 	c, err := newX11Capturer(DefaultConfig())
 	if err != nil {
@@ -77,7 +76,6 @@ func TestCaptureIsCroppedToSelectedMonitor(t *testing.T) {
 	if !hasDisplay() {
 		t.Skip("DISPLAY not set — skipping X11 capture test")
 	}
-	requireNoUpstreamRace(t)
 	requireNoInteractiveConsent(t)
 
 	cfg := DefaultConfig()

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/barahn/remotekit/internal/x11"
 	"github.com/jezek/xgb"
 	"github.com/jezek/xgb/xproto"
 )
@@ -60,7 +61,7 @@ func internAtom(conn *xgb.Conn, name string) xproto.Atom {
 }
 
 func initX11Driver() *x11Driver {
-	conn, err := xgb.NewConn()
+	conn, err := x11.NewConn()
 	if err != nil {
 		return nil
 	}
@@ -84,7 +85,7 @@ func initX11Driver() *x11Driver {
 	// Create a dedicated secondary connection for reading clipboard from external owners.
 	// This prevents the ConvertSelection exchange from interfering with the primary
 	// event loop that must remain responsive to SelectionRequest events.
-	readerConn, err := xgb.NewConn()
+	readerConn, err := x11.NewConn()
 	if err != nil {
 		// Non-fatal: fall back to CLI tools for GetText.
 		readerConn = nil
