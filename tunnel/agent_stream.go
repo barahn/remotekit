@@ -55,6 +55,11 @@ type AgentStreamRunner struct {
 	// requireDataChannel, when set, refuses user data over the signalling
 	// socket; see RequireDataChannel.
 	requireDataChannel bool
+
+	// disableRelay and onRelayMode govern the JPEG fallback; see
+	// DisableRelayFallback and OnRelayMode.
+	disableRelay bool
+	onRelayMode  func(active bool)
 }
 
 func NewAgentStreamRunner(creds *AgentCredentials, insecureSkipVerify bool) *AgentStreamRunner {
@@ -232,6 +237,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 	transferMgr, _ := transfer.NewManager("")
 	dp := &dataPlane{r: r, clipMgr: clipMgr, clipWatcher: clipWatcher, transfer: transferMgr}
 	var refusal relayRefusal
+	relay := &relayGate{disabled: r.disableRelay, onChange: r.onRelayMode}
 
 	safeWrite := func(data []byte) error {
 		writeMu.Lock()
@@ -313,6 +319,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			capturer = nil
 		}
 		stateMu.Unlock()
+		relay.stop()
 	}()
 
 	for {
@@ -355,6 +362,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 			}
 			sdp, _ := signal["sdp"].(string)
 			viewerID, _ := signal["viewer_id"].(string)
+			relay.viewerJoined()
 
 			// WebRTC negotiation (if SDP offer is provided)
 			if sdp != "" {
@@ -535,6 +543,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 								// JPEG path stops here: at 1080p, running both
 								// for one frame is a VP8 encode plus a JPEG
 								// encode inside a 33ms budget, and neither fits.
+								relay.direct(safeWrite)
 								continue
 							}
 							// Some viewer is not confirmed yet -- still
@@ -550,7 +559,12 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 
 						// No WebRTC viewer is connected -- either negotiation has
 						// not finished yet or it failed. JPEG over the WebSocket
-						// keeps the session usable meanwhile.
+						// keeps the session usable meanwhile, unless the
+						// consumer refused it, and never without saying so:
+						// the server can see these frames.
+						if !relay.relay(safeWrite) {
+							continue
+						}
 						var buf bytes.Buffer
 						if err := jpeg.Encode(&buf, frame.Image, &jpeg.Options{Quality: 60}); err == nil {
 							b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
@@ -647,6 +661,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 				activeCapCancel = nil
 			}
 			stateMu.Unlock()
+			relay.stop()
 
 		default:
 			// Anything the core does not implement itself belongs to whoever

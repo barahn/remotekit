@@ -188,9 +188,10 @@ Ordered work, as proposed:
   accepts them (`webrtc/datachannel.go`), and input, clipboard and
   `transfer` travel over them as `bark.Envelope`s (`tunnel/dataplane.go`).
   The socket path stays until the products' viewers open the channels;
-  `AgentStreamRunner.RequireDataChannel` is the opt-in that refuses it. Keep the JPEG fallback
-  but surface it as a declared degraded mode ("relay mode — the server can see
-  the screen") instead of a silent default.
+  `AgentStreamRunner.RequireDataChannel` is the opt-in that refuses it.
+  The JPEG fallback is announced whenever it runs (`relay_mode` to the
+  viewer, `OnRelayMode` to the consumer) and refused with the opt-in
+  `DisableRelayFallback`.
 - **Phase 2 — pluggable signalling.** A `Signaler` interface
   (`Publish`/`Subscribe`) with `tunnel` as the WSS implementation and an
   *optional* `signal/nostr` as another. If Nostr: NIP-44 (not NIP-04), NIP-59
