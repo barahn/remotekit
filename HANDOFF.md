@@ -144,13 +144,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `685299a`** — Merge pull request #55 from barahn/dependabot/github_actions/develop/anchore/sbom-action-0.24.3
+**`develop` is at `eaf8faf`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#57](https://github.com/barahn/remotekit/pull/57) | chore(release): merge develop → main (25 commits) — Merge pull request #54 from barahn/dependabot/github_actions/deve... | `develop` | [Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37378444056/job/111993749068)<br>Review dependency changes ⏳ (in_progress)<br>open-pr ⏳ (queued) |
+| [#57](https://github.com/barahn/remotekit/pull/57) | chore(release): merge develop → main (25 commits) — Merge pull request #54 from barahn/dependabot/github_actions/deve... | `develop` | no checks reported |
 
 <!-- END GENERATED: handoff status -->
 
