@@ -144,14 +144,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `1be467d`** — docs: refresh the handoff status block
+**`develop` is at `032597e`** — Merge pull request #50 from barahn/fix/xgb-extension-init-race
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#48](https://github.com/barahn/remotekit/pull/48) | chore(release): merge develop → main (15 commits) — Merge pull request #49 from barahn/feat/standing-permissions | `develop` | [Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37284801420/job/111681067336)<br>Build, Test & SAST ⏳ (in_progress) |
-| [#50](https://github.com/barahn/remotekit/pull/50) | fix(x11): register xgb extensions once, before any connection exists | `fix/xgb-extension-init-race` | CodeQL ✅<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37282073267/job/111672220372)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37282073403/job/111672219307)<br>Refresh the handoff status block ✅<br>[Build, Test & SAST ❌ failure](https://github.com/barahn/remotekit/actions/runs/37282073267/job/111672218837)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37282073305/job/111672218711)<br>DCO Sign-off ✅<br>Review dependency changes ✅<br>gitleaks ✅<br>Analyze (Go) ✅ |
+| [#48](https://github.com/barahn/remotekit/pull/48) | chore(release): merge develop → main (15 commits) — Merge pull request #49 from barahn/feat/standing-permissions | `develop` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37315237610/job/111780201360)<br>gitleaks ⏳ (in_progress)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37315237642/job/111780199576)<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>DCO Sign-off ⏳ (in_progress)<br>Release source ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37315229518/job/111780172717)<br>gitleaks ⏳ (in_progress)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37315229161/job/111780171833)<br>Refresh the handoff status block ⏳ (in_progress)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37315229161/job/111780171088)<br>Analyze (Go) ⏳ (in_progress)<br>open-pr ⏳ (queued)<br>Build, Test & SAST ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
