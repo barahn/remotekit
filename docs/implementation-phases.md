@@ -327,6 +327,23 @@ safe to use.
   - Ensures existing downstream consumers retain complete backward compatibility.
 
 #### 3. Support Optional Relay Implementations (e.g. Nostr)
+
+**As built:** `signal/nostr`, a separate Go module (its `go.mod` replaces the
+core with the tree, and CI runs it as its own job). `Listen` opens the agent's
+end and `Dial` a viewer's; both return a `*Conn` satisfying
+`tunnel.SignalConn`, so a session runs over relays with
+`AgentStreamRunner.Serve`. Each message is a NIP-59 gift wrap -- an unsigned
+rumor of our own kind 21059, sealed (kind 13) and signed by the sender,
+wrapped (kind 1059) under a one-time key, both layers NIP-44 v2 -- with a
+NIP-40 expiration. Relays see the recipient's key and nothing of the sender or
+the content. Keys are generated per session unless the caller supplies one.
+A Listen conn sets each message's `viewer_id` to the key that sealed it,
+overwriting whatever the message claimed, and routes replies by it; it caps
+how many viewers it will talk to. NIP-44 is checked against the published
+test vectors, and the whole path, including a signed WebRTC negotiation
+through `Serve`, is tested against an in-process relay. Not built: relay
+redialling (a Conn ends with its last relay) and NIP-42 relay auth.
+
 * **Package:** `signal/nostr` (isolated subpackage)
 * **Principles:**
   - Keep `remotekit` core dependency-free: do not import Nostr libraries in root `go.mod`.
