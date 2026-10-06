@@ -144,13 +144,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `6cfb101`** — docs: refresh the handoff status block
+**`develop` is at `ca6fe6f`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#59](https://github.com/barahn/remotekit/pull/59) | chore(release): merge develop → main (5 commits) — Merge pull request #58 from barahn/claude/tender-feynman-zqy5d1 | `develop` | no checks reported |
+| [#59](https://github.com/barahn/remotekit/pull/59) | chore(release): merge develop → main (5 commits) — Merge pull request #58 from barahn/claude/tender-feynman-zqy5d1 | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37514339197/job/112443696985)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37514339197/job/112443696781)<br>Build, Test & SAST ⏳ (in_progress) |
+| [#60](https://github.com/barahn/remotekit/pull/60) | feat(tunnel): run a signalling session over any transport | `claude/tender-feynman-zqy5d1` | Refresh the handoff status block ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37514871951/job/112445097202)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37514871887/job/112445096109)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37514871792/job/112445095436)<br>Analyze (Go) ⏳ (in_progress)<br>DCO Sign-off ✅<br>gitleaks ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
