@@ -24,7 +24,6 @@ import (
 	"github.com/barahn/remotekit/screen"
 	"github.com/barahn/remotekit/transfer"
 	"github.com/barahn/remotekit/webrtc"
-	"github.com/gorilla/websocket"
 )
 
 type AgentStreamRunner struct {
@@ -125,7 +124,7 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 			ws.SetReadLimit(10 * 1024 * 1024) // 10MB limit for fallback JPEG frames
 
 			log.Printf("[AgentStream] Connected to signaling channel for agent %s\n", r.creds.AgentID)
-			r.runSignalingLoop(ctx, ws, signKey)
+			r.runSignalingLoop(ctx, wsSignalConn{ws}, signKey)
 			_ = ws.Close()
 			time.Sleep(1 * time.Second)
 		}
@@ -208,7 +207,7 @@ func encodeSignal(m webrtc.SignalMessage, viewerID string, key ed25519.PrivateKe
 	return json.Marshal(fields)
 }
 
-func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.Conn, signKey ed25519.PrivateKey) {
+func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, conn SignalConn, signKey ed25519.PrivateKey) {
 	var stateMu sync.RWMutex
 	// One WebRTC negotiation per connected viewer (keyed by the server-assigned viewer_id,
 	// or "" for legacy/unattributed messages), so multiple technicians can view the same
@@ -242,7 +241,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 	safeWrite := func(data []byte) error {
 		writeMu.Lock()
 		defer writeMu.Unlock()
-		return ws.WriteMessage(websocket.TextMessage, data)
+		return conn.WriteMessage(data)
 	}
 
 	// socketReply answers a data plane message that came over the socket.
@@ -323,7 +322,7 @@ func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, ws *websocket.
 	}()
 
 	for {
-		_, msgBytes, err := ws.ReadMessage()
+		msgBytes, err := conn.ReadMessage()
 		if err != nil {
 			break
 		}

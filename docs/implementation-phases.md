@@ -260,7 +260,41 @@ These fixes address immediate security issues present in the current codebase, i
 
 **Goal:** Decouple `remotekit` from WebSocket signalling so any transport can be plugged in without changing session logic.
 
-### Technical Tasks
+### As built: `tunnel.SignalConn`, not a pub/sub `Signaler`
+
+Tasks 1 and 2 below were built as a narrower seam than they describe, because
+the signalling socket carries more than `SignalMessage`. Besides offers,
+answers and candidates it carries `session_start`, `video_ok`, `chat`,
+`close`, the agent's notices (`relay_mode`, `consent_required`, ...), the data
+plane for viewers that predate the data channel, and every message type a
+consumer registers with `AgentStreamRunner.Handle`. A `Signaler` that only
+publishes and subscribes `SignalMessage` cannot carry a session.
+
+What the session loop actually needs is one message in and one message out,
+so that is the seam:
+
+```go
+type SignalConn interface {
+    ReadMessage() ([]byte, error)
+    WriteMessage(data []byte) error
+    Close() error
+}
+
+func (r *AgentStreamRunner) Serve(ctx context.Context, conn SignalConn) error
+```
+
+`Start` still dials the control plane's WebSocket and reconnects; it is now
+one `SignalConn` among others. `Serve` runs the same session -- negotiation,
+data plane, consent, signed viewers -- over any transport a consumer supplies,
+and does not reconnect. A relay transport (task 3) implements `SignalConn`
+for one session, doing its own addressing and filtering inside, which is
+where the `Filter` sketched below belongs.
+
+The transport carries; it does not vouch. `RequireSignedViewers` and consent
+apply the same over any `SignalConn`, and are what make an untrusted transport
+safe to use.
+
+### Technical Tasks (original proposal)
 
 #### 1. Define `Signaler` Interface
 * **Package:** `webrtc` (or a dedicated `signal` package)

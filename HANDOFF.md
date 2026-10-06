@@ -197,9 +197,15 @@ Ordered work, as proposed:
   The JPEG fallback is announced whenever it runs (`relay_mode` to the
   viewer, `OnRelayMode` to the consumer) and refused with the opt-in
   `DisableRelayFallback`.
-- **Phase 2 — pluggable signalling.** A `Signaler` interface
-  (`Publish`/`Subscribe`) with `tunnel` as the WSS implementation and an
-  *optional* `signal/nostr` as another. If Nostr: NIP-44 (not NIP-04), NIP-59
+- **Phase 2 — pluggable signalling.** The seam is `tunnel.SignalConn`
+  (read a message, write a message, close) with
+  `AgentStreamRunner.Serve(ctx, conn)` to run a session over it; `Start` is
+  the WebSocket implementation. It is narrower than the `Publish`/`Subscribe`
+  `Signaler` first proposed, because the socket carries far more than
+  `SignalMessage` — see "As built" under Phase 2 in
+  `docs/implementation-phases.md`. Still open: an *optional* relay transport
+  such as `signal/nostr`, in its own module so the core never imports it. If
+  Nostr: NIP-44 (not NIP-04), NIP-59
   gift wrap if relays must not learn the publisher, NIP-40 for expiry, and a
   rotating per-device key — never an operator's personal identity key. NIP-AC
   is a proposal, not a ratified standard.
@@ -309,7 +315,9 @@ hard part; discuss before starting.
    `RequireScreenViewConsent`, `RequireDataChannel` and
    `DisableRelayFallback`; that wiring lives in the products, which also have
    to open the `bark-control` and `bark-transfer` channels from their viewers.
-   The next phase is Phase 2, the pluggable `Signaler` interface.
+   Phase 2's seam is in: `SignalConn` and `Serve` let a session run over any
+   transport. What remains of it is an optional relay transport (e.g. Nostr)
+   implementing `SignalConn`, kept out of the core module.
 
 Before every push: run the repo's own checks locally —
 `go build ./...`, `go vet ./...`, `golangci-lint run`, and
