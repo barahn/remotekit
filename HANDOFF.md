@@ -144,13 +144,9 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `fc5c22d`** — docs: refresh the handoff status block
+**`develop` is at `0db28e6`** — Merge pull request #58 from barahn/claude/tender-feynman-zqy5d1
 
-### Open pull requests
-
-| PR | Title | Branch | CI on head |
-|---|---|---|---|
-| [#58](https://github.com/barahn/remotekit/pull/58) | docs(handoff): point the next agent at Phase 2, not Phase 1 | `claude/tender-feynman-zqy5d1` | Refresh the handoff status block ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37507700521/job/112420467949)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37507700384/job/112420466961)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37507700375/job/112420466829)<br>Analyze (Go) ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>DCO Sign-off ✅<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress) |
+No open pull requests.
 
 <!-- END GENERATED: handoff status -->
 
