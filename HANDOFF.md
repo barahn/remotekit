@@ -295,14 +295,16 @@ hard part; discuss before starting.
    The roadmap is structured into Phase 0a (defect remediation), Phase 0b (enrolment
    identity & signing), Phase 1 (DataChannel data plane), Phase 2 (pluggable signalling),
    and Phase 3 (relays & transports).
-3. Phase 0 is done in this module: device keys, the server verifying them,
-   signing in both directions, and consent for input, clipboard, file
-   transfer, reverse streams and the screen. Three of those protections are
-   opt-in and only protect a deployment once a consumer turns them on —
-   `RequireSignedViewers`, `ConsentReverseStream` and
-   `RequireScreenViewConsent`; that wiring lives in the products, not here.
-   The next phase is Phase 1, which moves input, clipboard and file transfer
-   onto a DataChannel.
+3. Phases 0 and 1 are done in this module: device keys, the server
+   verifying them, signing in both directions, consent for input, clipboard,
+   file transfer, reverse streams and the screen, and the data plane on a
+   WebRTC data channel with the JPEG fallback announced. Five of those
+   protections are opt-in and only protect a deployment once a consumer turns
+   them on — `RequireSignedViewers`, `ConsentReverseStream`,
+   `RequireScreenViewConsent`, `RequireDataChannel` and
+   `DisableRelayFallback`; that wiring lives in the products, which also have
+   to open the `bark-control` and `bark-transfer` channels from their viewers.
+   The next phase is Phase 2, the pluggable `Signaler` interface.
 
 Before every push: run the repo's own checks locally —
 `go build ./...`, `go vet ./...`, `golangci-lint run`, and
