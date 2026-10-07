@@ -20,6 +20,23 @@ updates:
       golang-x:
         patterns: [ "golang.org/x/*" ]
 
+  # signal/nostr is a module of its own; its core dependency is replaced with
+  # the tree, so only its third-party dependencies are proposed here.
+  - package-ecosystem: gomod
+    directory: /signal/nostr
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+    ignore:
+      - dependency-name: github.com/barahn/remotekit
+    groups:
+      golang-x:
+        patterns: [ "golang.org/x/*" ]
+
   - package-ecosystem: github-actions
     directory: /
     target-branch: develop
