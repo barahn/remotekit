@@ -144,13 +144,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `5723894`** — Merge pull request #62 from barahn/dependabot/go_modules/signal/nostr/develop/golang-x-24e67ca7f8
+**`develop` is at `8e3526f`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#59](https://github.com/barahn/remotekit/pull/59) | chore(release): merge develop → main (21 commits) — Merge pull request #62 from barahn/dependabot/go_modules/signal/n... | `develop` | update-go_modules-graph ⏳ (in_progress)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37684616242/job/113009105545)<br>signal/nostr module ⏳ (in_progress)<br>Release source ✅<br>DCO Sign-off ✅<br>Build, Test & SAST ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37684616320/job/113009102782)<br>Review dependency changes ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37684610607/job/113009082561)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37684610648/job/113009082292)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37684610607/job/113009082288)<br>signal/nostr module ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>open-pr ✅ |
+| [#59](https://github.com/barahn/remotekit/pull/59) | chore(release): merge develop → main (21 commits) — Merge pull request #62 from barahn/dependabot/go_modules/signal/n... | `develop` | no checks reported |
 
 <!-- END GENERATED: handoff status -->
 
