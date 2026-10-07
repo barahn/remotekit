@@ -144,13 +144,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `eaf8faf`** — docs: refresh the handoff status block
+**`develop` is at `8e3526f`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#57](https://github.com/barahn/remotekit/pull/57) | chore(release): merge develop → main (25 commits) — Merge pull request #54 from barahn/dependabot/github_actions/deve... | `develop` | no checks reported |
+| [#59](https://github.com/barahn/remotekit/pull/59) | chore(release): merge develop → main (21 commits) — Merge pull request #62 from barahn/dependabot/go_modules/signal/n... | `develop` | no checks reported |
 
 <!-- END GENERATED: handoff status -->
 
@@ -196,12 +196,26 @@ Ordered work, as proposed:
   The JPEG fallback is announced whenever it runs (`relay_mode` to the
   viewer, `OnRelayMode` to the consumer) and refused with the opt-in
   `DisableRelayFallback`.
-- **Phase 2 — pluggable signalling.** A `Signaler` interface
-  (`Publish`/`Subscribe`) with `tunnel` as the WSS implementation and an
-  *optional* `signal/nostr` as another. If Nostr: NIP-44 (not NIP-04), NIP-59
-  gift wrap if relays must not learn the publisher, NIP-40 for expiry, and a
-  rotating per-device key — never an operator's personal identity key. NIP-AC
-  is a proposal, not a ratified standard.
+- **Phase 2 — pluggable signalling.** The seam is `tunnel.SignalConn`
+  (read a message, write a message, close) with
+  `AgentStreamRunner.Serve(ctx, conn)` to run a session over it; `Start` is
+  the WebSocket implementation. It is narrower than the `Publish`/`Subscribe`
+  `Signaler` first proposed, because the socket carries far more than
+  `SignalMessage` — see "As built" under Phase 2 in
+  `docs/implementation-phases.md`. The optional relay transport is
+  `signal/nostr`, a module of its own (own `go.mod`, own CI job) so the core
+  never imports it: `nostr.Listen` (agent) and `nostr.Dial` (viewer) return a
+  `*nostr.Conn` that is a `SignalConn`. Messages are NIP-59 gift wraps (seal
+  signed by the sender, wrap by a one-time key) encrypted with NIP-44 and
+  expiring by NIP-40; the rumor kind is our own, 21059, since NIP-AC is a
+  proposal, not a standard. Keys are generated per session by default — never
+  an operator's personal identity key. The Nostr key addresses, it does not
+  authenticate: a Listen conn labels each message with its sender as
+  `viewer_id`, and `RequireSignedViewers` is still what decides who a viewer
+  is. A message must fit about 27–40 KB after wrapping, so a deployment over
+  relays wants `DisableRelayFallback` and `RequireDataChannel` on. How the
+  viewer learns the agent's session key and relays (support code, QR, link) is
+  the product's rendezvous to design.
 - **Phase 3 — fallback without a central TURN.** Drop the Google STUN default
   (`webrtc/peer.go:44`); every deployment currently contacts Google on every
   session, and `pion/turn/v5` is already an indirect dependency. Use ephemeral
@@ -299,14 +313,20 @@ hard part; discuss before starting.
    The roadmap is structured into Phase 0a (defect remediation), Phase 0b (enrolment
    identity & signing), Phase 1 (DataChannel data plane), Phase 2 (pluggable signalling),
    and Phase 3 (relays & transports).
-3. Phase 0 is done in this module: device keys, the server verifying them,
-   signing in both directions, and consent for input, clipboard, file
-   transfer, reverse streams and the screen. Three of those protections are
-   opt-in and only protect a deployment once a consumer turns them on —
-   `RequireSignedViewers`, `ConsentReverseStream` and
-   `RequireScreenViewConsent`; that wiring lives in the products, not here.
-   The next phase is Phase 1, which moves input, clipboard and file transfer
-   onto a DataChannel.
+3. Phases 0 and 1 are done in this module: device keys, the server
+   verifying them, signing in both directions, consent for input, clipboard,
+   file transfer, reverse streams and the screen, and the data plane on a
+   WebRTC data channel with the JPEG fallback announced. Five of those
+   protections are opt-in and only protect a deployment once a consumer turns
+   them on — `RequireSignedViewers`, `ConsentReverseStream`,
+   `RequireScreenViewConsent`, `RequireDataChannel` and
+   `DisableRelayFallback`; that wiring lives in the products, which also have
+   to open the `bark-control` and `bark-transfer` channels from their viewers.
+   Phase 2 is done: `SignalConn` and `Serve` let a session run over any
+   transport, and `signal/nostr` is the optional relay transport, in its own
+   module. Wiring it into a product (the rendezvous that hands a viewer the
+   agent's session key and relays, and turning on the opt-ins above) is the
+   products' work. The next phase in this module is Phase 3.
 
 Before every push: run the repo's own checks locally —
 `go build ./...`, `go vet ./...`, `golangci-lint run`, and

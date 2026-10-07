@@ -75,7 +75,7 @@ func startSignalHarness(t *testing.T, r *AgentStreamRunner) *signalHarness {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		r.runSignalingLoop(ctx, ws, nil)
+		r.runSignalingLoop(ctx, wsSignalConn{ws}, nil)
 		close(done)
 	}()
 	t.Cleanup(func() {

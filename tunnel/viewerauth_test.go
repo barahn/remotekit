@@ -177,7 +177,7 @@ func firstReply(t *testing.T, r *AgentStreamRunner, msg []byte, wait time.Durati
 	}
 	done := make(chan struct{})
 	go func() {
-		r.runSignalingLoop(ctx, ws, nil)
+		r.runSignalingLoop(ctx, wsSignalConn{ws}, nil)
 		close(done)
 	}()
 

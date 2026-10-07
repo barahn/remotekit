@@ -51,6 +51,7 @@ layered on top register through extension points such as
 | `tray` | System tray icon and menu |
 | `service` | Install and manage an OS service (systemd, launchd, SCM) |
 | `osinfo` | Host details |
+| `signal/nostr` | Optional signalling over Nostr relays (NIP-44, NIP-59 gift wrap, NIP-40); a separate module, so the core never depends on it |
 
 ## Platform support
 

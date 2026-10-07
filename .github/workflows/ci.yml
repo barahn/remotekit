@@ -271,8 +271,82 @@ jobs:
       # in the forward DCT and quantiser, where the VP8 spec bounds the values by
       # construction. Annotating them with 53 #nosec comments would destroy the
       # baseline the fork needs to diff against upstream.
+      #
+      # signal/nostr is excluded too, for a different reason: gosec walks
+      # directories rather than the module, so it would load that module's
+      # packages with this module's dependencies and fail to resolve its own.
+      # The signal/nostr job runs gosec from inside that module.
       - name: SAST (gosec)
-        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.22.1 -exclude-dir=screen/codec/vp8 ./...
+        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.22.1 -exclude-dir=screen/codec/vp8 -exclude-dir=signal/nostr ./...
+
+      - name: Vulnerability Check (govulncheck)
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
+  # signal/nostr is its own module, so that the core never imports Nostr or
+  # secp256k1 code, and `./...` at the root does not reach it. It gets the same
+  # gates as the core, run from its own directory: licences, build, lint,
+  # tests and SAST. Its go.mod replaces the core with ../.., so it is tested
+  # against the core in this same commit, not against a published version.
+  nostr:
+    name: signal/nostr module
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: signal/nostr
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        continue-on-error: true
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.26'
+          cache-dependency-path: signal/nostr/go.sum
+
+      # The same allowlist as the core's step above, and CONTRIBUTING.md.
+      - name: Dependency licences are permissive
+        run: |
+          export GOROOT="$(go env GOROOT)" GOTOOLCHAIN=local
+          go install github.com/google/go-licenses@v1.6.0
+          status=0
+          for os in linux windows darwin; do
+            echo "::group::$os"
+            if ! GOOS="$os" "$(go env GOPATH)/bin/go-licenses" check \
+                --allowed_licenses=MIT,BSD-2-Clause,BSD-3-Clause,ISC,Apache-2.0,Zlib,MPL-2.0 \
+                ./...; then
+              echo "::error::a dependency of signal/nostr built for $os has a licence the policy does not allow"
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$status"
+
+      - name: Build & Vet
+        run: |
+          go build ./...
+          go vet ./...
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build ./...
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.13.2
+          install-mode: goinstall
+          skip-cache: true
+          working-directory: signal/nostr
+
+      - name: Test
+        run: go test -race -timeout 10m ./...
+
+      - name: SAST (gosec)
+        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.22.1 ./...
 
       - name: Vulnerability Check (govulncheck)
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
