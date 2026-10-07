@@ -6,7 +6,7 @@ require (
 	github.com/barahn/remotekit v0.2.2-0.20261006212254-5ed1b713a3b3
 	github.com/btcsuite/btcd/btcec/v2 v2.5.0
 	github.com/gorilla/websocket v1.5.3
-	golang.org/x/crypto v0.53.0
+	golang.org/x/crypto v0.57.0
 )
 
 require (
@@ -34,7 +34,7 @@ require (
 	github.com/pion/turn/v5 v5.1.2 // indirect
 	github.com/pion/webrtc/v4 v4.2.22 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
-	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/net v0.58.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 )
