@@ -271,8 +271,13 @@ jobs:
       # in the forward DCT and quantiser, where the VP8 spec bounds the values by
       # construction. Annotating them with 53 #nosec comments would destroy the
       # baseline the fork needs to diff against upstream.
+      #
+      # signal/nostr is excluded too, for a different reason: gosec walks
+      # directories rather than the module, so it would load that module's
+      # packages with this module's dependencies and fail to resolve its own.
+      # The signal/nostr job runs gosec from inside that module.
       - name: SAST (gosec)
-        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.22.1 -exclude-dir=screen/codec/vp8 ./...
+        run: go run github.com/securego/gosec/v2/cmd/gosec@v2.22.1 -exclude-dir=screen/codec/vp8 -exclude-dir=signal/nostr ./...
 
       - name: Vulnerability Check (govulncheck)
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
