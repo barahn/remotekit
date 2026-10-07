@@ -144,13 +144,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `07fa505`** — docs: refresh the handoff status block
+**`develop` is at `b99bfcf`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
 | [#59](https://github.com/barahn/remotekit/pull/59) | chore(release): merge develop → main (16 commits) — Merge pull request #61 from barahn/feat/signal-nostr | `develop` | no checks reported |
+| [#62](https://github.com/barahn/remotekit/pull/62) | deps: bump golang.org/x/crypto from 0.53.0 to 0.57.0 in /signal/nostr in the golang-x group | `dependabot/go_modules/signal/nostr/develop/golang-x-24e67ca7f8` | [Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37673957099/job/112972521404)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37673957035/job/112972521163)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37673957084/job/112972520224)<br>signal/nostr module ⏳ (in_progress)<br>DCO Sign-off ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
