@@ -144,13 +144,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `b47cf4f`** — Merge pull request #61 from barahn/feat/signal-nostr
+**`develop` is at `07fa505`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#59](https://github.com/barahn/remotekit/pull/59) | chore(release): merge develop → main (16 commits) — Merge pull request #61 from barahn/feat/signal-nostr | `develop` | update-go_modules-graph ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37673844741/job/112972134432)<br>Dependabot ⏳ (in_progress)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37673844802/job/112972133722)<br>Dependabot ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>DCO Sign-off ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>Release source ⏳ (in_progress)<br>Dependabot ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37673837078/job/112972115796)<br>signal/nostr module ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37673836926/job/112972108851)<br>gitleaks ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>open-pr ⏳ (in_progress)<br>.github/dependabot.yml ✅ |
+| [#59](https://github.com/barahn/remotekit/pull/59) | chore(release): merge develop → main (16 commits) — Merge pull request #61 from barahn/feat/signal-nostr | `develop` | no checks reported |
 
 <!-- END GENERATED: handoff status -->
 
