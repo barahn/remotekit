@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
 
-package tunnel
+package stream
 
 import (
 	"bytes"
@@ -141,7 +141,7 @@ func TestViewerAuth_Check(t *testing.T) {
 // the agent and returns the first message the agent writes back within wait,
 // or nil if none arrives. The agent_ready it sends on every connection is not
 // a reply and is skipped.
-func firstReply(t *testing.T, r *AgentStreamRunner, msg []byte, wait time.Duration) []byte {
+func firstReply(t *testing.T, r *Runner, msg []byte, wait time.Duration) []byte {
 	t.Helper()
 	replied := make(chan []byte, 1)
 	upgrader := websocket.Upgrader{}
@@ -177,7 +177,7 @@ func firstReply(t *testing.T, r *AgentStreamRunner, msg []byte, wait time.Durati
 	}
 	done := make(chan struct{})
 	go func() {
-		r.runSignalingLoop(ctx, wsSignalConn{ws}, nil)
+		r.runSignalingLoop(ctx, wsConn{ws})
 		close(done)
 	}()
 
@@ -195,7 +195,7 @@ func firstReply(t *testing.T, r *AgentStreamRunner, msg []byte, wait time.Durati
 // runLoopAgainst reports whether the agent replied to msg at all. A
 // session_start makes the agent either stream frames or announce that no
 // capture backend exists, so any reply means the session was started.
-func runLoopAgainst(t *testing.T, r *AgentStreamRunner, msg []byte, wait time.Duration) bool {
+func runLoopAgainst(t *testing.T, r *Runner, msg []byte, wait time.Duration) bool {
 	t.Helper()
 	return firstReply(t, r, msg, wait) != nil
 }
@@ -205,17 +205,16 @@ func runLoopAgainst(t *testing.T, r *AgentStreamRunner, msg []byte, wait time.Du
 // viewer signed does.
 func TestRequireSignedViewers_GatesSessionStart(t *testing.T) {
 	pub, priv := viewerKey(t)
-	creds := &AgentCredentials{AgentID: "agent-1", AgentToken: "tok"}
 
 	forged := []byte(`{"type":"session_start","viewer_id":"viewer-a"}`)
-	r := &AgentStreamRunner{creds: creds}
+	r := &Runner{id: "agent-1"}
 	r.RequireSignedViewers(trustOnly(pub))
 	if runLoopAgainst(t, r, forged, 500*time.Millisecond) {
 		t.Fatal("unsigned session_start started a session")
 	}
 
 	signed := signedViewerMessage(t, priv, webrtc.SignalMessage{Type: "session_start"}, "agent-1", time.Now())
-	r = &AgentStreamRunner{creds: creds}
+	r = &Runner{id: "agent-1"}
 	r.RequireSignedViewers(trustOnly(pub))
 	if !runLoopAgainst(t, r, signed, 5*time.Second) {
 		t.Fatal("signed session_start from a trusted viewer started nothing")
@@ -225,7 +224,7 @@ func TestRequireSignedViewers_GatesSessionStart(t *testing.T) {
 // Without the requirement, the loop behaves as before: an unsigned
 // session_start is acted on.
 func TestRequireSignedViewers_OffByDefault(t *testing.T) {
-	r := &AgentStreamRunner{creds: &AgentCredentials{AgentID: "agent-1", AgentToken: "tok"}}
+	r := &Runner{id: "agent-1"}
 	if !runLoopAgainst(t, r, []byte(`{"type":"session_start","viewer_id":"viewer-a"}`), 5*time.Second) {
 		t.Fatal("without RequireSignedViewers, an unsigned session_start should still start a session")
 	}

@@ -31,7 +31,7 @@ That constraint shaped the API: these packages carry no product opinions. There
 is no notion of a user, a tenant, a role, or a session policy anywhere in this
 module, and nothing here shells out to run commands on your behalf. Features
 layered on top register through extension points such as
-`tunnel.AgentStreamRunner.Handle` rather than being compiled in.
+`stream.Runner.Handle` rather than being compiled in.
 
 ## Packages
 
@@ -44,7 +44,8 @@ layered on top register through extension points such as
 | `clipboard` | Cross-platform clipboard read/write with a change watcher |
 | `transfer` | Chunked file transfer with resume |
 | `webrtc` | Peer session, video track and signalling helpers over pion |
-| `tunnel` | WSS + Yamux reverse tunnel, agent enrolment, multiplexed streams |
+| `stream` | The agent side of a session over any signalling transport: WebRTC negotiation, screen, input/clipboard/file data plane, consent, signed viewers. Imports neither `tunnel` nor yamux |
+| `tunnel` | WSS + Yamux reverse tunnel, agent enrolment, multiplexed streams; `AgentStreamRunner` runs a `stream.Runner` over the control plane |
 | `bark` | The wire envelope shared by everything above |
 | `heartbeat` | Generic keepalive with server-side staleness monitoring |
 | `rendezvous` | Two peers that have never met find each other by a short single-use code, or a link that mints one; failed attempts throttled per origin |

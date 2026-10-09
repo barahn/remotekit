@@ -60,7 +60,7 @@ type Config struct {
 }
 
 // Conn is a signalling connection over Nostr relays. It satisfies
-// tunnel.SignalConn.
+// stream.SignalConn.
 type Conn struct {
 	key        *SecretKey
 	peer       string // Dial's peer; "" on a Listen conn

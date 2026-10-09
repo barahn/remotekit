@@ -4,70 +4,104 @@
 package tunnel
 
 import (
-	"bytes"
 	"context"
 	"crypto/ed25519"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"image/jpeg"
 	"log"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/barahn/remotekit/bark"
-	"github.com/barahn/remotekit/clipboard"
-	"github.com/barahn/remotekit/input"
-	"github.com/barahn/remotekit/screen"
-	"github.com/barahn/remotekit/transfer"
-	"github.com/barahn/remotekit/webrtc"
+	"github.com/barahn/remotekit/stream"
+	"github.com/gorilla/websocket"
 )
 
+// The session runner lives in package stream; these names keep tunnel's
+// callers compiling unchanged.
+type (
+	// SignalConn is stream.SignalConn.
+	SignalConn = stream.SignalConn
+	// MessageHandler is stream.MessageHandler.
+	MessageHandler = stream.MessageHandler
+)
+
+// The permissions a session can be granted; see package stream.
+const (
+	PermissionScreenView    = stream.PermissionScreenView
+	PermissionRemoteControl = stream.PermissionRemoteControl
+	PermissionClipboard     = stream.PermissionClipboard
+	PermissionFileTransfer  = stream.PermissionFileTransfer
+	PermissionReverseStream = stream.PermissionReverseStream
+)
+
+// Errors for a viewer message refused by RequireSignedViewers; see package
+// stream.
+var (
+	ErrViewerUntrusted   = stream.ErrViewerUntrusted
+	ErrViewerWrongTarget = stream.ErrViewerWrongTarget
+	ErrViewerReplay      = stream.ErrViewerReplay
+)
+
+// AgentStreamRunner is a stream.Runner for an enrolled agent: its session ID
+// is the agent ID and its answers are signed with the device key, both taken
+// from the agent's credentials, and Start serves it over the control plane's
+// WebSocket. Every method of the embedded Runner -- Grant,
+// RequireSignedViewers, Serve and the rest -- applies as documented there.
+//
+// The Runner is embedded by value, so a zero AgentStreamRunner can still
+// Grant and report Granted, as it always could; it cannot Serve or Start.
 type AgentStreamRunner struct {
+	stream.Runner
+
 	creds              *AgentCredentials
 	insecureSkipVerify bool
-	injector           input.Injector
-	// handlers holds message types layered on top of the core session by a
-	// consumer; see Handle.
-	handlers map[string]MessageHandler
-
-	// granted is what the person at the machine has consented to; see Grant.
-	// warned remembers which refusals have been logged.
-	// standing is what the consumer's own policy allows with nobody asked,
-	// and what a close does not revoke; see SetStandingPermissions.
-	consentMu sync.RWMutex
-	granted   map[string]bool
-	standing  map[string]bool
-	warned    map[string]bool
-
-	// viewerAuth, when set, restricts negotiation to signed viewers; see
-	// RequireSignedViewers.
-	viewerAuth *viewerAuth
-
-	// requireScreenView, when set, withholds the screen until screen_view is
-	// granted; see RequireScreenViewConsent.
-	requireScreenView bool
-
-	// requireDataChannel, when set, refuses user data over the signalling
-	// socket; see RequireDataChannel.
-	requireDataChannel bool
-
-	// disableRelay and onRelayMode govern the JPEG fallback; see
-	// DisableRelayFallback and OnRelayMode.
-	disableRelay bool
-	onRelayMode  func(active bool)
+	// keyErr is why the device key could not be loaded, if it could not;
+	// Start and Serve refuse to run with it set rather than go out unsigned.
+	keyErr error
 }
 
+// NewAgentStreamRunner builds a runner for the enrolled agent creds. The
+// device key at creds.DeviceKeyPath, if any, is loaded here; failing to load
+// it is reported by Start and Serve.
 func NewAgentStreamRunner(creds *AgentCredentials, insecureSkipVerify bool) *AgentStreamRunner {
-	inj, _ := input.NewInjector()
-	return &AgentStreamRunner{
+	key, err := signalSigningKey(creds)
+	var id string
+	if creds != nil {
+		id = creds.AgentID
+	}
+	r := &AgentStreamRunner{
 		creds:              creds,
 		insecureSkipVerify: insecureSkipVerify,
-		injector:           inj,
+		keyErr:             err,
 	}
+	r.Init(stream.Config{ID: id, SigningKey: key})
+	return r
+}
+
+// Handle registers a handler for a signalling message type; see
+// stream.Runner.Handle. It returns the runner so registrations can be
+// chained.
+func (r *AgentStreamRunner) Handle(msgType string, h MessageHandler) *AgentStreamRunner {
+	r.Runner.Handle(msgType, h)
+	return r
+}
+
+// errNoAgentID is why Serve refuses a runner without credentials.
+var errNoAgentID = stream.ErrNoID
+
+// Serve runs one signalling session over conn; see stream.Runner.Serve. The
+// runner still needs credentials, for the agent ID that viewers target and
+// for the device key its answers are signed with; no token is needed, since
+// Serve dials nothing.
+func (r *AgentStreamRunner) Serve(ctx context.Context, conn SignalConn) error {
+	if r.creds == nil || r.creds.AgentID == "" {
+		return errNoAgentID
+	}
+	if r.keyErr != nil {
+		return r.keyErr
+	}
+	return r.Runner.Serve(ctx, conn)
 }
 
 // Start connects to the signalling channel and serves it until ctx is
@@ -79,6 +113,16 @@ func NewAgentStreamRunner(creds *AgentCredentials, insecureSkipVerify bool) *Age
 // AgentToken themselves before calling it -- an empty token means the agent
 // has to re-enrol.
 func (r *AgentStreamRunner) Start(ctx context.Context) {
+	headers, err := signalHeaders(r.creds)
+	if err != nil {
+		log.Printf("[AgentStream Error] %v; not connecting\n", err)
+		return
+	}
+	if r.keyErr != nil {
+		log.Printf("[AgentStream Error] %v; not connecting\n", r.keyErr)
+		return
+	}
+
 	wsURL := r.creds.ServerAddr
 	if strings.HasPrefix(wsURL, "https://") {
 		wsURL = "wss://" + wsURL[8:]
@@ -88,18 +132,6 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 	signalURL := fmt.Sprintf("%s/api/v1/sessions/%s/signal", strings.TrimRight(wsURL, "/"), r.creds.AgentID)
 
 	dialer := wsDialer(r.creds.ServerKeyPin, r.insecureSkipVerify)
-
-	headers, err := signalHeaders(r.creds)
-	if err != nil {
-		log.Printf("[AgentStream Error] %v; not connecting\n", err)
-		return
-	}
-
-	signKey, err := signalSigningKey(r.creds)
-	if err != nil {
-		log.Printf("[AgentStream Error] %v; not connecting\n", err)
-		return
-	}
 
 	for {
 		select {
@@ -124,8 +156,10 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 			ws.SetReadLimit(10 * 1024 * 1024) // 10MB limit for fallback JPEG frames
 
 			log.Printf("[AgentStream] Connected to signaling channel for agent %s\n", r.creds.AgentID)
-			r.runSignalingLoop(ctx, wsSignalConn{ws}, signKey)
-			_ = ws.Close()
+			if err := r.Serve(ctx, wsSignalConn{ws}); errors.Is(err, errNoAgentID) {
+				log.Printf("[AgentStream Error] %v; not connecting\n", err)
+				return
+			}
 			time.Sleep(1 * time.Second)
 		}
 	}
@@ -149,26 +183,9 @@ func signalHeaders(creds *AgentCredentials) (http.Header, error) {
 	return h, nil
 }
 
-// logSafe strips line breaks from a value that came off the wire before it
-// is logged. viewer_id is chosen by whoever is on the other end of the
-// signalling socket; logged as is, a "\n" in it would forge log lines.
-// Numbers and booleans decoded from a message go through it too, formatted
-// first: they cannot carry a line break, but CodeQL's log-injection query
-// cannot tell, and one rule for every peer-supplied value is easier to keep.
-func logSafe(s string) string {
-	s = strings.ReplaceAll(s, "\n", "")
-	return strings.ReplaceAll(s, "\r", "")
-}
-
-// signalTTL is how long a signed answer or candidate stays valid. Negotiation
-// finishes in seconds; the margin covers a slow relay and clock skew without
-// leaving a long replay window.
-const signalTTL = 2 * time.Minute
-
 // signalSigningKey loads the device key the agent signs its answers and ICE
 // candidates with, or returns nil for an agent enrolled without one, whose
-// messages go out unsigned as before. It is loaded once per Start rather than
-// per message.
+// messages go out unsigned as before.
 func signalSigningKey(creds *AgentCredentials) (ed25519.PrivateKey, error) {
 	if creds == nil || creds.DeviceKeyPath == "" {
 		return nil, nil
@@ -180,567 +197,16 @@ func signalSigningKey(creds *AgentCredentials) (ed25519.PrivateKey, error) {
 	return priv, nil
 }
 
-// encodeSignal encodes an outgoing answer or candidate for one viewer.
-//
-// With a key, the message is signed with webrtc.SignalMessage.Sign, so a
-// viewer that knows the agent's device key can tell the SDP and candidates
-// came from the agent and not from the relay in between. The viewer is put in
-// TargetID, which the signature covers, so a message signed for one viewer
-// cannot be replayed to another. viewer_id is still set alongside it, since
-// that is what the server routes on.
-func encodeSignal(m webrtc.SignalMessage, viewerID string, key ed25519.PrivateKey, now time.Time) ([]byte, error) {
-	if key != nil {
-		m.TargetID = viewerID
-		if err := m.Sign(key, now, signalTTL); err != nil {
-			return nil, err
-		}
-	}
-	data, err := m.Encode()
-	if err != nil {
-		return nil, err
-	}
-	var fields map[string]interface{}
-	if err := json.Unmarshal(data, &fields); err != nil {
-		return nil, err
-	}
-	fields["viewer_id"] = viewerID
-	return json.Marshal(fields)
+// wsSignalConn adapts the control plane's WebSocket to SignalConn.
+type wsSignalConn struct{ ws *websocket.Conn }
+
+func (c wsSignalConn) ReadMessage() ([]byte, error) {
+	_, data, err := c.ws.ReadMessage()
+	return data, err
 }
 
-func (r *AgentStreamRunner) runSignalingLoop(ctx context.Context, conn SignalConn, signKey ed25519.PrivateKey) {
-	var stateMu sync.RWMutex
-	// One WebRTC negotiation per connected viewer (keyed by the server-assigned viewer_id,
-	// or "" for legacy/unattributed messages), so multiple technicians can view the same
-	// session concurrently without one viewer's offer tearing down another's in-flight
-	// negotiation. Actual frame delivery is a separate JSON-over-WebSocket broadcast (see
-	// safeWrite calls below) that already reaches every connection in the room; this map
-	// only tracks the SDP offer/answer/ICE bookkeeping.
-	peers := make(map[string]*webrtc.PeerSession)
-	// One encoder for the session, not one per viewer. VP8 is a chain of
-	// predictions, so every viewer has to receive the same bitstream from the
-	// same reference frames; encoding separately per viewer would cost N times
-	// the CPU to produce N identical streams. A viewer joining mid-session is
-	// served by forcing a key frame, which is what videoEncoder.Reset does.
-	videoEncoder := screen.NewVP8Encoder(30, 70)
-	// Viewers that have reported decoding the WebRTC stream. A peer being
-	// connected only means the transport came up; it says nothing about whether
-	// the browser can read what is being sent. Until a viewer confirms, the
-	// JPEG fallback keeps feeding it -- see the video_ok case below.
-	videoConfirmed := make(map[string]bool)
-	var capturer screen.Capturer
-	var activeCapCancel context.CancelFunc
-	var writeMu sync.Mutex
-
-	clipMgr := clipboard.NewManager()
-	clipWatcher := clipboard.NewWatcher(clipMgr, 500*time.Millisecond)
-	transferMgr, _ := transfer.NewManager("")
-	dp := &dataPlane{r: r, clipMgr: clipMgr, clipWatcher: clipWatcher, transfer: transferMgr}
-	var refusal relayRefusal
-	relay := &relayGate{disabled: r.disableRelay, onChange: r.onRelayMode}
-
-	safeWrite := func(data []byte) error {
-		writeMu.Lock()
-		defer writeMu.Unlock()
-		return conn.WriteMessage(data)
-	}
-
-	// socketReply answers a data plane message that came over the socket.
-	socketReply := func(msgType string, fields map[string]interface{}) {
-		fields["type"] = msgType
-		if data, err := json.Marshal(fields); err == nil {
-			_ = safeWrite(data)
-		}
-	}
-
-	// Start clipboard watcher for continuous sync from host to technician
-	clipCtx, clipCancel := context.WithCancel(ctx)
-	defer clipCancel()
-
-	go clipWatcher.Start(clipCtx, func(newText string) {
-		if !r.allow(PermissionClipboard, "host clipboard sync") {
-			return
-		}
-
-		// Every viewer with a control channel gets the clipboard there.
-		// The socket reaches every viewer at once, the server included,
-		// so it is used only while some viewer has no channel to take it.
-		stateMu.RLock()
-		withChannel := make([]*webrtc.PeerSession, 0, len(peers))
-		viaSocket := len(peers) == 0
-		for _, p := range peers {
-			if p.DataChannelOpen(webrtc.DataChannelControl) {
-				withChannel = append(withChannel, p)
-			} else {
-				viaSocket = true
-			}
-		}
-		stateMu.RUnlock()
-
-		if env, err := bark.EncodeEnvelope(bark.TypeClipboard, r.creds.AgentID, map[string]string{"text": newText}); err == nil {
-			for _, p := range withChannel {
-				if sErr := p.SendData(webrtc.DataChannelControl, env); sErr != nil {
-					viaSocket = true // the channel closed under us
-				}
-			}
-		}
-
-		if viaSocket && !r.requireDataChannel {
-			clipMsg, err := json.Marshal(map[string]interface{}{
-				"type":       "clipboard",
-				"session_id": r.creds.AgentID,
-				"text":       newText,
-			})
-			if err == nil {
-				_ = safeWrite(clipMsg)
-			}
-		}
-		log.Printf("[AgentStream] Dispatched host clipboard change to remote (%d bytes)\n", len(newText))
-	})
-
-	// Send agent_ready ping so any waiting browser viewer immediately initiates the WebRTC offer
-	_ = safeWrite([]byte(fmt.Sprintf(`{"type":"agent_ready","session_id":"%s"}`, r.creds.AgentID)))
-
-	defer func() {
-		if r := recover(); r != nil {
-			log.Printf("[AgentStream] Recovered panic in signaling loop: %v\n", r)
-		}
-		stateMu.Lock()
-		if activeCapCancel != nil {
-			activeCapCancel()
-			activeCapCancel = nil
-		}
-		for id, peer := range peers {
-			_ = peer.Close()
-			delete(peers, id)
-		}
-		if capturer != nil {
-			capturer.Stop()
-			capturer = nil
-		}
-		stateMu.Unlock()
-		relay.stop()
-	}()
-
-	for {
-		msgBytes, err := conn.ReadMessage()
-		if err != nil {
-			break
-		}
-
-		var signal map[string]interface{}
-		if err := json.Unmarshal(msgBytes, &signal); err != nil {
-			continue
-		}
-
-		msgType, _ := signal["type"].(string)
-
-		if r.viewerAuth != nil {
-			switch msgType {
-			case "offer", "session_start", "candidate":
-				if err := r.viewerAuth.check(msgBytes, r.creds.AgentID, time.Now()); err != nil {
-					viewerID, _ := signal["viewer_id"].(string)
-					// The error can carry peer-supplied text, such as the
-					// TargetID a message was signed for.
-					log.Printf("[AgentStream] refusing %s from viewer %s: %s\n", logSafe(msgType), logSafe(viewerID), logSafe(err.Error()))
-					continue
-				}
-			}
-		}
-
-		switch msgType {
-		case "offer", "session_start":
-			if r.requireScreenView && !r.allow(PermissionScreenView, "screen view") {
-				// Tell the viewer why nothing arrives, instead of leaving it
-				// waiting on a negotiation the agent will not answer.
-				notice, _ := json.Marshal(map[string]string{
-					"type":       "consent_required",
-					"permission": PermissionScreenView,
-				})
-				_ = safeWrite(notice)
-				continue
-			}
-			sdp, _ := signal["sdp"].(string)
-			viewerID, _ := signal["viewer_id"].(string)
-			relay.viewerJoined()
-
-			// WebRTC negotiation (if SDP offer is provided)
-			if sdp != "" {
-				stateMu.Lock()
-				if old, ok := peers[viewerID]; ok {
-					_ = old.Close()
-					delete(peers, viewerID)
-				}
-
-				peer, err := webrtc.NewPeerSession(webrtc.DefaultPeerConfig())
-				if err == nil {
-					peers[viewerID] = peer
-
-					// The track has to exist before the answer is built, or the
-					// answer carries no video and the browser waits forever for
-					// a stream that was never offered back.
-					if tErr := peer.CreateVideoTrack("barahn-screen", "screen"); tErr != nil {
-						log.Printf("[AgentStream] video track unavailable for viewer %s, falling back to WebSocket frames: %v\n", logSafe(viewerID), tErr)
-					} else {
-						// A receiver that cannot decode asks for an intra frame.
-						// Reset is the right answer to that: it forces a key
-						// frame and clears the frame differ, which matters
-						// because a differ seeing no change would suppress the
-						// frame entirely and leave the request unanswered.
-						peer.OnKeyFrameRequest(videoEncoder.Reset)
-					}
-
-					// This viewer has no reference frames yet, so whatever it
-					// receives first must be a key frame. And it has not yet
-					// shown it can decode anything, so it starts unconfirmed.
-					delete(videoConfirmed, viewerID)
-					videoEncoder.Reset()
-
-					// The viewer creates the data channels in its offer, so
-					// the handler has to be in place before the answer.
-					peer.OnDataMessage(func(label string, msg []byte) {
-						dp.handleChannelMessage(ctx, peer, label, msg)
-					})
-
-					peer.OnICECandidate(func(candJSON string) {
-						data, err := encodeSignal(webrtc.SignalMessage{
-							Type:      webrtc.SignalCandidate,
-							SessionID: r.creds.AgentID,
-							Candidate: candJSON,
-						}, viewerID, signKey, time.Now())
-						if err != nil {
-							log.Printf("[AgentStream] not sending ICE candidate to viewer %s: %v\n", logSafe(viewerID), err)
-							return
-						}
-						_ = safeWrite(data)
-					})
-
-					answerSDP, aErr := peer.CreateAnswer(sdp)
-					if aErr == nil {
-						ansBytes, sErr := encodeSignal(webrtc.SignalMessage{
-							Type:      webrtc.SignalAnswer,
-							SessionID: r.creds.AgentID,
-							SDP:       answerSDP,
-						}, viewerID, signKey, time.Now())
-						if sErr != nil {
-							log.Printf("[AgentStream] not sending answer to viewer %s: %v\n", logSafe(viewerID), sErr)
-						} else {
-							_ = safeWrite(ansBytes)
-						}
-					} else {
-						log.Printf("[AgentStream] WebRTC answer note (direct WebSocket stream active): %v\n", aErr)
-					}
-				}
-				stateMu.Unlock()
-			}
-
-			// Screen capture stream management: start if not already active
-			stateMu.Lock()
-			isAlreadyCapturing := (capturer != nil && activeCapCancel != nil)
-			stateMu.Unlock()
-
-			if !isAlreadyCapturing {
-				cap, err := screen.NewCapturer(screen.DefaultConfig())
-				var framesChan <-chan *screen.Frame
-
-				if err == nil {
-					capCtx, cancelCap := context.WithCancel(ctx)
-					if startErr := cap.Start(capCtx); startErr == nil {
-						stateMu.Lock()
-						capturer = cap
-						activeCapCancel = cancelCap
-						stateMu.Unlock()
-						framesChan = cap.Frames()
-					} else {
-						cancelCap()
-					}
-				}
-
-				// Capture is either real or absent. It is never invented: an
-				// operator looking at a fabricated desktop has no way to tell it
-				// from the endpoint, and would act on it. See #157.
-				if framesChan == nil {
-					log.Printf("[AgentStream] screen capture unavailable - notifying the viewer instead of streaming placeholder frames")
-					notice, _ := json.Marshal(map[string]string{
-						"type":   "capture_unavailable",
-						"reason": "no screen capture backend is available on this endpoint",
-					})
-					_ = safeWrite(notice)
-					continue
-				}
-
-				go func() {
-					defer func() {
-						if r := recover(); r != nil {
-							log.Printf("[AgentStream] Recovered panic in frame sender: %v\n", r)
-						}
-					}()
-					frameCount := 0
-					lastSample := time.Time{}
-					for frame := range framesChan {
-						frameCount++
-
-						if ctx.Err() != nil {
-							return
-						}
-						if frame == nil || frame.Image == nil {
-							continue
-						}
-						// Consent can be withdrawn mid-session. Capture keeps
-						// running so a fresh Grant resumes at once, but no
-						// frame leaves the machine while it is revoked.
-						if r.requireScreenView && !r.Granted(PermissionScreenView) {
-							continue
-						}
-						if frameCount == 1 && r.injector != nil {
-							r.injector.SetScreenBounds(frame.Image.Bounds())
-						}
-
-						// Which viewers are reachable over WebRTC right now, and
-						// which of those have shown they can decode what is being
-						// sent. A connected peer is not yet a served viewer.
-						stateMu.RLock()
-						live := make([]*webrtc.PeerSession, 0, len(peers))
-						unconfirmed := 0
-						for id, p := range peers {
-							if !p.IsConnected() {
-								unconfirmed++
-								continue
-							}
-							live = append(live, p)
-							if !videoConfirmed[id] {
-								unconfirmed++
-							}
-						}
-						stateMu.RUnlock()
-
-						if len(live) > 0 {
-							// VP8 over WebRTC. The encoder skips frames that
-							// carry no visual change, which is most of them on a
-							// desktop, and returns nil for those.
-							sample, encErr := videoEncoder.Encode(frame)
-							if encErr != nil {
-								log.Printf("[AgentStream] VP8 encode failed, falling back to WebSocket frames: %v\n", encErr)
-							} else if len(sample) > 0 {
-								now := time.Now()
-								duration := 33 * time.Millisecond
-								if !lastSample.IsZero() {
-									duration = now.Sub(lastSample)
-								}
-								lastSample = now
-								for _, p := range live {
-									if wErr := p.WriteVideoSample(sample, duration); wErr != nil {
-										log.Printf("[AgentStream] dropping a frame for one viewer: %v\n", wErr)
-									}
-								}
-								if frameCount%150 == 1 {
-									log.Printf("[AgentStream] VP8 frame #%d (%dx%d, %d bytes) to %d viewer(s)\n",
-										frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(sample), len(live))
-								}
-							}
-							if unconfirmed == 0 {
-								// Every viewer is being served by WebRTC. The
-								// JPEG path stops here: at 1080p, running both
-								// for one frame is a VP8 encode plus a JPEG
-								// encode inside a 33ms budget, and neither fits.
-								relay.direct(safeWrite)
-								continue
-							}
-							// Some viewer is not confirmed yet -- still
-							// negotiating, or unable to decode this codec. It
-							// gets JPEG, but at a third of the rate, so the
-							// probation window costs bandwidth and a lower frame
-							// rate rather than blowing the frame budget. A
-							// viewer that never confirms simply stays here.
-							if frameCount%3 != 0 {
-								continue
-							}
-						}
-
-						// No WebRTC viewer is connected -- either negotiation has
-						// not finished yet or it failed. JPEG over the WebSocket
-						// keeps the session usable meanwhile, unless the
-						// consumer refused it, and never without saying so:
-						// the server can see these frames.
-						if !relay.relay(safeWrite) {
-							continue
-						}
-						var buf bytes.Buffer
-						if err := jpeg.Encode(&buf, frame.Image, &jpeg.Options{Quality: 60}); err == nil {
-							b64 := base64.StdEncoding.EncodeToString(buf.Bytes())
-							frameMsg := map[string]interface{}{
-								"type":       "frame",
-								"session_id": r.creds.AgentID,
-								"data":       b64,
-							}
-							data, _ := json.Marshal(frameMsg)
-							if err := safeWrite(data); err != nil {
-								return // WebSocket closed
-							}
-
-							if frameCount%30 == 1 {
-								log.Printf("[AgentStream] Streaming live screen frame #%d (%dx%d, jpeg b64: %d bytes)\n", frameCount, frame.Image.Bounds().Dx(), frame.Image.Bounds().Dy(), len(b64))
-							}
-						}
-					}
-				}()
-			}
-
-		case "video_ok", "video_stalled":
-			// The viewer reports whether it is actually rendering decoded video.
-			// This is the only evidence the agent has that the codec it is
-			// sending is one this browser can read, so it is what gates turning
-			// the JPEG fallback off -- not the ICE connection state.
-			viewerID, _ := signal["viewer_id"].(string)
-			stateMu.Lock()
-			if msgType == "video_ok" {
-				videoConfirmed[viewerID] = true
-				log.Printf("[AgentStream] viewer %s is decoding WebRTC video; stopping its JPEG fallback\n", logSafe(viewerID))
-			} else {
-				delete(videoConfirmed, viewerID)
-				log.Printf("[AgentStream] viewer %s reports stalled video; resuming the JPEG fallback\n", logSafe(viewerID))
-			}
-			stateMu.Unlock()
-
-		case "candidate":
-			cand, _ := signal["candidate"].(string)
-			viewerID, _ := signal["viewer_id"].(string)
-			stateMu.RLock()
-			peer := peers[viewerID]
-			stateMu.RUnlock()
-			if cand != "" && peer != nil {
-				_ = peer.AddICECandidate(cand)
-			}
-
-		case "input", "clipboard", "file_start", "file_chunk", "file_complete":
-			if r.requireDataChannel {
-				refusal.refuse(msgType, safeWrite)
-				continue
-			}
-			fields := signal
-			if msgType == "input" {
-				// Over the socket the input event is nested in payload.
-				payload, ok := signal["payload"].(map[string]interface{})
-				if !ok {
-					continue
-				}
-				fields = payload
-			}
-			dp.handle(ctx, msgType, fields, socketReply)
-
-		case "resize", "viewport_size":
-			// Informational signal indicating technician viewport dimensions
-			w, _ := signal["width"].(float64)
-			h, _ := signal["height"].(float64)
-			if w > 0 && h > 0 {
-				log.Printf("[AgentStream] Technician browser viewport size: %sx%s\n", logSafe(fmt.Sprintf("%.0f", w)), logSafe(fmt.Sprintf("%.0f", h)))
-			}
-
-		case "chat":
-			text, _ := signal["text"].(string)
-			sender, _ := signal["sender"].(string)
-			log.Printf("[AgentStream] Chat message from %s: %s\n", logSafe(sender), logSafe(text))
-
-		case "focus_state":
-			focused, _ := signal["focused"].(bool)
-			log.Printf("[AgentStream] Session focus state changed: focused=%s\n", logSafe(fmt.Sprint(focused)))
-
-		case "close":
-			r.Revoke()
-			stateMu.Lock()
-			for id, peer := range peers {
-				_ = peer.Close()
-				delete(peers, id)
-			}
-			if capturer != nil {
-				capturer.Stop()
-				capturer = nil
-			}
-			if activeCapCancel != nil {
-				activeCapCancel()
-				activeCapCancel = nil
-			}
-			stateMu.Unlock()
-			relay.stop()
-
-		default:
-			// Anything the core does not implement itself belongs to whoever
-			// layered it on top -- see Handle.
-			if h, ok := r.handlers[msgType]; ok {
-				h(ctx, r.creds.AgentID, signal, safeWrite)
-			}
-		}
-	}
+func (c wsSignalConn) WriteMessage(data []byte) error {
+	return c.ws.WriteMessage(websocket.TextMessage, data)
 }
 
-// boolPayload reads a boolean field from a decoded JSON signal payload, defaulting to false.
-func boolPayload(payload map[string]interface{}, key string) bool {
-	v, _ := payload[key].(bool)
-	return v
-}
-
-func (r *AgentStreamRunner) handleInputPayload(payload map[string]interface{}) {
-	if !r.allow(PermissionRemoteControl, "input") {
-		return
-	}
-	evtType, _ := payload["type"].(string)
-
-	switch evtType {
-	case "mousemove", "mouse_move":
-		x, _ := payload["x"].(float64)
-		y, _ := payload["y"].(float64)
-		if r.injector != nil {
-			_ = r.injector.MoveMouse(x, y)
-		}
-
-	case "mousedown", "mouse_down":
-		x, _ := payload["x"].(float64)
-		y, _ := payload["y"].(float64)
-		btn, _ := payload["button"].(float64)
-		if r.injector != nil {
-			_ = r.injector.MouseDown(input.MouseButton(btn), x, y)
-		}
-
-	case "mouseup", "mouse_up":
-		x, _ := payload["x"].(float64)
-		y, _ := payload["y"].(float64)
-		btn, _ := payload["button"].(float64)
-		if r.injector != nil {
-			_ = r.injector.MouseUp(input.MouseButton(btn), x, y)
-		}
-
-	case "wheel", "scroll":
-		x, _ := payload["x"].(float64)
-		y, _ := payload["y"].(float64)
-		deltaX, _ := payload["deltaX"].(float64)
-		deltaY, _ := payload["deltaY"].(float64)
-		if r.injector != nil {
-			_ = r.injector.Scroll(deltaX, deltaY, x, y)
-		}
-
-	case "keydown", "key_down":
-		key, _ := payload["key"].(string)
-		code, _ := payload["code"].(string)
-		if r.injector != nil {
-			_ = r.injector.KeyDown(input.KeyboardEvent{
-				Key: key, Code: code,
-				Ctrl:  boolPayload(payload, "ctrl"),
-				Alt:   boolPayload(payload, "alt"),
-				Shift: boolPayload(payload, "shift"),
-				Meta:  boolPayload(payload, "meta"),
-			})
-		}
-
-	case "keyup", "key_up":
-		key, _ := payload["key"].(string)
-		code, _ := payload["code"].(string)
-		if r.injector != nil {
-			_ = r.injector.KeyUp(input.KeyboardEvent{
-				Key: key, Code: code,
-				Ctrl:  boolPayload(payload, "ctrl"),
-				Alt:   boolPayload(payload, "alt"),
-				Shift: boolPayload(payload, "shift"),
-				Meta:  boolPayload(payload, "meta"),
-			})
-		}
-	}
-}
+func (c wsSignalConn) Close() error { return c.ws.Close() }

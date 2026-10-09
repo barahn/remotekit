@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
 
-package tunnel
+package stream
 
 import (
 	"encoding/json"
@@ -130,7 +130,7 @@ func TestRelayGate_Stop(t *testing.T) {
 // runs under Xvfb) that first message is the relay notice; where it does not,
 // it is capture_unavailable, and there is no frame to precede.
 func TestRelayMode_NoticeBeforeFirstFrame(t *testing.T) {
-	r := &AgentStreamRunner{creds: &AgentCredentials{AgentID: "agent-1", AgentToken: "tok"}}
+	r := &Runner{id: "agent-1"}
 	switch got := replyType(t, firstReply(t, r, sessionStart, 5*time.Second)); got {
 	case relayNotice, "capture_unavailable":
 	default:
@@ -139,7 +139,7 @@ func TestRelayMode_NoticeBeforeFirstFrame(t *testing.T) {
 }
 
 func TestRelayMode_DisabledSendsNoFrame(t *testing.T) {
-	r := &AgentStreamRunner{creds: &AgentCredentials{AgentID: "agent-1", AgentToken: "tok"}}
+	r := &Runner{id: "agent-1"}
 	r.DisableRelayFallback(true)
 	switch got := replyType(t, firstReply(t, r, sessionStart, 5*time.Second)); got {
 	case relayRefusedNotice, "capture_unavailable":

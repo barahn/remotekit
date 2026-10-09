@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
 
-package tunnel
+package stream
 
 import (
 	"crypto/ed25519"
@@ -15,9 +15,9 @@ import (
 
 // Errors for a viewer message refused by RequireSignedViewers.
 var (
-	ErrViewerUntrusted   = errors.New("tunnel: viewer message is signed by a key that is not trusted")
-	ErrViewerWrongTarget = errors.New("tunnel: viewer message is signed for a different agent")
-	ErrViewerReplay      = errors.New("tunnel: viewer message has already been seen")
+	ErrViewerUntrusted   = errors.New("stream: viewer message is signed by a key that is not trusted")
+	ErrViewerWrongTarget = errors.New("stream: viewer message is signed for a different agent")
+	ErrViewerReplay      = errors.New("stream: viewer message has already been seen")
 )
 
 // viewerAuth checks that a viewer's offers and ICE candidates were signed by
@@ -54,8 +54,8 @@ type viewerAuth struct {
 // they move to a DataChannel in Phase 1 of docs/implementation-phases.md.
 // "close" is accepted unsigned, since all it can do is end the session.
 //
-// Call it before Start. Passing nil turns the requirement off.
-func (r *AgentStreamRunner) RequireSignedViewers(trust func(ed25519.PublicKey) bool) {
+// Call it before Serve. Passing nil turns the requirement off.
+func (r *Runner) RequireSignedViewers(trust func(ed25519.PublicKey) bool) {
 	if trust == nil {
 		r.viewerAuth = nil
 		return
