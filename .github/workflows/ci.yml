@@ -121,6 +121,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
+          # The runner's cached 1.26 can trail the latest patch, and govulncheck
+          # fails on every standard-library fix it is missing.
+          check-latest: true
 
       # Apache-2.0 section 4(d) makes NOTICE binding on redistributors, so a
       # vendored dependency losing its attribution is a licence breach, not a
@@ -307,6 +310,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: '1.26'
+          # The runner's cached 1.26 can trail the latest patch, and govulncheck
+          # fails on every standard-library fix it is missing.
+          check-latest: true
           cache-dependency-path: signal/nostr/go.sum
 
       # The same allowlist as the core's step above, and CONTRIBUTING.md.
