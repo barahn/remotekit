@@ -85,9 +85,12 @@ changed together.
 `github.com/hashicorp/yamux`, MPL-2.0**, which `tunnel` multiplexes over. It was
 excepted by name at first, then **accepted formally by the maintainer**: MPL-2.0
 is now on the list, with its obligations written into `CONTRIBUTING.md`. Only
-`tunnel` pulls yamux in — `screen`, `input`, `clipboard`, `transfer` and
-`webrtc` are clean — so a consumer that does not import `tunnel` does not
-inherit those obligations.
+`tunnel` pulls yamux in — `screen`, `input`, `clipboard`, `transfer`,
+`webrtc` and `stream` are clean — so a consumer that does not import `tunnel`
+does not inherit those obligations. `stream` exists for that reason: it is the
+session runner (consent, signed viewers, the data plane, `Serve`), moved out of
+`tunnel` in barahn/remotekit#83, and a test in it fails if it ever depends on
+`tunnel` or yamux.
 
 The list is exact in both directions, and was checked that way: with MPL-2.0 on
 it every OS passes; with MPL-2.0 removed, yamux — and only yamux — fails. Every

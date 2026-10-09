@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
 
-package tunnel
+package stream
 
 import (
 	"context"
@@ -48,7 +48,7 @@ type signalHarness struct {
 
 // startSignalHarness runs the runner's signalling loop against a fake server
 // until the test ends.
-func startSignalHarness(t *testing.T, r *AgentStreamRunner) *signalHarness {
+func startSignalHarness(t *testing.T, r *Runner) *signalHarness {
 	t.Helper()
 	h := &signalHarness{
 		t:         t,
@@ -75,7 +75,7 @@ func startSignalHarness(t *testing.T, r *AgentStreamRunner) *signalHarness {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() {
-		r.runSignalingLoop(ctx, wsSignalConn{ws}, nil)
+		r.runSignalingLoop(ctx, wsConn{ws})
 		close(done)
 	}()
 	t.Cleanup(func() {
@@ -241,7 +241,7 @@ func waitMoves(t *testing.T, inj *countingInjector, want int32) {
 // consent rule as input over the socket.
 func TestDataChannel_InputNeedsConsent(t *testing.T) {
 	inj := &countingInjector{}
-	r := &AgentStreamRunner{creds: &AgentCredentials{AgentID: "agent-1", AgentToken: "tok"}, injector: inj}
+	r := &Runner{id: "agent-1", injector: inj}
 	r.Grant(PermissionFileTransfer) // for the barrier below, not for input
 	h := startSignalHarness(t, r)
 
@@ -282,7 +282,7 @@ func TestDataChannel_InputNeedsConsent(t *testing.T) {
 // File transfer over the data channel is answered on the same channel, and
 // nothing about it reaches the server.
 func TestDataChannel_FileTransferRepliesOnTheChannel(t *testing.T) {
-	r := &AgentStreamRunner{creds: &AgentCredentials{AgentID: "agent-1", AgentToken: "tok"}}
+	r := &Runner{id: "agent-1"}
 	r.Grant(PermissionFileTransfer)
 	h := startSignalHarness(t, r)
 
@@ -319,7 +319,7 @@ func TestDataChannel_FileTransferRepliesOnTheChannel(t *testing.T) {
 // controls the machine over the socket.
 func TestSocketInput_StillAcceptedByDefault(t *testing.T) {
 	inj := &countingInjector{}
-	r := &AgentStreamRunner{creds: &AgentCredentials{AgentID: "agent-1", AgentToken: "tok"}, injector: inj}
+	r := &Runner{id: "agent-1", injector: inj}
 	r.Grant(PermissionRemoteControl)
 	h := startSignalHarness(t, r)
 
@@ -331,7 +331,7 @@ func TestSocketInput_StillAcceptedByDefault(t *testing.T) {
 // consent was given, and the viewer is told why once per message type.
 func TestRequireDataChannel_RefusesSocketData(t *testing.T) {
 	inj := &countingInjector{}
-	r := &AgentStreamRunner{creds: &AgentCredentials{AgentID: "agent-1", AgentToken: "tok"}, injector: inj}
+	r := &Runner{id: "agent-1", injector: inj}
 	r.Grant(PermissionRemoteControl, PermissionFileTransfer)
 	r.RequireDataChannel(true)
 	h := startSignalHarness(t, r)
@@ -355,7 +355,7 @@ func TestRequireDataChannel_RefusesSocketData(t *testing.T) {
 // With RequireDataChannel, the data channel itself keeps working.
 func TestRequireDataChannel_ChannelStillWorks(t *testing.T) {
 	inj := &countingInjector{}
-	r := &AgentStreamRunner{creds: &AgentCredentials{AgentID: "agent-1", AgentToken: "tok"}, injector: inj}
+	r := &Runner{id: "agent-1", injector: inj}
 	r.Grant(PermissionRemoteControl)
 	r.RequireDataChannel(true)
 	h := startSignalHarness(t, r)
@@ -366,3 +366,18 @@ func TestRequireDataChannel_ChannelStillWorks(t *testing.T) {
 	}
 	waitMoves(t, inj, 1)
 }
+
+// wsConn adapts a test's WebSocket to SignalConn, as package tunnel does for
+// the control plane's.
+type wsConn struct{ ws *websocket.Conn }
+
+func (c wsConn) ReadMessage() ([]byte, error) {
+	_, data, err := c.ws.ReadMessage()
+	return data, err
+}
+
+func (c wsConn) WriteMessage(data []byte) error {
+	return c.ws.WriteMessage(websocket.TextMessage, data)
+}
+
+func (c wsConn) Close() error { return c.ws.Close() }

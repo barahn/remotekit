@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
 
-package tunnel
+package stream
 
 import (
 	"testing"
@@ -18,7 +18,7 @@ func (i *recordingInjector) MoveMouse(x, y float64) error { i.moves++; return ni
 
 func TestInputDroppedWithoutRemoteControl(t *testing.T) {
 	inj := &recordingInjector{}
-	r := &AgentStreamRunner{injector: inj}
+	r := &Runner{injector: inj}
 	ev := map[string]interface{}{"type": "mousemove", "x": 1.0, "y": 2.0}
 
 	r.handleInputPayload(ev)
@@ -46,7 +46,7 @@ func TestInputDroppedWithoutRemoteControl(t *testing.T) {
 }
 
 func TestGrantRevoke(t *testing.T) {
-	r := &AgentStreamRunner{}
+	r := &Runner{}
 	if r.Granted(PermissionFileTransfer) {
 		t.Fatal("granted by default")
 	}
@@ -59,7 +59,7 @@ func TestGrantRevoke(t *testing.T) {
 
 func TestStandingPermissionsSurviveClose(t *testing.T) {
 	inj := &recordingInjector{}
-	r := &AgentStreamRunner{injector: inj}
+	r := &Runner{injector: inj}
 	ev := map[string]interface{}{"type": "mousemove", "x": 1.0, "y": 2.0}
 
 	r.SetStandingPermissions(PermissionRemoteControl)
@@ -92,7 +92,7 @@ func TestStandingPermissionsSurviveClose(t *testing.T) {
 }
 
 func TestSetStandingPermissionsReplaces(t *testing.T) {
-	r := &AgentStreamRunner{}
+	r := &Runner{}
 	r.SetStandingPermissions(PermissionRemoteControl, PermissionClipboard)
 	r.SetStandingPermissions(PermissionFileTransfer)
 	if r.Granted(PermissionRemoteControl) || r.Granted(PermissionClipboard) {
