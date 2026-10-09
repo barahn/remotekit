@@ -144,9 +144,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `961e571`** — docs: refresh the handoff status block
+**`develop` is at `371dbcf`** — docs: refresh the handoff status block
 
-No open pull requests.
+### Open pull requests
+
+| PR | Title | Branch | CI on head |
+|---|---|---|---|
+| [#84](https://github.com/barahn/remotekit/pull/84) | feat(stream): move the session runner out of tunnel | `claude/stream-runner` | Refresh the handoff status block ⏳ (in_progress)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967202741/job/113944413360)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967202651/job/113944413314)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967202615/job/113944413298)<br>signal/nostr module ⏳ (queued)<br>DCO Sign-off ✅<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>Build, Test & SAST ⏳ (queued)<br>gitleaks ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
