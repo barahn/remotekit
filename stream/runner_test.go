@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"os/exec"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -105,5 +106,24 @@ func TestDepsExcludeTunnelAndYamux(t *testing.T) {
 		if dep == "github.com/barahn/remotekit/tunnel" || strings.HasPrefix(dep, "github.com/hashicorp/yamux") {
 			t.Errorf("stream depends on %s", dep)
 		}
+	}
+}
+
+// A consumer that runs its own STUN/TURN gets exactly that, and nothing
+// third-party; one that sets nothing keeps the old default.
+func TestNew_PeerConfig(t *testing.T) {
+	if got, want := New(Config{ID: "a"}).peerConfig, webrtc.DefaultPeerConfig(); !reflect.DeepEqual(got, want) {
+		t.Errorf("unset PeerConfig = %+v, want the default %+v", got, want)
+	}
+
+	own := webrtc.PeerConfig{ICEServers: []string{"turn:turn.example.test:3478"}, TURNUsername: "u", TURNPassword: "p"}
+	r := New(Config{ID: "a", PeerConfig: &own})
+	own.ICEServers[0] = "stun:changed.example.test"
+	if got := r.peerConfig; len(got.ICEServers) != 1 || got.ICEServers[0] != "turn:turn.example.test:3478" || got.TURNUsername != "u" || got.TURNPassword != "p" {
+		t.Errorf("PeerConfig = %+v, want the consumer's own, copied at New", got)
+	}
+
+	if got := New(Config{ID: "a", PeerConfig: &webrtc.PeerConfig{}}).peerConfig; len(got.ICEServers) != 0 {
+		t.Errorf("empty PeerConfig = %+v, want no servers at all", got)
 	}
 }

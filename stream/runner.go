@@ -38,6 +38,9 @@ type Runner struct {
 	// answers and candidates sent to them. See Config.
 	id      string
 	signKey ed25519.PrivateKey
+	// peerConfig is what each viewer's WebRTC connection is built with; see
+	// Config.PeerConfig.
+	peerConfig webrtc.PeerConfig
 
 	injector input.Injector
 	// handlers holds message types layered on top of the core session by a
@@ -85,6 +88,14 @@ type Config struct {
 	// in memory only; where it comes from -- a device key file, a key
 	// generated for one session -- is the caller's. Nil sends them unsigned.
 	SigningKey ed25519.PrivateKey
+
+	// PeerConfig is the ICE configuration -- STUN and TURN servers -- every
+	// viewer's WebRTC connection is built with. Nil means
+	// webrtc.DefaultPeerConfig(), which contacts public STUN servers run by
+	// a third party on every session; a deployment that should not, or that
+	// runs its own STUN/TURN, sets it. A non-nil config with no servers uses
+	// host candidates only, which works on a LAN and fails behind most NATs.
+	PeerConfig *webrtc.PeerConfig
 }
 
 // New returns a Runner for cfg, with input injection for this platform when
@@ -104,6 +115,11 @@ func New(cfg Config) *Runner {
 func (r *Runner) Init(cfg Config) {
 	r.id = cfg.ID
 	r.signKey = cfg.SigningKey
+	r.peerConfig = webrtc.DefaultPeerConfig()
+	if cfg.PeerConfig != nil {
+		r.peerConfig = *cfg.PeerConfig
+		r.peerConfig.ICEServers = append([]string(nil), cfg.PeerConfig.ICEServers...)
+	}
 	r.injector, _ = input.NewInjector()
 }
 
@@ -318,7 +334,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 					delete(peers, viewerID)
 				}
 
-				peer, err := webrtc.NewPeerSession(webrtc.DefaultPeerConfig())
+				peer, err := webrtc.NewPeerSession(r.peerConfig)
 				if err == nil {
 					peers[viewerID] = peer
 

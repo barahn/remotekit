@@ -13,12 +13,15 @@
 // ID and, optionally, an in-memory ed25519 key its answers are signed with.
 // No credentials file, no device key file and no control plane are involved.
 //
-//	r := stream.New(stream.Config{ID: sessionID, SigningKey: key})
+//	r := stream.New(stream.Config{ID: sessionID, SigningKey: key, PeerConfig: &ice})
 //	r.RequireScreenViewConsent(true)
 //	r.RequireSignedViewers(trusted)
 //	// ... ask the person at the machine, then:
 //	r.Grant(stream.PermissionScreenView, stream.PermissionRemoteControl)
 //	err := r.Serve(ctx, conn) // conn is any SignalConn
+//
+// PeerConfig carries the deployment's own STUN/TURN servers; left nil, the
+// runner falls back to webrtc.DefaultPeerConfig(), which uses public STUN.
 //
 // Everything is denied until granted. The checks that make an untrusted
 // transport safe -- RequireSignedViewers, RequireScreenViewConsent,
