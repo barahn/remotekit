@@ -144,14 +144,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `5d709ac`** — docs: refresh the handoff status block
+**`develop` is at `feab121`** — Merge pull request #85 from barahn/claude/ci-go-check-latest
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#84](https://github.com/barahn/remotekit/pull/84) | feat(stream): move the session runner out of tunnel | `claude/stream-runner` | [Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967765700/job/113946490907)<br>DCO Sign-off ✅<br>Build, Test & SAST ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967765782/job/113946334927)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967765621/job/113946334531)<br>gitleaks ✅<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ✅ |
-| [#85](https://github.com/barahn/remotekit/pull/85) | ci: always set up the latest Go 1.26 patch | `claude/ci-go-check-latest` | Refresh the handoff status block ⏳ (in_progress)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967889670/job/113946753806)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967889466/job/113946752590)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967889452/job/113946752222)<br>Build, Test & SAST ⏳ (in_progress)<br>signal/nostr module ⏳ (queued)<br>DCO Sign-off ✅<br>Review dependency changes ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>gitleaks ⏳ (in_progress) |
+| [#84](https://github.com/barahn/remotekit/pull/84) | feat(stream): move the session runner out of tunnel | `claude/stream-runner` | CodeQL ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37982968811/job/113997816388)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37982968853/job/113997816192)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37982968809/job/113997815350)<br>DCO Sign-off ✅<br>signal/nostr module ✅<br>Build, Test & SAST ✅<br>Analyze (Go) ✅<br>gitleaks ✅<br>Review dependency changes ✅ |
+| [#86](https://github.com/barahn/remotekit/pull/86) | chore(release): merge develop → main (7 commits) — Merge pull request #85 from barahn/claude/ci-go-check-latest | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37984842788/job/114004135729)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37984842788/job/114004135329)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37984842641/job/114004134351)<br>Build, Test & SAST ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>open-pr ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
