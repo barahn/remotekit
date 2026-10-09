@@ -144,13 +144,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `371dbcf`** — docs: refresh the handoff status block
+**`develop` is at `5d709ac`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#84](https://github.com/barahn/remotekit/pull/84) | feat(stream): move the session runner out of tunnel | `claude/stream-runner` | Refresh the handoff status block ⏳ (in_progress)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967202741/job/113944413360)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967202651/job/113944413314)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967202615/job/113944413298)<br>signal/nostr module ⏳ (queued)<br>DCO Sign-off ✅<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>Build, Test & SAST ⏳ (queued)<br>gitleaks ⏳ (in_progress) |
+| [#84](https://github.com/barahn/remotekit/pull/84) | feat(stream): move the session runner out of tunnel | `claude/stream-runner` | [Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967765700/job/113946490907)<br>DCO Sign-off ✅<br>Build, Test & SAST ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967765782/job/113946334927)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967765621/job/113946334531)<br>gitleaks ✅<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ✅ |
+| [#85](https://github.com/barahn/remotekit/pull/85) | ci: always set up the latest Go 1.26 patch | `claude/ci-go-check-latest` | Refresh the handoff status block ⏳ (in_progress)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967889670/job/113946753806)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967889466/job/113946752590)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37967889452/job/113946752222)<br>Build, Test & SAST ⏳ (in_progress)<br>signal/nostr module ⏳ (queued)<br>DCO Sign-off ✅<br>Review dependency changes ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>gitleaks ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
