@@ -145,13 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `d25c72f`** — Merge pull request #84 from barahn/claude/stream-runner
+**`develop` is at `9b9dede`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#86](https://github.com/barahn/remotekit/pull/86) | chore(release): merge develop → main (7 commits) — Merge pull request #85 from barahn/claude/ci-go-check-latest | `develop` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37984881023/job/114004262667)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/37984881020/job/114004262288)<br>DCO Sign-off ⏳ (queued)<br>Release source ⏳ (queued)<br>Build, Test & SAST ⏳ (queued)<br>signal/nostr module ⏳ (queued)<br>Analyze (Go) ⏳ (queued)<br>gitleaks ⏳ (queued)<br>Review dependency changes ⏳ (queued)<br>open-pr ⏳ (in_progress) |
+| [#86](https://github.com/barahn/remotekit/pull/86) | chore(release): merge develop → main (12 commits) — Merge pull request #84 from barahn/claude/stream-runner | `develop` | no checks reported |
 
 <!-- END GENERATED: handoff status -->
 
