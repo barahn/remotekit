@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
 
-package tunnel
+package stream
 
 import (
 	"encoding/json"
@@ -37,8 +37,8 @@ const relayReason = "relay mode: the screen is relayed through the server, which
 // sends the viewer {"type":"relay_mode","active":true,"reason":...}, leaving
 // it sends active false, and both are logged and reported to OnRelayMode.
 //
-// Call it before Start.
-func (r *AgentStreamRunner) DisableRelayFallback(disabled bool) {
+// Call it before Serve.
+func (r *Runner) DisableRelayFallback(disabled bool) {
 	r.disableRelay = disabled
 }
 
@@ -47,8 +47,8 @@ func (r *AgentStreamRunner) DisableRelayFallback(disabled bool) {
 // can show the person at the machine that the server can see the screen. It
 // runs on the frame sender's goroutine and must not block.
 //
-// Call it before Start.
-func (r *AgentStreamRunner) OnRelayMode(fn func(active bool)) {
+// Call it before Serve.
+func (r *Runner) OnRelayMode(fn func(active bool)) {
 	r.onRelayMode = fn
 }
 

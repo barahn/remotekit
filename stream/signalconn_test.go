@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
 
-package tunnel
+package stream
 
 import (
 	"bytes"
@@ -72,8 +72,8 @@ func (c *memConn) next(wait time.Duration) []byte {
 	}
 }
 
-func newServeRunner() *AgentStreamRunner {
-	return &AgentStreamRunner{creds: &AgentCredentials{AgentID: "agent-1"}}
+func newServeRunner() *Runner {
+	return &Runner{id: "agent-1"}
 }
 
 // A whole session runs over a transport that is not a WebSocket: the agent
@@ -155,8 +155,8 @@ func TestServe_ReturnsWhenTheTransportEnds(t *testing.T) {
 
 func TestServe_NeedsAnAgentID(t *testing.T) {
 	agent, _ := memPipe()
-	if err := (&AgentStreamRunner{}).Serve(context.Background(), agent); !errors.Is(err, errNoAgentID) {
-		t.Fatalf("want errNoAgentID, got %v", err)
+	if err := (&Runner{}).Serve(context.Background(), agent); !errors.Is(err, ErrNoID) {
+		t.Fatalf("want ErrNoID, got %v", err)
 	}
 }
 

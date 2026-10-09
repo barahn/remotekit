@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
 
-package tunnel
+package stream
 
 import (
 	"context"
@@ -24,7 +24,7 @@ import (
 // Both paths go through handle, so consent is checked in one place and the two
 // cannot drift apart.
 type dataPlane struct {
-	r           *AgentStreamRunner
+	r           *Runner
 	clipMgr     clipboard.Manager
 	clipWatcher *clipboard.Watcher
 	transfer    *transfer.Manager
@@ -123,7 +123,7 @@ func (d *dataPlane) handleChannelMessage(ctx context.Context, peer *webrtc.PeerS
 	if err := json.Unmarshal(env.Payload, &fields); err != nil || fields == nil {
 		return
 	}
-	agentID := d.r.creds.AgentID
+	agentID := d.r.id
 	d.handle(ctx, msgType, fields, func(replyType string, replyFields map[string]interface{}) {
 		data, err := bark.EncodeEnvelope(bark.MessageType(replyType), agentID, replyFields)
 		if err != nil {
@@ -151,8 +151,8 @@ func (d *dataPlane) handleChannelMessage(ctx context.Context, peer *webrtc.PeerS
 // they must be while viewers move over. The consent checks are the same
 // either way.
 //
-// Call it before Start.
-func (r *AgentStreamRunner) RequireDataChannel(required bool) {
+// Call it before Serve.
+func (r *Runner) RequireDataChannel(required bool) {
 	r.requireDataChannel = required
 }
 

@@ -260,7 +260,22 @@ These fixes address immediate security issues present in the current codebase, i
 
 **Goal:** Decouple `remotekit` from WebSocket signalling so any transport can be plugged in without changing session logic.
 
-### As built: `tunnel.SignalConn`, not a pub/sub `Signaler`
+### As built: `SignalConn`, not a pub/sub `Signaler`
+
+> **Since barahn/remotekit#83** the session runner lives in package `stream`,
+> not `tunnel`: `stream.Runner`, built with `stream.New(stream.Config{ID,
+> SigningKey})`, holds consent, signed viewers, the data-plane and relay
+> rules, `Handle`, `SignalConn` and `Serve`, and imports neither `tunnel` nor
+> yamux. `tunnel.AgentStreamRunner` embeds a `stream.Runner`, maps the agent
+> ID and device key from `AgentCredentials` into its `Config`, and keeps
+> `Start`; `tunnel.SignalConn`, `tunnel.MessageHandler`, the `Permission*`
+> constants and the `ErrViewer*` errors are aliases of `stream`'s. yamux
+> (MPL-2.0) now stays with `tunnel`'s enrolment and reverse-tunnel code, so an
+> on-demand consumer such as Chirp serves a session through `stream` without
+> it. The `tunnel/...` file references elsewhere in this document predate the
+> move: `agent_stream.go`, `consent.go`, `dataplane.go`, `relaymode.go`,
+> `viewerauth.go`, `handler.go` and `signalconn.go` are now under `stream/`
+> (`agent_stream.go` as `runner.go`).
 
 Tasks 1 and 2 below were built as a narrower seam than they describe, because
 the signalling socket carries more than `SignalMessage`. Besides offers,
@@ -280,7 +295,7 @@ type SignalConn interface {
     Close() error
 }
 
-func (r *AgentStreamRunner) Serve(ctx context.Context, conn SignalConn) error
+func (r *Runner) Serve(ctx context.Context, conn SignalConn) error // package stream
 ```
 
 `Start` still dials the control plane's WebSocket and reconnects; it is now
@@ -331,8 +346,8 @@ safe to use.
 **As built:** `signal/nostr`, a separate Go module (its `go.mod` replaces the
 core with the tree, and CI runs it as its own job). `Listen` opens the agent's
 end and `Dial` a viewer's; both return a `*Conn` satisfying
-`tunnel.SignalConn`, so a session runs over relays with
-`AgentStreamRunner.Serve`. Each message is a NIP-59 gift wrap -- an unsigned
+`stream.SignalConn`, so a session runs over relays with
+`stream.Runner.Serve`. Each message is a NIP-59 gift wrap -- an unsigned
 rumor of our own kind 21059, sealed (kind 13) and signed by the sender,
 wrapped (kind 1059) under a one-time key, both layers NIP-44 v2 -- with a
 NIP-40 expiration. Relays see the recipient's key and nothing of the sender or

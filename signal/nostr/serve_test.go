@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/barahn/remotekit/tunnel"
+	"github.com/barahn/remotekit/stream"
 	"github.com/barahn/remotekit/webrtc"
 )
 
-// Conn is a tunnel.SignalConn.
-var _ tunnel.SignalConn = (*Conn)(nil)
+// Conn is a stream.SignalConn.
+var _ stream.SignalConn = (*Conn)(nil)
 
 // signedOffer builds a viewer's offer signed with its device key for agentID.
 func signedOffer(t *testing.T, priv ed25519.PrivateKey, agentID, sdp string) []byte {
@@ -46,7 +46,7 @@ func TestServeNegotiatesOverRelays(t *testing.T) {
 		t.Fatal(err)
 	}
 	const agentID = "agent-nostr"
-	runner := tunnel.NewAgentStreamRunner(&tunnel.AgentCredentials{AgentID: agentID}, false)
+	runner := stream.New(stream.Config{ID: agentID})
 	runner.RequireSignedViewers(func(k ed25519.PublicKey) bool { return bytes.Equal(k, viewerPub) })
 	runner.DisableRelayFallback(true)
 

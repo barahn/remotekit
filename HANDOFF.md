@@ -29,7 +29,8 @@ Packages (each usable on its own):
 | `clipboard` | Cross-platform read/write plus change watcher |
 | `transfer` | Chunked file transfer with resume |
 | `webrtc` | pion wrapper: peer session, video track, signalling helpers |
-| `tunnel` | WSS + Yamux reverse tunnel, agent enrolment, multiplexed streams |
+| `stream` | Session runner over any `SignalConn`: negotiation, screen, data plane, consent, signed viewers; imports neither `tunnel` nor yamux |
+| `tunnel` | WSS + Yamux reverse tunnel, agent enrolment, multiplexed streams; `AgentStreamRunner` wraps a `stream.Runner` |
 | `bark` | Shared wire envelope |
 | `heartbeat` | Keepalive with server-side staleness monitoring |
 | `tray`, `service`, `osinfo` | Tray icon, OS service install (systemd/launchd/SCM), host details |
@@ -144,13 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `8e3526f`** — docs: refresh the handoff status block
+**`develop` is at `9b9dede`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#59](https://github.com/barahn/remotekit/pull/59) | chore(release): merge develop → main (21 commits) — Merge pull request #62 from barahn/dependabot/go_modules/signal/n... | `develop` | no checks reported |
+| [#86](https://github.com/barahn/remotekit/pull/86) | chore(release): merge develop → main (12 commits) — Merge pull request #84 from barahn/claude/stream-runner | `develop` | no checks reported |
 
 <!-- END GENERATED: handoff status -->
 
@@ -324,7 +325,10 @@ hard part; discuss before starting.
    to open the `bark-control` and `bark-transfer` channels from their viewers.
    Phase 2 is done: `SignalConn` and `Serve` let a session run over any
    transport, and `signal/nostr` is the optional relay transport, in its own
-   module. Wiring it into a product (the rendezvous that hands a viewer the
+   module. Since barahn/remotekit#83 the session runner is package `stream`
+   (`stream.New(stream.Config{ID, SigningKey})`), so a consumer with no
+   enrolment -- Chirp -- serves a session without importing `tunnel` or
+   yamux; `tunnel.AgentStreamRunner` wraps it unchanged for Barahn. Wiring it into a product (the rendezvous that hands a viewer the
    agent's session key and relays, and turning on the opt-ins above) is the
    products' work. The next phase in this module is Phase 3.
 

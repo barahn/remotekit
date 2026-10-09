@@ -2,12 +2,13 @@
 // Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
 
 // Package nostr is a signalling transport over Nostr relays: a
-// tunnel.SignalConn whose messages travel as gift-wrapped events instead of
+// stream.SignalConn whose messages travel as gift-wrapped events instead of
 // over the control plane's WebSocket.
 //
 // It is its own module so that the remotekit core never imports it, or the
 // secp256k1 code it needs. Nothing in the core knows it exists; a consumer
-// that wants it hands a *Conn to tunnel.AgentStreamRunner.Serve.
+// that wants it hands a *Conn to stream.Runner.Serve, or to
+// tunnel.AgentStreamRunner.Serve, which wraps it.
 //
 // # What the relays see
 //
@@ -33,7 +34,7 @@
 // The Nostr key addresses; it does not authenticate. Who a viewer is, and
 // whether the agent is who it says, is settled the same way as over the
 // WebSocket: by the Ed25519 signatures on the signalling messages themselves
-// (tunnel.AgentStreamRunner.RequireSignedViewers) and by consent. A relay is
+// (stream.Runner.RequireSignedViewers) and by consent. A relay is
 // exactly as untrusted as the control plane, and those checks should be on.
 //
 // # Rendezvous
@@ -49,7 +50,7 @@
 // for JSON heavy with escapes, such as SDP, and up to about 40 KB for plain
 // text ([ErrMessageTooLarge] otherwise). SDP and candidates fit
 // easily; the JPEG relay fallback does not, and should be refused with
-// tunnel.AgentStreamRunner.DisableRelayFallback, with the data plane kept off
-// the relays by tunnel.AgentStreamRunner.RequireDataChannel. Relays are not
+// stream.Runner.DisableRelayFallback, with the data plane kept off
+// the relays by stream.Runner.RequireDataChannel. Relays are not
 // redialled: a Conn ends when its last relay does, and the caller dials again.
 package nostr

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
 
-package tunnel
+package stream
 
 import "log"
 
@@ -14,10 +14,11 @@ const (
 	PermissionRemoteControl = "remote_control"
 	PermissionClipboard     = "clipboard"
 	PermissionFileTransfer  = "file_transfer"
-	// PermissionReverseStream covers reverse streams through the tunnel, such
-	// as SSH. AgentStreamRunner never checks it itself: a reverse stream is
-	// the TunnelClient's, and consults it only through
-	// TunnelClient.ConsentReverseStream when a consumer wires that up.
+	// PermissionReverseStream covers reverse streams through package
+	// tunnel, such as SSH. The Runner never checks it itself: a reverse
+	// stream is tunnel.TunnelClient's, and consults it only through
+	// TunnelClient.ConsentReverseStream when a consumer wires that up to
+	// Granted.
 	PermissionReverseStream = "reverse_stream"
 )
 
@@ -27,7 +28,7 @@ const (
 // accepted. Nothing on the signalling socket grants, because the server is not
 // who consents; the only other source of permission is the consumer's own
 // policy, through SetStandingPermissions.
-func (r *AgentStreamRunner) Grant(permissions ...string) {
+func (r *Runner) Grant(permissions ...string) {
 	r.consentMu.Lock()
 	defer r.consentMu.Unlock()
 	if r.granted == nil {
@@ -43,7 +44,7 @@ func (r *AgentStreamRunner) Grant(permissions ...string) {
 // named. It also runs when the server closes the session. It withdraws only
 // what Grant gave; standing permissions are changed with
 // SetStandingPermissions.
-func (r *AgentStreamRunner) Revoke(permissions ...string) {
+func (r *Runner) Revoke(permissions ...string) {
 	r.consentMu.Lock()
 	defer r.consentMu.Unlock()
 	if len(permissions) == 0 {
@@ -65,7 +66,7 @@ func (r *AgentStreamRunner) Revoke(permissions ...string) {
 // lets an operator in. Making that call is the consumer's, which is why the
 // default stays deny: a consumer that wants a standing permission names it.
 // Where somebody is at the machine to ask, ask them and use Grant instead.
-func (r *AgentStreamRunner) SetStandingPermissions(permissions ...string) {
+func (r *Runner) SetStandingPermissions(permissions ...string) {
 	r.consentMu.Lock()
 	defer r.consentMu.Unlock()
 	r.standing = nil
@@ -80,7 +81,7 @@ func (r *AgentStreamRunner) SetStandingPermissions(permissions ...string) {
 
 // Granted reports whether permission has been granted, by Grant or as a
 // standing permission. Everything is denied until one of them says otherwise.
-func (r *AgentStreamRunner) Granted(permission string) bool {
+func (r *Runner) Granted(permission string) bool {
 	r.consentMu.RLock()
 	defer r.consentMu.RUnlock()
 	return r.granted[permission] || r.standing[permission]
@@ -90,7 +91,7 @@ func (r *AgentStreamRunner) Granted(permission string) bool {
 // nothing because consent was never given is not a silent one. Input arrives
 // dozens of times a second, so it logs once per permission until that
 // permission is granted.
-func (r *AgentStreamRunner) allow(permission, what string) bool {
+func (r *Runner) allow(permission, what string) bool {
 	r.consentMu.Lock()
 	defer r.consentMu.Unlock()
 	if r.granted[permission] || r.standing[permission] {
@@ -120,7 +121,7 @@ func (r *AgentStreamRunner) allow(permission, what string) bool {
 // with the rest of what they accept; where nobody is, as on an unattended
 // fleet host, leave it off.
 //
-// Call it before Start.
-func (r *AgentStreamRunner) RequireScreenViewConsent(required bool) {
+// Call it before Serve.
+func (r *Runner) RequireScreenViewConsent(required bool) {
 	r.requireScreenView = required
 }
