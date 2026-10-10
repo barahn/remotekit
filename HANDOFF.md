@@ -145,9 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `6c4fa9c`** — Merge main into develop after the release
+**`develop` is at `28b2800`** — docs: refresh the handoff status block
 
-No open pull requests.
+### Open pull requests
+
+| PR | Title | Branch | CI on head |
+|---|---|---|---|
+| [#88](https://github.com/barahn/remotekit/pull/88) | feat(webrtc): receive the agent's video in a Go viewer | `feat/peer-video-receive` | Refresh the handoff status block ⏳ (in_progress)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38062607105/job/114243753657)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38062607088/job/114243753564)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38062607085/job/114243753363)<br>Review dependency changes ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>DCO Sign-off ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
