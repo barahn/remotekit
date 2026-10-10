@@ -192,15 +192,23 @@ func encodeInterFrameHeaderWithProbs(enc *boolEncoder, width, height, qi int, de
 }
 
 // encodeRefFrameFlags encodes reference frame refresh and copy flags.
+//
+// A copy flag is present only for a reference that is not being refreshed
+// (RFC 6386 §9.7): a decoder reads copy_buffer_to_golden only when
+// refresh_golden_frame is clear. Writing it regardless shifts every field
+// after it by two bits whenever golden is refreshed -- refresh_last_frame
+// reads as clear, and the rest of the first partition as noise.
 func encodeRefFrameFlags(enc *boolEncoder, refreshGolden bool) {
 	enc.putBit(128, refreshGolden) // refresh_golden_frame
 	enc.putBit(128, false)         // refresh_alternate_frame
-	enc.putLiteral(0, 2)           // copy_buffer_to_golden
-	enc.putLiteral(0, 2)           // copy_buffer_to_alternate
-	enc.putBit(128, false)         // sign_bias_golden
-	enc.putBit(128, false)         // sign_bias_alternate
-	enc.putBit(128, false)         // refresh_entropy_probs
-	enc.putBit(128, true)          // refresh_last_frame_buffer
+	if !refreshGolden {
+		enc.putLiteral(0, 2) // copy_buffer_to_golden
+	}
+	enc.putLiteral(0, 2)   // copy_buffer_to_alternate
+	enc.putBit(128, false) // sign_bias_golden
+	enc.putBit(128, false) // sign_bias_alternate
+	enc.putBit(128, false) // refresh_entropy_probs
+	enc.putBit(128, true)  // refresh_last_frame_buffer
 }
 
 // encodeProbUpdates encodes token probability updates if configured.
