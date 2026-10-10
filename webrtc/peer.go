@@ -72,6 +72,14 @@ type PeerSession struct {
 	dataChannels      map[string]*webrtc.DataChannel
 	onDataMessage     func(label string, msg []byte)
 	onDataChannelOpen func(label string)
+
+	// The receive side, for a viewer; see receive.go. Its own lock, for the
+	// same reason as the data channels'.
+	rxMu              sync.Mutex
+	onVideoFrame      func(frame []byte, keyFrame bool)
+	remoteVideoSSRC   uint32
+	receivingVideo    bool
+	lastKeyFrameAsked time.Time
 }
 
 // NewPeerSession creates and initializes a new WebRTC PeerSession.
@@ -114,6 +122,9 @@ func NewPeerSession(config PeerConfig) (*PeerSession, error) {
 	// The viewer makes the offer, so it creates the data channels and they
 	// arrive here.
 	pc.OnDataChannel(session.acceptDataChannel)
+
+	// A viewer receives the agent's screen; an agent never gets a track.
+	pc.OnTrack(session.acceptTrack)
 
 	// Register ICE candidate callback
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
