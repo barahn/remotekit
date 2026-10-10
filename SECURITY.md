@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 **Do not open a public issue.** Email
-[security@mendsec.com](mailto:security@mendsec.com).
+[security@fabrintek.com.br](mailto:security@fabrintek.com.br).
 
 remotekit is the part of Fabrintek's remote-access products that touches the
 machine: it captures the screen, injects keystrokes and mouse input, reads and
