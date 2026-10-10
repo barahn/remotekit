@@ -122,6 +122,6 @@ at `develop` via pull request.
 ## Reporting security vulnerabilities
 
 Do **not** open a public issue for a security-sensitive bug. Email
-[security@mendsec.com](mailto:security@mendsec.com). What is in scope, what to
+[security@fabrintek.com.br](mailto:security@fabrintek.com.br). What is in scope, what to
 expect and what the pipeline enforces are in [SECURITY.md](SECURITY.md) and
 [docs/devsecops.md](docs/devsecops.md).

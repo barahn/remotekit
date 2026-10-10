@@ -80,7 +80,7 @@ Generic fixes should be offered back to upstream under its own terms.
 ## Security
 
 Report vulnerabilities privately to
-[security@mendsec.com](mailto:security@mendsec.com), not in a public issue — see
+[security@fabrintek.com.br](mailto:security@fabrintek.com.br), not in a public issue — see
 [SECURITY.md](SECURITY.md). Every push and pull request runs gosec,
 govulncheck, gitleaks, a dependency licence gate and the NOTICE check, with
 every action pinned to a commit SHA; CodeQL and dependency review are wired in
