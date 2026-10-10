@@ -145,14 +145,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `693ad98`** — docs: refresh the handoff status block
+**`develop` is at `d3e601a`** — docs(security): take vulnerability reports at security@fabrintek.com.br (#89)
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
 | [#88](https://github.com/barahn/remotekit/pull/88) | feat(webrtc): receive the agent's video in a Go viewer | `feat/peer-video-receive` | CodeQL ✅<br>Refresh the handoff status block ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38062607105/job/114243753657)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38062607088/job/114243753564)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38062607085/job/114243753363)<br>Review dependency changes ✅<br>Analyze (Go) ✅<br>Build, Test & SAST ✅<br>gitleaks ✅<br>DCO Sign-off ✅<br>signal/nostr module ✅ |
-| [#89](https://github.com/barahn/remotekit/pull/89) | docs(security): take vulnerability reports at security@fabrintek.com.br | `docs/security-email` | [Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38070890719/job/114267891698)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38070890729/job/114267891169)<br>Refresh the handoff status block ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38070890575/job/114267890750)<br>gitleaks ⏳ (in_progress)<br>DCO Sign-off ✅<br>Review dependency changes ⏳ (in_progress)<br>Aikido Security: Deep Review ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Aikido Security: check code ✅ |
+| [#90](https://github.com/barahn/remotekit/pull/90) | chore(release): merge develop → main (6 commits) — docs(security): take vulnerability reports at security@fabrintek.c... | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38094563662/job/114337698186)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38094563662/job/114337697798)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38094563692/job/114337697774)<br>open-pr ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
