@@ -240,12 +240,11 @@ tables, which are already byte-exact against libvpx, and writes the rest from
 RFC 6386 and libvpx's behaviour: the bitstream reader, modes and motion
 vectors, sub-pixel interpolation and the normal loop filter, which the encoder
 never emits. `TestDecoderMatchesLibvpx` holds every decoded frame to vpxdec's,
-byte for byte.
-
-What that test covers is what this encoder produces. SPLITMV, the normal loop
-filter, segmentation, altref, sign bias and the bilinear filters of versions
-1-3 are implemented but not yet exercised against libvpx, because nothing here
-emits them.
+byte for byte, on what this encoder produces; `TestDecoderMatchesLibvpxTestVectors`
+holds it to libvpx's own conformance vectors (`testdata/libvpx`), which
+exercise what this encoder never emits: SPLITMV, the normal loop filter,
+segmentation, altref and hidden frames, the bilinear and full-pixel
+prediction of versions 1-3. Sign bias is implemented but no vector sets it.
 
 Writing the decoder found an encoder bug: with a golden interval set, the
 frame refreshing golden wrote `copy_buffer_to_golden` although the format
