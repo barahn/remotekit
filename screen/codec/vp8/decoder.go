@@ -402,14 +402,16 @@ func splitPartitions(data []byte, n int) ([][]byte, error) {
 // (swap_frame_buffers): altref's copy first, then golden's -- which, copying
 // "from altref", sees the altref just set -- then the refreshes.
 func (d *Decoder) updateReferences(cur *decFrame, h *frameHeader) {
-	if h.copyToAlt == 1 {
+	switch h.copyToAlt {
+	case 1:
 		d.altref = d.last
-	} else if h.copyToAlt == 2 {
+	case 2:
 		d.altref = d.golden
 	}
-	if h.copyToGold == 1 {
+	switch h.copyToGold {
+	case 1:
 		d.golden = d.last
-	} else if h.copyToGold == 2 {
+	case 2:
 		d.golden = d.altref
 	}
 	if h.refreshGold {
