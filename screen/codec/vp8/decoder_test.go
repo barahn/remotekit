@@ -181,7 +181,16 @@ func samePicture(img *image.YCbCr, want vp8check.Frame) error {
 // Frames come off the network, so a corrupt one must fail or decode to
 // garbage, never panic. Every prefix and a spread of bit flips of a real
 // stream are fed in, each after a good key frame.
+//
+// That is some 28,000 feeds. Under -race with coverage they take far longer
+// than the CI job allows and the single-goroutine decoder gives the detector
+// nothing to find, so -short samples every 37th prefix and flip; CI runs the
+// full sweep in a step without -race.
 func TestDecoderSurvivesCorruptFrames(t *testing.T) {
+	step := 1
+	if testing.Short() {
+		step = 37
+	}
 	frames := encodeCase(t, decodeCase{w: 64, h: 48, frames: 4, keyEvery: 300})
 	feed := func(data []byte) {
 		t.Helper()
@@ -196,10 +205,10 @@ func TestDecoderSurvivesCorruptFrames(t *testing.T) {
 		_, _ = dec.Decode(frames[1])
 	}
 	for _, f := range frames {
-		for n := 0; n < len(f); n++ {
+		for n := 0; n < len(f); n += step {
 			feed(f[:n])
 		}
-		for i := 0; i < len(f)*8; i += 3 {
+		for i := 0; i < len(f)*8; i += 3 * step {
 			bad := append([]byte(nil), f...)
 			bad[i/8] ^= 1 << uint(i%8)
 			feed(bad)
