@@ -226,3 +226,28 @@ quantisation, which is what it is supposed to be.
 Every case in `TestConformanceAcrossContentAndSize` passes: flat and textured
 content, 64x64 through 1280x720, key frames and inter frames. Nothing in this
 package is gated behind a known-defect flag any more.
+
+## The decoder
+
+`Decoder` (`decoder.go`, `dec_*.go`) is this project's own code, not part of
+the fork, and Apache-2.0. It decodes key and inter frames, golden and altref
+references, segmentation, multiple token partitions and both loop filters, for
+a viewer written in Go (barahn/remotekit#87): `golang.org/x/image/vp8` decodes
+key frames only.
+
+It reuses the encoder's inverse transforms, intra predictors and probability
+tables, which are already byte-exact against libvpx, and writes the rest from
+RFC 6386 and libvpx's behaviour: the bitstream reader, modes and motion
+vectors, sub-pixel interpolation and the normal loop filter, which the encoder
+never emits. `TestDecoderMatchesLibvpx` holds every decoded frame to vpxdec's,
+byte for byte, on what this encoder produces; `TestDecoderMatchesLibvpxTestVectors`
+holds it to libvpx's own conformance vectors (`testdata/libvpx`), which
+exercise what this encoder never emits: SPLITMV, the normal loop filter,
+segmentation, altref and hidden frames, the bilinear and full-pixel
+prediction of versions 1-3. Sign bias is implemented but no vector sets it.
+
+Writing the decoder found an encoder bug: with a golden interval set, the
+frame refreshing golden wrote `copy_buffer_to_golden` although the format
+omits it then, and every field after it was misread. The golden interval is
+off by default and the screen encoder never sets it, so streams in use were
+not affected.
