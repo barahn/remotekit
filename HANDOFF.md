@@ -145,13 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `9610484`** — feat(stream): a Go viewer for a Runner's session (#92)
+**`develop` is at `eaac3fe`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#90](https://github.com/barahn/remotekit/pull/90) | chore(release): merge develop → main (15 commits) — feat(stream): a Go viewer for a Runner's session (#92) | `develop` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38210185089/job/114682387414)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38210185036/job/114682386895)<br>signal/nostr module ⏳ (in_progress)<br>Build, Test & SAST ⏳ (queued)<br>DCO Sign-off ⏳ (queued)<br>Release source ⏳ (queued)<br>Analyze (Go) ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/114682380418)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38210181301/job/114682376669)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38210181350/job/114682376457)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38210181350/job/114682376082)<br>Build, Test & SAST ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>open-pr ⏳ (in_progress) |
+| [#90](https://github.com/barahn/remotekit/pull/90) | chore(release): merge develop → main (15 commits) — feat(stream): a Go viewer for a Runner's session (#92) | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38210196337/job/114682447078)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38210196337/job/114682446995)<br>Build, Test & SAST ⏳ (queued)<br>signal/nostr module ⏳ (queued)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/114682424855) |
 
 <!-- END GENERATED: handoff status -->
 
