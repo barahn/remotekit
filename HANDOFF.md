@@ -145,9 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `b53ac04`** — docs: refresh the handoff status block
+**`develop` is at `feab387`** — docs: refresh the handoff status block
 
-No open pull requests.
+### Open pull requests
+
+| PR | Title | Branch | CI on head |
+|---|---|---|---|
+| [#99](https://github.com/barahn/remotekit/pull/99) | feat(stream): clipboard and files from the Go viewer | `claude/viewer-data-plane` | Aikido Security: Deep Review ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38283898567/job/114927526768)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38283898591/job/114927526354)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38283898554/job/114927526240)<br>DCO Sign-off ✅<br>signal/nostr module ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>Aikido Security: check code ✅ |
 
 <!-- END GENERATED: handoff status -->
 
