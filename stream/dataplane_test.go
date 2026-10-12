@@ -247,14 +247,14 @@ func TestDataChannel_InputNeedsConsent(t *testing.T) {
 
 	barrier := make(chan struct{}, 1)
 	viewer := h.connectViewer(func(_ string, msg []byte) {
-		if strings.Contains(string(msg), `"file_progress"`) {
+		if strings.Contains(string(msg), `"file_saved"`) {
 			barrier <- struct{}{}
 		}
 	})
 
 	move := envelope(t, bark.TypeInputEvent, bark.InputEvent{Type: "mouse_move", X: 0.5, Y: 0.5})
-	// A chunk for a transfer that was never started still gets a progress
-	// reply. Messages on one channel are handled in order, so once that reply
+	// A chunk for a transfer that was never started is answered with a
+	// file_saved refusing it. Messages on one channel are handled in order, so once that reply
 	// is back, the move sent before it has been dealt with.
 	ping := envelope(t, bark.TypeFileChunk, bark.FileChunk{TransferID: "none", Index: 0, Data: ""})
 

@@ -6,6 +6,7 @@ package stream
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -50,7 +51,7 @@ func isDataPlane(msgType string) bool {
 
 // handle applies one data plane message. fields is its content: for input,
 // the input event itself; for the rest, the message's own fields.
-func (d *dataPlane) handle(ctx context.Context, msgType string, fields map[string]interface{}, reply replyFunc) {
+func (d *dataPlane) handle(ctx context.Context, viewerID, msgType string, fields map[string]interface{}, reply replyFunc) {
 	r := d.r
 	switch msgType {
 	case "input":
@@ -70,11 +71,20 @@ func (d *dataPlane) handle(ctx context.Context, msgType string, fields map[strin
 		size, _ := fields["size"].(float64)
 		sha, _ := fields["sha256"].(string)
 		if id != "" && !r.allow(PermissionFileTransfer, "file transfer") {
-			refuseFile(id, reply)
+			refuseFile(id, PermissionFileTransfer+" has not been granted", reply)
+			return
+		}
+		if id != "" && d.transfer == nil {
+			refuseFile(id, "the agent cannot store files", reply)
 			return
 		}
 		if id != "" && name != "" {
-			d.transfer.StartSession(id, name, int64(size), sha)
+			session := d.transfer.StartSession(id, name, int64(size), sha)
+			if r.onFileOffer != nil && !r.onFileOffer(FileOffer{ViewerID: viewerID, TransferID: id, Name: session.FileName, Size: int64(size)}) {
+				d.transfer.Discard(id)
+				refuseFile(id, "the agent refused the file", reply)
+				return
+			}
 			log.Printf("[AgentStream] Started file transfer session %s (%s, %s bytes)\n", logSafe(id), logSafe(name), logSafe(fmt.Sprintf("%.0f", size)))
 		}
 
@@ -83,11 +93,17 @@ func (d *dataPlane) handle(ctx context.Context, msgType string, fields map[strin
 		idx, _ := fields["index"].(float64)
 		b64Data, _ := fields["data"].(string)
 		if id != "" && !r.allow(PermissionFileTransfer, "file chunk") {
-			refuseFile(id, reply)
+			refuseFile(id, PermissionFileTransfer+" has not been granted", reply)
 			return
 		}
-		if id != "" {
+		if id != "" && d.transfer != nil {
 			prog, done, err := d.transfer.AddChunkBase64(id, int(idx), b64Data)
+			if errors.Is(err, transfer.ErrTransferNotFound) {
+				// Refused at file_start, or never started: say so once
+				// per chunk rather than acknowledge data that is dropped.
+				refuseFile(id, "no such transfer", reply)
+				return
+			}
 			if err != nil {
 				log.Printf("[AgentStream] File chunk error: %v\n", err)
 			}
@@ -101,10 +117,11 @@ func (d *dataPlane) handle(ctx context.Context, msgType string, fields map[strin
 	case "file_complete":
 		id, _ := fields["transfer_id"].(string)
 		if id != "" && !r.allow(PermissionFileTransfer, "file save") {
-			refuseFile(id, reply)
+			refuseFile(id, PermissionFileTransfer+" has not been granted", reply)
 			return
 		}
-		if id != "" {
+		if id != "" && d.transfer != nil {
+			name, size := d.transfer.Describe(id)
 			destPath, sha, err := d.transfer.AssembleFile(id)
 			errStr := ""
 			if err != nil {
@@ -112,6 +129,9 @@ func (d *dataPlane) handle(ctx context.Context, msgType string, fields map[strin
 				log.Printf("[AgentStream] File assembly error for %s: %v\n", logSafe(id), err)
 			} else {
 				log.Printf("[AgentStream] File transfer %s completed! Saved to: %s (SHA: %s)\n", logSafe(id), logSafe(destPath), sha)
+				if r.onFileSaved != nil {
+					r.onFileSaved(ReceivedFile{ViewerID: viewerID, TransferID: id, Name: name, Path: destPath, SHA256: sha, Size: size})
+				}
 			}
 			reply("file_saved", map[string]interface{}{
 				"transfer_id": id,
@@ -123,13 +143,13 @@ func (d *dataPlane) handle(ctx context.Context, msgType string, fields map[strin
 	}
 }
 
-// refuseFile tells the sender a file message was refused for want of consent,
-// with the file_saved it would otherwise wait for, so it stops sending instead
-// of waiting for replies that will never come.
-func refuseFile(id string, reply replyFunc) {
+// refuseFile tells the sender a file message was refused, and why, with the
+// file_saved it would otherwise wait for, so it stops sending instead of
+// waiting for replies that will never come.
+func refuseFile(id, reason string, reply replyFunc) {
 	reply("file_saved", map[string]interface{}{
 		"transfer_id": id,
-		"error":       PermissionFileTransfer + " has not been granted",
+		"error":       reason,
 	})
 }
 
@@ -137,7 +157,7 @@ func refuseFile(id string, reply replyFunc) {
 // message is a bark.Envelope; its reply goes back on the same channel, as an
 // envelope too. Anything that is not a data plane message is ignored: the
 // channel carries the user's data, not signalling.
-func (d *dataPlane) handleChannelMessage(ctx context.Context, peer *webrtc.PeerSession, label string, msg []byte) {
+func (d *dataPlane) handleChannelMessage(ctx context.Context, viewerID string, peer *webrtc.PeerSession, label string, msg []byte) {
 	var env bark.Envelope
 	if err := json.Unmarshal(msg, &env); err != nil {
 		return
@@ -155,7 +175,7 @@ func (d *dataPlane) handleChannelMessage(ctx context.Context, peer *webrtc.PeerS
 		return
 	}
 	agentID := d.r.id
-	d.handle(ctx, msgType, fields, func(replyType string, replyFields map[string]interface{}) {
+	d.handle(ctx, viewerID, msgType, fields, func(replyType string, replyFields map[string]interface{}) {
 		data, err := bark.EncodeEnvelope(bark.MessageType(replyType), agentID, replyFields)
 		if err != nil {
 			return
