@@ -20,6 +20,7 @@ const ChunkSize = 64 * 1024 // 64 KB per chunk
 var (
 	ErrTransferNotFound = errors.New("file transfer session not found")
 	ErrChecksumMismatch = errors.New("file integrity verification failed: SHA-256 checksum mismatch")
+	ErrIncomplete       = errors.New("file transfer is incomplete: not every announced byte arrived")
 )
 
 type FileSession struct {
@@ -137,6 +138,22 @@ func (m *Manager) AssembleFile(id string) (string, string, error) {
 	session, exists := m.sessions[id]
 	if !exists {
 		return "", "", ErrTransferNotFound
+	}
+	// A transfer is assembled once, whatever the outcome: a repeated
+	// file_complete must not write another copy of the same data.
+	delete(m.sessions, id)
+
+	// Every announced byte, in chunks with no gap, or nothing is written.
+	contiguous := int64(0)
+	for i := 0; ; i++ {
+		chunk, ok := session.Chunks[i]
+		if !ok {
+			break
+		}
+		contiguous += int64(len(chunk))
+	}
+	if contiguous != session.TotalSize || session.ReceivedBytes != session.TotalSize {
+		return "", "", ErrIncomplete
 	}
 
 	outFile, destPath, err := createUnique(m.downloadDir, session.FileName)

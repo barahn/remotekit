@@ -5,6 +5,7 @@ package stream
 
 import (
 	"crypto/ed25519"
+	"sync"
 	"time"
 )
 
@@ -41,8 +42,10 @@ type ViewerEvent struct {
 
 // OnViewer registers fn for every ViewerEvent. Each visit is joined, then
 // streaming once the screen is seen, then left; a viewer that re-negotiates
-// in between stays in the same visit. fn runs on the runner's goroutines, never while
-// it holds a lock, so it may call Disconnect; it must not block.
+// in between stays in the same visit. Events arrive one at a time, in order,
+// on a goroutine of the session's own and never while the runner holds a
+// lock, so fn may call Disconnect; a slow fn delays later events, not the
+// session.
 //
 // Call it before Serve.
 func (r *Runner) OnViewer(fn func(ViewerEvent)) { r.onViewer = fn }
@@ -95,5 +98,74 @@ func (r *Runner) registerSession(disconnect func(string) bool) func() {
 func (r *Runner) emitViewer(ev ViewerEvent) {
 	if r.onViewer != nil {
 		r.onViewer(ev)
+	}
+}
+
+// eventQueue delivers ViewerEvents one at a time, in the order they were
+// pushed, on a goroutine of its own. Events are pushed while the runner holds
+// its state lock, so their order is the order the state changed in; they are
+// delivered outside it, so a handler may call back into the runner.
+type eventQueue struct {
+	deliver func(ViewerEvent)
+
+	mu      sync.Mutex
+	pending []ViewerEvent
+	closed  bool
+	wake    chan struct{}
+	done    chan struct{}
+}
+
+func newEventQueue(deliver func(ViewerEvent)) *eventQueue {
+	q := &eventQueue{deliver: deliver, wake: make(chan struct{}, 1), done: make(chan struct{})}
+	go q.run()
+	return q
+}
+
+// push queues ev. After close it is dropped: the session is over.
+func (q *eventQueue) push(ev ViewerEvent) {
+	q.mu.Lock()
+	if q.closed {
+		q.mu.Unlock()
+		return
+	}
+	q.pending = append(q.pending, ev)
+	q.mu.Unlock()
+	select {
+	case q.wake <- struct{}{}:
+	default:
+	}
+}
+
+// close delivers what is queued, then stops. It returns once the last event
+// has been delivered.
+func (q *eventQueue) close() {
+	q.mu.Lock()
+	q.closed = true
+	q.mu.Unlock()
+	select {
+	case q.wake <- struct{}{}:
+	default:
+	}
+	<-q.done
+}
+
+func (q *eventQueue) run() {
+	defer close(q.done)
+	for range q.wake {
+		for {
+			q.mu.Lock()
+			if len(q.pending) == 0 {
+				closed := q.closed
+				q.mu.Unlock()
+				if closed {
+					return
+				}
+				break
+			}
+			ev := q.pending[0]
+			q.pending = q.pending[1:]
+			q.mu.Unlock()
+			q.deliver(ev)
+		}
 	}
 }
