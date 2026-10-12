@@ -6,6 +6,7 @@ package webrtc
 import (
 	"errors"
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/pion/rtcp"
@@ -97,14 +98,32 @@ func (ps *PeerSession) acceptTrack(track *webrtc.TrackRemote, _ *webrtc.RTPRecei
 	ps.rxMu.Unlock()
 
 	var a frameAssembler
+	waiting := false
 	for {
 		pkt, _, err := track.ReadRTP()
 		if err != nil {
+			var ne net.Error
+			if waiting && errors.As(err, &ne) && ne.Timeout() {
+				// A frame stalled short of complete and nothing followed:
+				// a static screen sends nothing more, so no later packet
+				// would ever reveal the loss.
+				a.giveUp()
+				_ = ps.RequestKeyFrame()
+				_ = track.SetReadDeadline(time.Time{})
+				waiting = false
+				continue
+			}
 			return // the track or the session ended
 		}
 		frame, key, ok := a.push(pkt)
 		if a.lost {
 			_ = ps.RequestKeyFrame()
+		}
+		if a.incomplete() {
+			waiting = track.SetReadDeadline(time.Now().Add(frameStallTimeout)) == nil
+		} else if waiting {
+			_ = track.SetReadDeadline(time.Time{})
+			waiting = false
 		}
 		if !ok {
 			continue
@@ -125,9 +144,10 @@ func (ps *PeerSession) acceptTrack(track *webrtc.TrackRemote, _ *webrtc.RTPRecei
 // It completes a frame on its marker, not on the arrival of the next frame:
 // the sender skips frames when the screen does not change, so waiting for the
 // next one would hold a keystroke's echo back until something else moved.
-// Packets reordered within a frame are put back in order; a packet missing at
-// the marker, or a frame that never completes before the next begins, is a
-// loss.
+// Packets reordered within a frame are put back in order. A frame that never
+// completes before the next begins is a loss, and so is one still missing a
+// packet when nothing arrives for frameStallTimeout: the read loop gives it
+// up, since on a still screen no next frame comes to reveal the loss.
 type frameAssembler struct {
 	// waitKey is set from the start and after any loss: nothing is delivered
 	// until a key frame. lost is set by the push that found the loss, so the
@@ -155,6 +175,12 @@ type frameAssembler struct {
 	done    uint32
 	hasDone bool
 }
+
+// frameStallTimeout is how long a frame may sit incomplete with no packet
+// arriving before it counts as lost. It is well past reordering and a NACK's
+// retransmission, and short enough that a lost packet on a still screen costs
+// half a second rather than the wait for the next change.
+const frameStallTimeout = 500 * time.Millisecond
 
 // maxFrameParts bounds one frame's packets. A 4K key frame at high quality is
 // a few hundred; anything near this is not a frame worth waiting for.
@@ -236,6 +262,9 @@ func (a *frameAssembler) push(pkt *rtp.Packet) (frame []byte, keyFrame, ok bool)
 	a.waitKey = false
 	return frame, keyFrame, true
 }
+
+// incomplete reports whether a frame is part-way assembled.
+func (a *frameAssembler) incomplete() bool { return a.parts != nil }
 
 // giveUp abandons the frame being assembled as lost.
 func (a *frameAssembler) giveUp() {

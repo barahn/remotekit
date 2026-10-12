@@ -128,6 +128,33 @@ func TestAssemblerWithholdsInterFramesAfterALoss(t *testing.T) {
 	}
 }
 
+// A packet lost before the marker leaves the frame waiting for it. On a still
+// screen nothing else arrives, so the read loop gives the frame up when it
+// stalls, and what follows must wait for a key frame.
+func TestAssemblerGivesUpAStalledFrame(t *testing.T) {
+	var a frameAssembler
+	feed(&a, vp8Packets(key(1), 10, 1000, 2)...)
+
+	damaged := vp8Packets(inter(2), 12, 2000, 3)
+	out, lost := feed(&a, damaged[0], damaged[2]) // the middle packet is lost
+	if len(out) != 0 || lost || !a.incomplete() {
+		t.Fatalf("with a packet missing at the marker: got %v, lost %v, incomplete %v; want the frame held", out, lost, a.incomplete())
+	}
+	a.giveUp()
+	if !a.lost || a.incomplete() {
+		t.Fatalf("after giving up: lost %v, incomplete %v; want a loss and no frame held", a.lost, a.incomplete())
+	}
+	out, _ = feed(&a, vp8Packets(inter(3), 15, 3000, 2)...)
+	if len(out) != 0 {
+		t.Fatalf("got %v after a stalled frame, want inter frames withheld until a key frame", out)
+	}
+	k := key(4)
+	out, _ = feed(&a, vp8Packets(k, 17, 4000, 2)...)
+	if len(out) != 1 || !bytes.Equal(out[0].frame, k) {
+		t.Fatalf("got %v, want the key frame that resynchronises", out)
+	}
+}
+
 func TestAssemblerNoticesAWholeFrameLost(t *testing.T) {
 	var a frameAssembler
 	feed(&a, vp8Packets(key(1), 10, 1000, 2)...)

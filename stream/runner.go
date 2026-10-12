@@ -150,7 +150,12 @@ const signalTTL = 2 * time.Minute
 // TargetID, which the signature covers, so a message signed for one viewer
 // cannot be replayed to another. viewer_id is still set alongside it, since
 // that is what the server routes on.
-func encodeSignal(m webrtc.SignalMessage, viewerID string, key ed25519.PrivateKey, now time.Time) ([]byte, error) {
+//
+// offerID, when the viewer's offer carried one, is echoed on its answer, so a
+// viewer that offered more than once can tell which offer an answer is for.
+// It is not covered by the signature: whoever can rewrite it could only make
+// the viewer drop a genuine answer, which dropping the message achieves too.
+func encodeSignal(m webrtc.SignalMessage, viewerID, offerID string, key ed25519.PrivateKey, now time.Time) ([]byte, error) {
 	if key != nil {
 		m.TargetID = viewerID
 		if err := m.Sign(key, now, signalTTL); err != nil {
@@ -166,6 +171,9 @@ func encodeSignal(m webrtc.SignalMessage, viewerID string, key ed25519.PrivateKe
 		return nil, err
 	}
 	fields["viewer_id"] = viewerID
+	if offerID != "" {
+		fields["offer_id"] = offerID
+	}
 	return json.Marshal(fields)
 }
 
@@ -324,6 +332,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 			}
 			sdp, _ := signal["sdp"].(string)
 			viewerID, _ := signal["viewer_id"].(string)
+			offerID, _ := signal["offer_id"].(string)
 			relay.viewerJoined()
 
 			// WebRTC negotiation (if SDP offer is provided)
@@ -369,7 +378,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 							Type:      webrtc.SignalCandidate,
 							SessionID: r.id,
 							Candidate: candJSON,
-						}, viewerID, signKey, time.Now())
+						}, viewerID, "", signKey, time.Now())
 						if err != nil {
 							log.Printf("[AgentStream] not sending ICE candidate to viewer %s: %v\n", logSafe(viewerID), err)
 							return
@@ -383,7 +392,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 							Type:      webrtc.SignalAnswer,
 							SessionID: r.id,
 							SDP:       answerSDP,
-						}, viewerID, signKey, time.Now())
+						}, viewerID, offerID, signKey, time.Now())
 						if sErr != nil {
 							log.Printf("[AgentStream] not sending answer to viewer %s: %v\n", logSafe(viewerID), sErr)
 						} else {
