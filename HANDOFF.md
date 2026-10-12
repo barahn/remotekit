@@ -145,13 +145,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `feab387`** — docs: refresh the handoff status block
+**`develop` is at `7f7ce1a`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#99](https://github.com/barahn/remotekit/pull/99) | feat(stream): clipboard and files from the Go viewer | `claude/viewer-data-plane` | Aikido Security: Deep Review ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38283898567/job/114927526768)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38283898591/job/114927526354)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38283898554/job/114927526240)<br>DCO Sign-off ✅<br>signal/nostr module ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>Aikido Security: check code ✅ |
+| [#99](https://github.com/barahn/remotekit/pull/99) | feat(stream): clipboard and files from the Go viewer | `claude/viewer-data-plane` | CodeQL ✅<br>Aikido Security: Deep Review ⏳ (in_progress)<br>Refresh the handoff status block ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38283898567/job/114927526768)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38283898591/job/114927526354)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38283898554/job/114927526240)<br>DCO Sign-off ✅<br>signal/nostr module ✅<br>Analyze (Go) ✅<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ✅<br>Review dependency changes ✅<br>Aikido Security: check code ✅ |
+| [#100](https://github.com/barahn/remotekit/pull/100) | feat(stream): choose the monitor a session streams | `claude/viewer-displays` | Aikido Security: Deep Review ⏳ (in_progress)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38284301018/job/114928856295)<br>Refresh the handoff status block ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38284301019/job/114928855466)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38284301022/job/114928855420)<br>DCO Sign-off ✅<br>signal/nostr module ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>Aikido Security: check code ✅ |
 
 <!-- END GENERATED: handoff status -->
 
