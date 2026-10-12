@@ -145,13 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `26dacb8`** — Merge pull request #106 from barahn/claude/review-fixes
+**`develop` is at `769f8d9`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#104](https://github.com/barahn/remotekit/pull/104) | chore(release): merge develop → main (23 commits) — Merge pull request #103 from barahn/claude/runner-viewer-events | `develop` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38303244634/job/114991013748)<br>Analyze (Go) ⏳ (queued)<br>gitleaks ⏳ (queued)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38303244562/job/114991012097)<br>signal/nostr module ⏳ (queued)<br>DCO Sign-off ⏳ (queued)<br>Build, Test & SAST ⏳ (queued)<br>Release source ⏳ (in_progress)<br>Review dependency changes ⏳ (queued)<br>open-pr ⏳ (in_progress)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/114991000277)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38303238733/job/114990994561)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38303238810/job/114990994205)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38303238733/job/114990993941)<br>Build, Test & SAST ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>signal/nostr module ⏳ (queued)<br>gitleaks ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress) |
+| [#104](https://github.com/barahn/remotekit/pull/104) | chore(release): merge develop → main (30 commits) — Merge pull request #106 from barahn/claude/review-fixes | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/114991066897) |
 | [#105](https://github.com/barahn/remotekit/pull/105) | fix(stream): follow-ups to monitor selection (#100) | `fix/viewer-displays-followups` | CodeQL ✅<br>Aikido Security: Deep Review ✅<br>Aikido Security: check code ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38301408564/job/114984954641)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38301408643/job/114984954392)<br>Refresh the handoff status block ✅<br>DCO Sign-off ✅<br>signal/nostr module ✅<br>Analyze (Go) ✅<br>Build, Test & SAST ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38301408547/job/114984952163)<br>gitleaks ✅<br>Review dependency changes ✅ |
 
 <!-- END GENERATED: handoff status -->
