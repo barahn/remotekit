@@ -147,3 +147,45 @@ func TestStaleDisconnectKeepsTheNewPeer(t *testing.T) {
 		t.Fatal("a notice for the current offer did not close its peer")
 	}
 }
+
+// A refused index does not use up the switch window.
+func TestBadDisplayIndexDoesNotBlockSwitching(t *testing.T) {
+	r := New(Config{ID: "agent-1"})
+	r.newCapturer = func(screen.CaptureConfig) (screen.Capturer, error) { return &fakeCapturer{}, nil }
+	v := NewViewer(ViewerConfig{ID: "viewer-1", AgentID: "agent-1"})
+	lists := make(chan bark.DisplaysPayload, 16)
+	v.OnDisplays(func(p bark.DisplaysPayload) { lists <- p })
+	session(t, r, v)
+
+	wait := func(ok func(bark.DisplaysPayload) bool) bark.DisplaysPayload {
+		t.Helper()
+		deadline := time.After(20 * time.Second)
+		for {
+			select {
+			case p := <-lists:
+				if ok(p) {
+					return p
+				}
+			case <-deadline:
+				t.Fatal("no matching displays message within 20s")
+			}
+		}
+	}
+	wait(func(p bark.DisplaysPayload) bool { return p.Active == 0 })
+
+	if err := v.SelectDisplay(9); err != nil {
+		t.Fatal(err)
+	}
+	if p := wait(func(p bark.DisplaysPayload) bool { return p.Error != "" }); strings.Contains(p.Error, "too recently") {
+		t.Fatalf("a bad index was refused as too soon instead of as invalid: %s", p.Error)
+	}
+	if err := v.SelectDisplay(1); err != nil {
+		t.Fatal(err)
+	}
+	wait(func(p bark.DisplaysPayload) bool {
+		if strings.Contains(p.Error, "too recently") {
+			t.Fatalf("a valid switch right after a bad index was refused: %s", p.Error)
+		}
+		return p.Active == 1
+	})
+}

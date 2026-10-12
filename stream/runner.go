@@ -283,12 +283,13 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 			stateMu.Unlock()
 			return errDisplaySwitchTooSoon
 		}
-		lastSelect = now
-		stateMu.Unlock()
+		// Only a switch that happens uses up the window: a bad index must
+		// not keep another viewer from switching to a good one.
 		if err := c.SetDisplay(index); err != nil {
+			stateMu.Unlock()
 			return err
 		}
-		stateMu.Lock()
+		lastSelect = now
 		requested = index
 		stateMu.Unlock()
 		// The new monitor's first frame has to be a key frame for every
