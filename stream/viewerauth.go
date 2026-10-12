@@ -63,31 +63,32 @@ func (r *Runner) RequireSignedViewers(trust func(ed25519.PublicKey) bool) {
 	r.viewerAuth = &viewerAuth{trust: trust, nonces: webrtc.NewNonceCache()}
 }
 
-// check verifies one raw viewer message for the agent agentID.
+// check verifies one raw viewer message for the agent agentID, and returns
+// the key it was signed with.
 //
 // The nonce is recorded only after everything else passes. Recording an
 // unverified nonce would let anyone who can write to the socket burn a
 // trusted viewer's nonces in advance.
-func (a *viewerAuth) check(raw []byte, agentID string, now time.Time) error {
+func (a *viewerAuth) check(raw []byte, agentID string, now time.Time) (ed25519.PublicKey, error) {
 	m, err := webrtc.DecodeSignalMessage(raw)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := m.Verify(now); err != nil {
-		return err
+		return nil, err
 	}
 	pub, err := base64.StdEncoding.DecodeString(m.PubKey)
 	if err != nil || len(pub) != ed25519.PublicKeySize {
-		return webrtc.ErrSignalBadKey
+		return nil, webrtc.ErrSignalBadKey
 	}
 	if !a.trust(ed25519.PublicKey(pub)) {
-		return ErrViewerUntrusted
+		return nil, ErrViewerUntrusted
 	}
 	if m.TargetID != agentID {
-		return fmt.Errorf("%w: signed for %q", ErrViewerWrongTarget, m.TargetID)
+		return nil, fmt.Errorf("%w: signed for %q", ErrViewerWrongTarget, m.TargetID)
 	}
 	if !a.nonces.CheckAndRecord(m, now) {
-		return ErrViewerReplay
+		return nil, ErrViewerReplay
 	}
-	return nil
+	return ed25519.PublicKey(pub), nil
 }
