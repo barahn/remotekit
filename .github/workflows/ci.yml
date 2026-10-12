@@ -256,9 +256,10 @@ jobs:
           # an inter-frame path no test ever decoded.
           VP8_CONFORMANCE_REQUIRED: '1'
         # -short skips the rate-control test, the 720p wavefront and conformance
-        # cases and most of the quantiser sweep: under -race they cost over
-        # eight minutes (about a second without it) and gain nothing from the
-        # detector. The next step runs them in full.
+        # cases, most of the quantiser sweep, most of the decoder's corrupt-frame
+        # sweep and the tail of the libvpx test vectors: under -race they cost
+        # many minutes (seconds without it) and gain nothing from the detector.
+        # The next step runs them in full.
         # The timeout stays generous because screen/codec/vp8 is still slow
         # under -race with coverage.
         run: xvfb-run -a -s "-screen 0 1920x1080x24 -noreset" go test -race -short -timeout 30m -coverprofile=coverage.out ./...
@@ -268,7 +269,7 @@ jobs:
       - name: Test (VP8 slow tests, full size, no race)
         env:
           VP8_CONFORMANCE_REQUIRED: '1'
-        run: go test -timeout 10m -run 'TestRateControlHitsItsTarget|TestWavefrontIsBitExact|TestConformanceAcrossContentAndSize|TestConformanceAcrossQuantisers' ./screen/codec/vp8
+        run: go test -timeout 10m -run 'TestRateControlHitsItsTarget|TestWavefrontIsBitExact|TestConformanceAcrossContentAndSize|TestConformanceAcrossQuantisers|TestDecoderSurvivesCorruptFrames|TestDecoderMatchesLibvpxTestVectors' ./screen/codec/vp8
 
       # screen/codec/vp8 is excluded for its 53 deliberate int->int16 narrowings
       # in the forward DCT and quantiser, where the VP8 spec bounds the values by

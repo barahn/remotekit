@@ -18,7 +18,7 @@ func TestEncodeSignal_Signed(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	now := time.Now()
 
-	data, err := encodeSignal(webrtc.SignalMessage{Type: webrtc.SignalAnswer, SessionID: "agent-1", SDP: "v=0"}, "viewer-a", priv, now)
+	data, err := encodeSignal(webrtc.SignalMessage{Type: webrtc.SignalAnswer, SessionID: "agent-1", SDP: "v=0"}, "viewer-a", "", priv, now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestEncodeSignal_Signed(t *testing.T) {
 }
 
 func TestEncodeSignal_UnsignedWithoutKey(t *testing.T) {
-	data, err := encodeSignal(webrtc.SignalMessage{Type: webrtc.SignalCandidate, SessionID: "agent-1", Candidate: "{}"}, "viewer-a", nil, time.Now())
+	data, err := encodeSignal(webrtc.SignalMessage{Type: webrtc.SignalCandidate, SessionID: "agent-1", Candidate: "{}"}, "viewer-a", "", nil, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
