@@ -22,7 +22,15 @@ import (
 // these streams come from libvpx's encoder, so they exercise what this
 // package's encoder never emits: SPLITMV, the normal loop filter,
 // segmentation, altref and hidden frames, sign bias, odd sizes.
+//
+// Under -race with coverage the 260 frames of vector 015 alone take minutes,
+// and the decoder runs on one goroutine, so -short checks only each vector's
+// first 30 frames; CI decodes every frame in a step without -race.
 func TestDecoderMatchesLibvpxTestVectors(t *testing.T) {
+	maxFrames := -1
+	if testing.Short() {
+		maxFrames = 30
+	}
 	vectors, err := filepath.Glob(filepath.Join("testdata", "libvpx", "*.ivf"))
 	if err != nil || len(vectors) == 0 {
 		t.Fatalf("no test vectors found: %v", err)
@@ -34,9 +42,14 @@ func TestDecoderMatchesLibvpxTestVectors(t *testing.T) {
 				t.Fatal(err)
 			}
 			want := readMD5s(t, path+".md5")
+			frames := splitIVF(t, data)
+			whole := maxFrames < 0 || len(frames) <= maxFrames
+			if !whole {
+				frames = frames[:maxFrames]
+			}
 			dec := vp8.NewDecoder()
 			shown := 0
-			for i, f := range splitIVF(t, data) {
+			for i, f := range frames {
 				img, err := dec.Decode(f)
 				if err != nil {
 					t.Fatalf("frame %d: %v", i, err)
@@ -52,7 +65,7 @@ func TestDecoderMatchesLibvpxTestVectors(t *testing.T) {
 				}
 				shown++
 			}
-			if shown != len(want) {
+			if whole && shown != len(want) {
 				t.Fatalf("showed %d frames, libvpx shows %d", shown, len(want))
 			}
 		})
