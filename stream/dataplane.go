@@ -64,7 +64,11 @@ func (d *dataPlane) handle(ctx context.Context, msgType string, fields map[strin
 		name, _ := fields["name"].(string)
 		size, _ := fields["size"].(float64)
 		sha, _ := fields["sha256"].(string)
-		if id != "" && name != "" && r.allow(PermissionFileTransfer, "file transfer") {
+		if id != "" && !r.allow(PermissionFileTransfer, "file transfer") {
+			refuseFile(id, reply)
+			return
+		}
+		if id != "" && name != "" {
 			d.transfer.StartSession(id, name, int64(size), sha)
 			log.Printf("[AgentStream] Started file transfer session %s (%s, %s bytes)\n", logSafe(id), logSafe(name), logSafe(fmt.Sprintf("%.0f", size)))
 		}
@@ -73,7 +77,11 @@ func (d *dataPlane) handle(ctx context.Context, msgType string, fields map[strin
 		id, _ := fields["transfer_id"].(string)
 		idx, _ := fields["index"].(float64)
 		b64Data, _ := fields["data"].(string)
-		if id != "" && r.allow(PermissionFileTransfer, "file chunk") {
+		if id != "" && !r.allow(PermissionFileTransfer, "file chunk") {
+			refuseFile(id, reply)
+			return
+		}
+		if id != "" {
 			prog, done, err := d.transfer.AddChunkBase64(id, int(idx), b64Data)
 			if err != nil {
 				log.Printf("[AgentStream] File chunk error: %v\n", err)
@@ -87,7 +95,11 @@ func (d *dataPlane) handle(ctx context.Context, msgType string, fields map[strin
 
 	case "file_complete":
 		id, _ := fields["transfer_id"].(string)
-		if id != "" && r.allow(PermissionFileTransfer, "file save") {
+		if id != "" && !r.allow(PermissionFileTransfer, "file save") {
+			refuseFile(id, reply)
+			return
+		}
+		if id != "" {
 			destPath, sha, err := d.transfer.AssembleFile(id)
 			errStr := ""
 			if err != nil {
@@ -104,6 +116,16 @@ func (d *dataPlane) handle(ctx context.Context, msgType string, fields map[strin
 			})
 		}
 	}
+}
+
+// refuseFile tells the sender a file message was refused for want of consent,
+// with the file_saved it would otherwise wait for, so it stops sending instead
+// of waiting for replies that will never come.
+func refuseFile(id string, reply replyFunc) {
+	reply("file_saved", map[string]interface{}{
+		"transfer_id": id,
+		"error":       PermissionFileTransfer + " has not been granted",
+	})
 }
 
 // handleChannelMessage applies one message from a viewer's data channel. The
