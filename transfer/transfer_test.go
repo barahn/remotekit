@@ -4,6 +4,7 @@
 package transfer
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -120,5 +121,34 @@ func TestFileTransfer_PathTraversalPrevention(t *testing.T) {
 	expectedPasswd := filepath.Join(tempDir, "passwd")
 	if passwdOutPath != expectedPasswd {
 		t.Errorf("Expected sanitized output %q, got %q", expectedPasswd, passwdOutPath)
+	}
+}
+
+// A received file never replaces one already in the download directory.
+func TestAssembleFileDoesNotOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "report.pdf"), []byte("mine"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mgr, err := NewManager(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, want := range []string{"report (1).pdf", "report (2).pdf"} {
+		id := fmt.Sprintf("s%d", i)
+		mgr.StartSession(id, "report.pdf", 5, "")
+		if _, _, err := mgr.AddChunk(id, 0, []byte("their")); err != nil {
+			t.Fatal(err)
+		}
+		path, _, err := mgr.AssembleFile(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if filepath.Base(path) != want {
+			t.Errorf("saved as %q, want %q", filepath.Base(path), want)
+		}
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "report.pdf")); string(got) != "mine" {
+		t.Fatalf("the existing file was overwritten: %q", got)
 	}
 }

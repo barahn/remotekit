@@ -74,6 +74,25 @@ func (m *Manager) StartSession(id, fileName string, totalSize int64, expectedSHA
 	return session
 }
 
+// Discard drops a transfer and everything received for it, without writing
+// anything.
+func (m *Manager) Discard(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.sessions, id)
+}
+
+// Describe returns the name a transfer will be saved under and the size it
+// announced, or zero values for an unknown transfer.
+func (m *Manager) Describe(id string) (name string, size int64) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if s, ok := m.sessions[id]; ok {
+		return s.FileName, s.TotalSize
+	}
+	return "", 0
+}
+
 func (m *Manager) AddChunkBase64(id string, index int, base64Data string) (float64, bool, error) {
 	data, err := base64.StdEncoding.DecodeString(base64Data)
 	if err != nil {
@@ -120,10 +139,9 @@ func (m *Manager) AssembleFile(id string) (string, string, error) {
 		return "", "", ErrTransferNotFound
 	}
 
-	destPath := filepath.Join(m.downloadDir, session.FileName)
-	outFile, err := os.Create(destPath) // #nosec G304 -- download path validated via filepath.Base
+	outFile, destPath, err := createUnique(m.downloadDir, session.FileName)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create destination file %s: %w", destPath, err)
+		return "", "", err
 	}
 	// Guard for the early returns below; the success path closes explicitly
 	// and checks the error.
@@ -158,6 +176,34 @@ func (m *Manager) AssembleFile(id string) (string, string, error) {
 	}
 
 	return destPath, calculatedSHA256, nil
+}
+
+// maxNameAttempts bounds how many numbered names createUnique tries before
+// giving up on a crowded directory.
+const maxNameAttempts = 1000
+
+// createUnique creates name in dir without replacing anything already there:
+// a file of the same name gets a numbered sibling, "report (1).pdf". Received
+// files may land in a directory the user keeps their own files in, and a
+// sender must not be able to overwrite one by naming it.
+func createUnique(dir, name string) (*os.File, string, error) {
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	for i := 0; i < maxNameAttempts; i++ {
+		candidate := name
+		if i > 0 {
+			candidate = fmt.Sprintf("%s (%d)%s", stem, i, ext)
+		}
+		path := filepath.Join(dir, candidate)
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600) // #nosec G304 -- name is filepath.Base'd by StartSession
+		if err == nil {
+			return f, path, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return nil, "", fmt.Errorf("failed to create destination file %s: %w", path, err)
+		}
+	}
+	return nil, "", fmt.Errorf("failed to create destination file for %s: too many files of that name", name)
 }
 
 func ChunkFile(filePath string) (string, int64, []string, string, error) {

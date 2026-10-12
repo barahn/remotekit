@@ -74,6 +74,12 @@ type Runner struct {
 	// socket; see RequireDataChannel.
 	requireDataChannel bool
 
+	// downloadDir, onFileOffer and onFileSaved govern received files; see
+	// Config.DownloadDir and files.go.
+	downloadDir string
+	onFileOffer func(FileOffer) bool
+	onFileSaved func(ReceivedFile)
+
 	// disableRelay and onRelayMode govern the JPEG fallback; see
 	// DisableRelayFallback and OnRelayMode.
 	disableRelay bool
@@ -102,6 +108,12 @@ type Config struct {
 	// runs its own STUN/TURN, sets it. A non-nil config with no servers uses
 	// host candidates only, which works on a LAN and fails behind most NATs.
 	PeerConfig *webrtc.PeerConfig
+
+	// DownloadDir is where files a viewer sends are saved; it is created if
+	// it does not exist. Empty means the system's temporary directory. A
+	// received file never replaces one already there: it gets a numbered
+	// name instead. See also OnFileOffer and OnFileSaved.
+	DownloadDir string
 }
 
 // New returns a Runner for cfg, with input injection for this platform when
@@ -121,6 +133,7 @@ func New(cfg Config) *Runner {
 func (r *Runner) Init(cfg Config) {
 	r.id = cfg.ID
 	r.signKey = cfg.SigningKey
+	r.downloadDir = cfg.DownloadDir
 	r.peerConfig = webrtc.DefaultPeerConfig()
 	if cfg.PeerConfig != nil {
 		r.peerConfig = *cfg.PeerConfig
@@ -213,7 +226,11 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 		clipMgr = clipboard.NewManager()
 	}
 	clipWatcher := clipboard.NewWatcher(clipMgr, 500*time.Millisecond)
-	transferMgr, _ := transfer.NewManager("")
+	transferMgr, err := transfer.NewManager(r.downloadDir)
+	if err != nil {
+		// Files are refused, with this reason, rather than the session.
+		log.Printf("[AgentStream] cannot receive files: %v\n", err)
+	}
 	dp := &dataPlane{r: r, clipMgr: clipMgr, clipWatcher: clipWatcher, transfer: transferMgr}
 
 	// The monitor being streamed, as the frames report it; -1 until the
@@ -434,7 +451,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 					// The viewer creates the data channels in its offer, so
 					// the handler has to be in place before the answer.
 					peer.OnDataMessage(func(label string, msg []byte) {
-						dp.handleChannelMessage(ctx, peer, label, msg)
+						dp.handleChannelMessage(ctx, viewerID, peer, label, msg)
 					})
 
 					peer.OnICECandidate(func(candJSON string) {
@@ -682,7 +699,8 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 				}
 				fields = payload
 			}
-			dp.handle(ctx, msgType, fields, socketReply)
+			viewerID, _ := signal["viewer_id"].(string)
+			dp.handle(ctx, viewerID, msgType, fields, socketReply)
 
 		case "resize", "viewport_size":
 			// Informational signal indicating technician viewport dimensions
