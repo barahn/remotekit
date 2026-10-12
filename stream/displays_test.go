@@ -187,3 +187,43 @@ func TestMonitorListWithheldWithoutScreenConsent(t *testing.T) {
 	case <-time.After(time.Second):
 	}
 }
+
+// A monitor chosen while screen_view is withheld is answered with the reason
+// alone: the viewer learns its choice was refused, not what the monitors are.
+func TestSelectDisplayRefusedWithoutScreenConsent(t *testing.T) {
+	r := New(Config{ID: "agent-1"})
+	r.newCapturer = func(screen.CaptureConfig) (screen.Capturer, error) { return &fakeCapturer{}, nil }
+	r.RequireScreenViewConsent(true)
+	r.Grant(PermissionScreenView)
+	v := NewViewer(ViewerConfig{ID: "viewer-1", AgentID: "agent-1"})
+	lists := make(chan bark.DisplaysPayload, 16)
+	v.OnDisplays(func(p bark.DisplaysPayload) { lists <- p })
+	session(t, r, v)
+
+	// Wait until the monitor list arrives, so the control channel is up.
+	select {
+	case <-lists:
+	case <-time.After(20 * time.Second):
+		t.Fatal("no displays message within 20s")
+	}
+
+	r.Revoke(PermissionScreenView)
+	if err := v.SelectDisplay(1); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.After(10 * time.Second)
+	for {
+		select {
+		case p := <-lists:
+			if p.Error == "" {
+				continue
+			}
+			if len(p.Displays) != 0 || p.Active != -1 {
+				t.Fatalf("refusal = %+v, want the reason alone", p)
+			}
+			return
+		case <-deadline:
+			t.Fatal("select_display without screen_view was never answered")
+		}
+	}
+}
