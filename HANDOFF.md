@@ -145,13 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `d60cf4e`** — Merge pull request #103 from barahn/claude/runner-viewer-events
+**`develop` is at `23ba6be`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#104](https://github.com/barahn/remotekit/pull/104) | chore(release): merge develop → main (19 commits) — Merge pull request #102 from barahn/fix/windows-multimonitor-bounds | `develop` | [Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38299100998/job/114977356118)<br>gitleaks ⏳ (queued)<br>Review dependency changes ⏳ (queued)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/114977342472)<br>Refresh the handoff status block ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>open-pr ⏳ (in_progress) |
+| [#104](https://github.com/barahn/remotekit/pull/104) | chore(release): merge develop → main (23 commits) — Merge pull request #103 from barahn/claude/runner-viewer-events | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/114977403861) |
 
 <!-- END GENERATED: handoff status -->
 
