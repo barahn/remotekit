@@ -50,11 +50,19 @@ func isDisplayMessage(t bark.MessageType) bool {
 }
 
 // handleDisplayMessage answers list_displays and applies select_display, both
-// with the current list. They are refused, unanswered, while the screen itself
-// is withheld for want of consent: the list names the machine's monitors.
+// with the current list. Both are refused while the screen itself is withheld
+// for want of consent, because the list names the machine's monitors: a
+// list_displays goes unanswered, and a select_display is answered with the
+// reason alone, so a viewer waiting on its outcome is not left waiting.
 func (d *dataPlane) handleDisplayMessage(_ context.Context, peer *webrtc.PeerSession, label string, env bark.Envelope) {
 	r := d.r
 	if r.requireScreenView && !r.allow(PermissionScreenView, "monitor selection") {
+		if env.Type == bark.TypeSelectDisplay {
+			sendDisplays(peer, label, r.id, bark.DisplaysPayload{
+				Active: -1,
+				Error:  PermissionScreenView + " has not been granted",
+			})
+		}
 		return
 	}
 	if d.displays == nil {
@@ -78,7 +86,12 @@ func (d *dataPlane) handleDisplayMessage(_ context.Context, peer *webrtc.PeerSes
 	if selectErr != nil {
 		payload.Error = selectErr.Error()
 	}
-	data, err := bark.EncodeEnvelope(bark.TypeDisplays, r.id, payload)
+	sendDisplays(peer, label, r.id, payload)
+}
+
+// sendDisplays sends payload to peer as a displays message on label.
+func sendDisplays(peer *webrtc.PeerSession, label, agentID string, payload bark.DisplaysPayload) {
+	data, err := bark.EncodeEnvelope(bark.TypeDisplays, agentID, payload)
 	if err != nil {
 		return
 	}
