@@ -32,12 +32,17 @@ import (
 //	v.OnFrame(func(img *image.YCbCr) { /* draw it */ })
 //	go v.Serve(ctx, conn)
 //	_ = v.SendInput(bark.InputEvent{Type: "mouse_move", X: 0.5, Y: 0.5})
+//
+// Clipboard goes both ways (SendClipboard, OnClipboard), and files go to the
+// agent (SendFile), over the data channels, as far as the person at the
+// machine has granted them.
 type Viewer struct {
 	cfg  ViewerConfig
 	conf webrtc.PeerConfig
 
-	onFrame  func(img *image.YCbCr)
-	onNotice func(Notice)
+	onFrame     func(img *image.YCbCr)
+	onNotice    func(Notice)
+	onClipboard func(text string)
 
 	writeMu sync.Mutex
 	conn    SignalConn
@@ -52,6 +57,8 @@ type Viewer struct {
 	pending   []string
 	confirmed bool
 	nonces    *webrtc.NonceCache
+	// transfers holds SendFile's waiters by transfer ID; see viewer_data.go.
+	transfers map[string]chan fileEvent
 }
 
 // ViewerConfig is who a Viewer is, and whom it views.
@@ -90,8 +97,8 @@ type Notice struct {
 	Detail string
 }
 
-// ErrNotConnected is what SendInput returns while the control channel to the
-// agent is not open.
+// ErrNotConnected is what SendInput, SendClipboard and SendFile return while
+// the data channel they need is not open.
 var ErrNotConnected = errors.New("stream: the viewer is not connected to the agent")
 
 // NewViewer returns a Viewer for cfg.
@@ -243,6 +250,7 @@ func (v *Viewer) offer() error {
 	}
 	dec := vp8.NewDecoder()
 	peer.OnVideoFrame(func(frame []byte, _ bool) { v.decode(peer, dec, frame) })
+	peer.OnDataMessage(func(_ string, msg []byte) { v.handleData(peer, msg) })
 
 	// pion gathers from inside CreateOffer, so candidates can be ready before
 	// the offer is sent. The agent drops a candidate for a viewer it has no
@@ -277,6 +285,7 @@ func (v *Viewer) offer() error {
 	v.offers++
 	id := strconv.Itoa(v.offers)
 	v.peer, v.offerID, v.answered, v.pending, v.confirmed = peer, id, false, nil, false
+	v.failTransfersLocked()
 	v.mu.Unlock()
 	if old != nil {
 		_ = old.Close()
@@ -432,6 +441,7 @@ func (v *Viewer) closePeer() {
 	v.mu.Lock()
 	peer := v.peer
 	v.peer = nil
+	v.failTransfersLocked()
 	v.mu.Unlock()
 	if peer != nil {
 		_ = peer.Close()

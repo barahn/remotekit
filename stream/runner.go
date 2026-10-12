@@ -43,6 +43,9 @@ type Runner struct {
 	peerConfig webrtc.PeerConfig
 
 	injector input.Injector
+	// clip replaces the system clipboard when set; tests use it so they do
+	// not touch the clipboard of whoever runs them.
+	clip clipboard.Manager
 	// handlers holds message types layered on top of the core session by a
 	// consumer; see Handle.
 	handlers map[string]MessageHandler
@@ -202,7 +205,10 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 	var activeCapCancel context.CancelFunc
 	var writeMu sync.Mutex
 
-	clipMgr := clipboard.NewManager()
+	clipMgr := r.clip
+	if clipMgr == nil {
+		clipMgr = clipboard.NewManager()
+	}
 	clipWatcher := clipboard.NewWatcher(clipMgr, 500*time.Millisecond)
 	transferMgr, _ := transfer.NewManager("")
 	dp := &dataPlane{r: r, clipMgr: clipMgr, clipWatcher: clipWatcher, transfer: transferMgr}
