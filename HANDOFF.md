@@ -145,13 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `c597190`** — feat(vp8): a pure-Go VP8 decoder (#91)
+**`develop` is at `cb10039`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#90](https://github.com/barahn/remotekit/pull/90) | chore(release): merge develop → main (11 commits) — feat(webrtc): receive the agent's video in a Go viewer (#88) | `develop` | [Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38207715562/job/114674799344)<br>Review dependency changes ⏳ (queued)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/114674791044) |
+| [#90](https://github.com/barahn/remotekit/pull/90) | chore(release): merge develop → main (12 commits) — feat(vp8): a pure-Go VP8 decoder (#91) | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38207721563/job/114674824920)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38207721563/job/114674824695)<br>signal/nostr module ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/114674823453) |
 | [#92](https://github.com/barahn/remotekit/pull/92) | feat(stream): a Go viewer for a Runner's session | `feat/stream-viewer` | CodeQL ✅<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38206709431/job/114671746096)<br>DCO Sign-off ✅<br>Build, Test & SAST ✅<br>signal/nostr module ✅<br>Aikido Security: Deep Review ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38206709520/job/114671684578)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38206709510/job/114671684399)<br>gitleaks ✅<br>Analyze (Go) ✅<br>Review dependency changes ✅<br>Aikido Security: check code ✅ |
 
 <!-- END GENERATED: handoff status -->
