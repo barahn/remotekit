@@ -90,10 +90,11 @@ type ViewerConfig struct {
 
 // Notice is something the agent told the viewer instead of streaming: that
 // the person at the machine has not consented, that the machine cannot
-// capture its screen, or that input must go over a data channel.
+// capture its screen, that input must go over a data channel, or that the
+// agent ended this viewer's connection.
 type Notice struct {
 	// Type is the agent's message type: "consent_required",
-	// "capture_unavailable" or "data_channel_required".
+	// "capture_unavailable", "data_channel_required" or "disconnected".
 	Type string
 	// Detail is the permission, the reason or the message type concerned.
 	Detail string
@@ -207,6 +208,12 @@ func (v *Viewer) handle(data []byte) {
 		v.notify(Notice{Type: head.Type, Detail: head.Reason})
 	case "data_channel_required":
 		v.notify(Notice{Type: head.Type, Detail: head.MsgType})
+	case "disconnected":
+		if head.ViewerID != v.cfg.ID {
+			return // another viewer's
+		}
+		v.closePeer()
+		v.notify(Notice{Type: head.Type})
 	}
 }
 

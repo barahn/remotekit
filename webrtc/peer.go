@@ -61,6 +61,11 @@ type PeerSession struct {
 
 	// onKeyFrameRequest is invoked when the receiver asks for an intra frame.
 	onKeyFrameRequest func()
+
+	// onLost is invoked once when the connection fails; see
+	// OnConnectionLost.
+	onLost   func()
+	lostOnce sync.Once
 	// keyFrameRequestInterval and lastKeyFrameRequest coalesce request bursts.
 	keyFrameRequestInterval time.Duration
 	lastKeyFrameRequest     time.Time
@@ -125,6 +130,18 @@ func NewPeerSession(config PeerConfig) (*PeerSession, error) {
 
 	// A viewer receives the agent's screen; an agent never gets a track.
 	pc.OnTrack(session.acceptTrack)
+
+	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		if state != webrtc.PeerConnectionStateFailed {
+			return
+		}
+		session.mu.RLock()
+		fn := session.onLost
+		session.mu.RUnlock()
+		if fn != nil {
+			session.lostOnce.Do(fn)
+		}
+	})
 
 	// Register ICE candidate callback
 	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
@@ -366,6 +383,17 @@ func (ps *PeerSession) AddICECandidate(candidateJSON string) error {
 	}
 
 	return ps.pc.AddICECandidate(candidateInit)
+}
+
+// OnConnectionLost registers fn to run once if the connection fails: ICE
+// could not keep a path to the remote peer, typically because it went away
+// without saying so. A connection that is only "disconnected" may recover and
+// does not count, and neither does one this side closes with Close. fn runs
+// on pion's goroutine and must not block.
+func (ps *PeerSession) OnConnectionLost(fn func()) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	ps.onLost = fn
 }
 
 // ConnectionState returns the current PeerConnection state.

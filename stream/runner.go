@@ -80,6 +80,12 @@ type Runner struct {
 	onFileOffer func(FileOffer) bool
 	onFileSaved func(ReceivedFile)
 
+	// onViewer and sessions serve ViewerEvents and Disconnect; see
+	// viewers.go.
+	onViewer   func(ViewerEvent)
+	sessionsMu sync.Mutex
+	sessions   map[*sessionHook]struct{}
+
 	// disableRelay and onRelayMode govern the JPEG fallback; see
 	// DisableRelayFallback and OnRelayMode.
 	disableRelay bool
@@ -352,6 +358,57 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 	// Send agent_ready ping so any waiting browser viewer immediately initiates the WebRTC offer
 	_ = safeWrite([]byte(fmt.Sprintf(`{"type":"agent_ready","session_id":"%s"}`, r.id)))
 
+	// viewerKeys holds the key each connected viewer's offer was signed
+	// with, under RequireSignedViewers, for its ViewerEvents.
+	viewerKeys := make(map[string]ed25519.PublicKey)
+	// present and streamingSent make a viewer's events once per visit: a
+	// viewer that re-offers -- the Go viewer does on agent_ready -- gets a
+	// new peer but has not left.
+	present := make(map[string]bool)
+	streamingSent := make(map[string]bool)
+	// dropPeer forgets one viewer and returns the event announcing it left,
+	// or false if peer is no longer that viewer's. Callers hold stateMu and
+	// emit the event after releasing it.
+	dropPeer := func(id string, peer *webrtc.PeerSession) (ViewerEvent, bool) {
+		if peer == nil || peers[id] != peer {
+			return ViewerEvent{}, false
+		}
+		delete(peers, id)
+		delete(videoConfirmed, id)
+		key := viewerKeys[id]
+		delete(viewerKeys, id)
+		delete(present, id)
+		delete(streamingSent, id)
+		return ViewerEvent{ViewerID: id, Kind: ViewerLeft, At: time.Now(), Key: key}, true
+	}
+	// dropAll forgets every viewer, under stateMu, closing their peers.
+	dropAll := func() []ViewerEvent {
+		var left []ViewerEvent
+		for id, peer := range peers {
+			_ = peer.Close()
+			if ev, ok := dropPeer(id, peer); ok {
+				left = append(left, ev)
+			}
+		}
+		return left
+	}
+
+	unregister := r.registerSession(func(id string) bool {
+		stateMu.Lock()
+		peer := peers[id]
+		ev, ok := dropPeer(id, peer)
+		stateMu.Unlock()
+		if !ok {
+			return false
+		}
+		_ = peer.Close()
+		notice, _ := json.Marshal(map[string]string{"type": "disconnected", "viewer_id": id})
+		_ = safeWrite(notice)
+		r.emitViewer(ev)
+		return true
+	})
+	defer unregister()
+
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("[AgentStream] Recovered panic in signaling loop: %v\n", r)
@@ -361,16 +418,16 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 			activeCapCancel()
 			activeCapCancel = nil
 		}
-		for id, peer := range peers {
-			_ = peer.Close()
-			delete(peers, id)
-		}
+		left := dropAll()
 		if capturer != nil {
 			capturer.Stop()
 			capturer = nil
 		}
 		stateMu.Unlock()
 		relay.stop()
+		for _, ev := range left {
+			r.emitViewer(ev)
+		}
 	}()
 
 	for {
@@ -386,16 +443,21 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 
 		msgType, _ := signal["type"].(string)
 
+		// msgKey is the key this message was signed with, when signatures
+		// are required.
+		var msgKey ed25519.PublicKey
 		if r.viewerAuth != nil {
 			switch msgType {
 			case "offer", "session_start", "candidate":
-				if err := r.viewerAuth.check(msgBytes, r.id, time.Now()); err != nil {
+				key, err := r.viewerAuth.check(msgBytes, r.id, time.Now())
+				if err != nil {
 					viewerID, _ := signal["viewer_id"].(string)
 					// The error can carry peer-supplied text, such as the
 					// TargetID a message was signed for.
 					log.Printf("[AgentStream] refusing %s from viewer %s: %s\n", logSafe(msgType), logSafe(viewerID), logSafe(err.Error()))
 					continue
 				}
+				msgKey = key
 			}
 		}
 
@@ -418,8 +480,11 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 
 			// WebRTC negotiation (if SDP offer is provided)
 			if sdp != "" {
+				var events []ViewerEvent
 				stateMu.Lock()
 				if old, ok := peers[viewerID]; ok {
+					// The same viewer negotiating again: a new peer, not a
+					// new visit.
 					_ = old.Close()
 					delete(peers, viewerID)
 				}
@@ -427,6 +492,23 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 				peer, err := webrtc.NewPeerSession(r.peerConfig)
 				if err == nil {
 					peers[viewerID] = peer
+					viewerKeys[viewerID] = msgKey
+					if !present[viewerID] {
+						present[viewerID] = true
+						events = append(events, ViewerEvent{ViewerID: viewerID, Kind: ViewerJoined, At: time.Now(), Key: msgKey})
+					}
+
+					// A viewer that vanishes without a close leaves a
+					// connection that eventually fails.
+					peer.OnConnectionLost(func() {
+						stateMu.Lock()
+						ev, ok := dropPeer(viewerID, peer)
+						stateMu.Unlock()
+						if ok {
+							_ = peer.Close()
+							r.emitViewer(ev)
+						}
+					})
 
 					// The track has to exist before the answer is built, or the
 					// answer carries no video and the browser waits forever for
@@ -484,6 +566,9 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 					}
 				}
 				stateMu.Unlock()
+				for _, ev := range events {
+					r.emitViewer(ev)
+				}
 			}
 
 			// Screen capture stream management: start if not already active
@@ -665,8 +750,13 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 			// sending is one this browser can read, so it is what gates turning
 			// the JPEG fallback off -- not the ICE connection state.
 			viewerID, _ := signal["viewer_id"].(string)
+			var streaming *ViewerEvent
 			stateMu.Lock()
 			if msgType == "video_ok" {
+				if present[viewerID] && !streamingSent[viewerID] {
+					streamingSent[viewerID] = true
+					streaming = &ViewerEvent{ViewerID: viewerID, Kind: ViewerStreaming, At: time.Now(), Key: viewerKeys[viewerID]}
+				}
 				videoConfirmed[viewerID] = true
 				log.Printf("[AgentStream] viewer %s is decoding WebRTC video; stopping its JPEG fallback\n", logSafe(viewerID))
 			} else {
@@ -674,6 +764,9 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 				log.Printf("[AgentStream] viewer %s reports stalled video; resuming the JPEG fallback\n", logSafe(viewerID))
 			}
 			stateMu.Unlock()
+			if streaming != nil {
+				r.emitViewer(*streaming)
+			}
 
 		case "candidate":
 			cand, _ := signal["candidate"].(string)
@@ -722,10 +815,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 		case "close":
 			r.Revoke()
 			stateMu.Lock()
-			for id, peer := range peers {
-				_ = peer.Close()
-				delete(peers, id)
-			}
+			left := dropAll()
 			if capturer != nil {
 				capturer.Stop()
 				capturer = nil
@@ -736,6 +826,9 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 			}
 			stateMu.Unlock()
 			relay.stop()
+			for _, ev := range left {
+				r.emitViewer(ev)
+			}
 
 		default:
 			// Anything the core does not implement itself belongs to whoever
