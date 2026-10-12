@@ -145,14 +145,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `2312054`** — Merge pull request #102 from barahn/fix/windows-multimonitor-bounds
+**`develop` is at `9322349`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
 | [#103](https://github.com/barahn/remotekit/pull/103) | feat(stream): tell the consumer who is connected, and end one viewer | `claude/runner-viewer-events` | [Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38285140657/job/114940028976)<br>DCO Sign-off ✅<br>signal/nostr module ✅<br>Build, Test & SAST ✅<br>CodeQL ✅<br>Aikido Security: Deep Review ✅<br>Aikido Security: check code ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38285140441/job/114931598003)<br>Refresh the handoff status block ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38285140364/job/114931597203)<br>Analyze (Go) ✅<br>gitleaks ✅<br>Review dependency changes ✅ |
-| [#104](https://github.com/barahn/remotekit/pull/104) | chore(release): merge develop → main (19 commits) — Merge pull request #102 from barahn/fix/windows-multimonitor-bounds | `develop` | [Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38298988324/job/114976981636)<br>Review dependency changes ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/114976966246)<br>Refresh the handoff status block ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>open-pr ⏳ (in_progress) |
+| [#104](https://github.com/barahn/remotekit/pull/104) | chore(release): merge develop → main (19 commits) — Merge pull request #102 from barahn/fix/windows-multimonitor-bounds | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/114977045725) |
 
 <!-- END GENERATED: handoff status -->
 
