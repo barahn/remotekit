@@ -212,7 +212,7 @@ func (v *Viewer) accept(data []byte) (*webrtc.SignalMessage, bool) {
 		return m, true
 	}
 	now := time.Now()
-	if m.VerifyFrom(v.cfg.AgentKey, now) != nil || m.TargetID != v.cfg.ID {
+	if m.VerifyFrom(v.cfg.AgentKey, now) != nil || m.TargetID != v.cfg.ID || m.SessionID != v.cfg.AgentID {
 		return nil, false
 	}
 	return m, v.nonces.CheckAndRecord(m, now)
@@ -243,8 +243,33 @@ func (v *Viewer) offer() error {
 	}
 	dec := vp8.NewDecoder()
 	peer.OnVideoFrame(func(frame []byte, _ bool) { v.decode(peer, dec, frame) })
+
+	// pion gathers from inside CreateOffer, so candidates can be ready before
+	// the offer is sent. The agent drops a candidate for a viewer it has no
+	// peer for yet, or gives it to the peer this offer replaces, so they wait
+	// for the offer; a replaced peer's are not sent at all.
+	var (
+		gateMu    sync.Mutex
+		offerSent bool
+		held      []string
+	)
+	sendCandidate := func(c string) {
+		v.mu.Lock()
+		current := v.peer == peer
+		v.mu.Unlock()
+		if current {
+			_ = v.sendSignal(webrtc.SignalMessage{Type: webrtc.SignalCandidate, Candidate: c}, "")
+		}
+	}
 	peer.OnICECandidate(func(c string) {
-		_ = v.sendSignal(webrtc.SignalMessage{Type: webrtc.SignalCandidate, Candidate: c}, "")
+		gateMu.Lock()
+		if !offerSent {
+			held = append(held, c)
+			gateMu.Unlock()
+			return
+		}
+		gateMu.Unlock()
+		sendCandidate(c)
 	})
 
 	v.mu.Lock()
@@ -261,7 +286,18 @@ func (v *Viewer) offer() error {
 	if err != nil {
 		return err
 	}
-	return v.sendSignal(webrtc.SignalMessage{Type: webrtc.SignalOffer, SDP: sdp}, id)
+	if err := v.sendSignal(webrtc.SignalMessage{Type: webrtc.SignalOffer, SDP: sdp}, id); err != nil {
+		return err
+	}
+	gateMu.Lock()
+	offerSent = true
+	ready := held
+	held = nil
+	gateMu.Unlock()
+	for _, c := range ready {
+		sendCandidate(c)
+	}
+	return nil
 }
 
 // decode decodes one frame from peer and hands it on. A frame that does not
@@ -307,17 +343,31 @@ func (v *Viewer) applyAnswer(sdp, offerID string) {
 		v.mu.Unlock()
 		return
 	}
+	v.mu.Unlock()
+	// Messages are handled one at a time, so no candidate is queued while
+	// the answer is applied. One that does not apply leaves the offer open
+	// for one that does.
+	if peer.SetRemoteAnswer(sdp) != nil {
+		return
+	}
+	v.mu.Lock()
+	if v.peer != peer {
+		v.mu.Unlock()
+		return
+	}
 	v.answered = true
 	pending := v.pending
 	v.pending = nil
 	v.mu.Unlock()
-	if peer.SetRemoteAnswer(sdp) != nil {
-		return
-	}
 	for _, c := range pending {
 		_ = peer.AddICECandidate(c)
 	}
 }
+
+// maxPendingCandidates bounds the remote candidates held for an answer. An
+// agent gathers a handful; past this, candidates are dropped rather than
+// letting whoever writes the socket grow the queue without end.
+const maxPendingCandidates = 64
 
 // addCandidate adds a remote candidate, or holds it until the answer: pion
 // refuses candidates before the remote description.
@@ -329,7 +379,9 @@ func (v *Viewer) addCandidate(c string) {
 		return
 	}
 	if !v.answered {
-		v.pending = append(v.pending, c)
+		if len(v.pending) < maxPendingCandidates {
+			v.pending = append(v.pending, c)
+		}
 		v.mu.Unlock()
 		return
 	}
