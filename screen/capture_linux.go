@@ -269,26 +269,27 @@ func (c *x11Capturer) displaysLocked() []Display {
 	return displays
 }
 
-// activeRectLocked returns the region of the X screen to grab: the selected
-// monitor's rectangle in global root coordinates. An index that no longer
+// activeRectLocked returns the region of the X screen to grab -- the selected
+// monitor's rectangle in global root coordinates -- and the index of the
+// monitor it belongs to, which is the one frames report. An index that no longer
 // resolves (the monitor was unplugged mid-session) falls back to the primary
 // monitor rather than to the full spanned screen, because silently widening
 // the capture would leak the other monitors' contents to the viewer.
 //
 // Callers must hold c.mu.
-func (c *x11Capturer) activeRectLocked() image.Rectangle {
+func (c *x11Capturer) activeRectLocked() (image.Rectangle, int) {
 	displays := c.displaysLocked()
 
 	idx := c.config.DisplayIndex
 	if idx >= 0 && idx < len(displays) {
-		return displays[idx].Bounds
+		return displays[idx].Bounds, idx
 	}
 	for _, d := range displays {
 		if d.Primary {
-			return d.Bounds
+			return d.Bounds, d.Index
 		}
 	}
-	return displays[0].Bounds
+	return displays[0].Bounds, displays[0].Index
 }
 
 // Start begins capturing frames at the configured rate.
@@ -375,8 +376,9 @@ func (c *x11Capturer) captureLoop(ctx context.Context) {
 			// hot-plugged monitor all take effect on the next frame without
 			// restarting capture.
 			c.mu.Lock()
-			rect := c.activeRectLocked()
-			dispIdx := c.config.DisplayIndex
+			// The index of the monitor actually grabbed, not the one
+			// asked for: they differ once the selected monitor is gone.
+			rect, dispIdx := c.activeRectLocked()
 			c.mu.Unlock()
 
 			w := rect.Dx()

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/barahn/remotekit/bark"
 	"github.com/barahn/remotekit/screen"
@@ -20,6 +21,14 @@ import (
 
 // errNoCapture is why a monitor cannot be chosen before capture has started.
 var errNoCapture = errors.New("screen capture has not started")
+
+// minDisplaySwitch is the least time between two monitor switches in one
+// session. Each forces a key frame on every viewer, so a viewer switching in a
+// loop would otherwise keep the encoder producing nothing but key frames.
+const minDisplaySwitch = 300 * time.Millisecond
+
+// errDisplaySwitchTooSoon refuses a switch inside minDisplaySwitch.
+var errDisplaySwitchTooSoon = errors.New("monitor switched too recently; try again")
 
 // displaysPayload lists c's monitors, with active the one being streamed.
 func displaysPayload(c screen.Capturer, active int) bark.DisplaysPayload {

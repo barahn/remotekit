@@ -79,8 +79,9 @@ func (v *Viewer) SendClipboard(text string) error {
 // transfer data channel, and returns once the agent has saved it -- or refused
 // it, or ctx ends. name is only a name: the agent drops any directory part.
 //
-// r is read twice, once to hash it and once to send it, so the agent can
-// refuse a file that did not arrive intact; that is why it must seek. progress,
+// What is sent is r from its current position to the end. r is read twice,
+// once to hash it and once to send it, so the agent can refuse a file that did
+// not arrive intact; that is why it must seek. progress,
 // if not nil, is called with the bytes the agent has acknowledged so far and
 // the total, from SendFile's goroutine.
 //
@@ -89,13 +90,18 @@ func (v *Viewer) SendClipboard(text string) error {
 // the file. A re-negotiation in the middle of a transfer fails it, and the
 // caller sends it again.
 func (v *Viewer) SendFile(ctx context.Context, name string, r io.ReadSeeker, progress func(sent, total int64)) (SavedFile, error) {
+	// What is sent is what is left of r, from where it stands now.
+	offset, err := r.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return SavedFile{}, err
+	}
 	hasher := sha256.New()
 	size, err := io.Copy(hasher, r)
 	if err != nil {
 		return SavedFile{}, err
 	}
 	sum := hex.EncodeToString(hasher.Sum(nil))
-	if _, err := r.Seek(0, io.SeekStart); err != nil {
+	if _, err := r.Seek(offset, io.SeekStart); err != nil {
 		return SavedFile{}, err
 	}
 

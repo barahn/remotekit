@@ -4,6 +4,7 @@
 package transfer
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -150,5 +151,54 @@ func TestAssembleFileDoesNotOverwrite(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(filepath.Join(dir, "report.pdf")); string(got) != "mine" {
 		t.Fatalf("the existing file was overwritten: %q", got)
+	}
+}
+
+// A transfer is assembled once: repeating file_complete writes nothing more.
+func TestAssembleFileOnce(t *testing.T) {
+	dir := t.TempDir()
+	mgr, err := NewManager(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr.StartSession("s", "a.txt", 2, "")
+	if _, _, err := mgr.AddChunk("s", 0, []byte("hi")); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := mgr.AssembleFile("s"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := mgr.AssembleFile("s"); !errors.Is(err, ErrTransferNotFound) {
+		t.Fatalf("second assemble: want ErrTransferNotFound, got %v", err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
+		t.Fatalf("%d files written, want 1", len(entries))
+	}
+}
+
+// A transfer missing announced bytes, or with a gap, is refused, and nothing
+// is written even without a checksum to catch it.
+func TestAssembleFileRefusesIncomplete(t *testing.T) {
+	for name, chunks := range map[string]map[int][]byte{
+		"short": {0: []byte("abc")},
+		"gap":   {0: []byte("abc"), 2: []byte("ghi")},
+	} {
+		dir := t.TempDir()
+		mgr, err := NewManager(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		mgr.StartSession("s", "a.txt", 9, "")
+		for i, c := range chunks {
+			if _, _, err := mgr.AddChunk("s", i, c); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, _, err := mgr.AssembleFile("s"); !errors.Is(err, ErrIncomplete) {
+			t.Errorf("%s: want ErrIncomplete, got %v", name, err)
+		}
+		if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+			t.Errorf("%s: an incomplete file was written", name)
+		}
 	}
 }

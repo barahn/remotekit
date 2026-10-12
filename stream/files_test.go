@@ -25,6 +25,13 @@ func filesSession(t *testing.T, cfg Config, setup func(*Runner)) *Viewer {
 	}
 	v := NewViewer(ViewerConfig{ID: "viewer-1", AgentID: "agent-1"})
 	session(t, r, v)
+	waitChannels(t, v)
+	return v
+}
+
+// waitChannels waits until the viewer's data channels are open.
+func waitChannels(t *testing.T, v *Viewer) {
+	t.Helper()
 	deadline := time.Now().Add(20 * time.Second)
 	for !v.channelsOpen() {
 		if time.Now().After(deadline) {
@@ -32,7 +39,11 @@ func filesSession(t *testing.T, cfg Config, setup func(*Runner)) *Viewer {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return v
+}
+
+func readFile(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	return string(b), err
 }
 
 func send(t *testing.T, v *Viewer, name string, content []byte) (SavedFile, error) {

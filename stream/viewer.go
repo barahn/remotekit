@@ -212,6 +212,14 @@ func (v *Viewer) handle(data []byte) {
 		if head.ViewerID != v.cfg.ID {
 			return // another viewer's
 		}
+		// It ends the peer that answered offer_id. If this viewer has
+		// offered again since, the notice is about a peer already gone.
+		v.mu.Lock()
+		stale := head.OfferID != "" && head.OfferID != v.offerID
+		v.mu.Unlock()
+		if stale {
+			return
+		}
 		v.closePeer()
 		v.notify(Notice{Type: head.Type})
 	}
