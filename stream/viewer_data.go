@@ -267,6 +267,11 @@ func (v *Viewer) handleData(peer *webrtc.PeerSession, msg []byte) {
 		if json.Unmarshal(env.Payload, &p) == nil && v.onClipboard != nil {
 			v.onClipboard(p.Text)
 		}
+	case bark.TypeDisplays:
+		var p bark.DisplaysPayload
+		if json.Unmarshal(env.Payload, &p) == nil && v.onDisplays != nil {
+			v.onDisplays(p)
+		}
 	case bark.TypeFileProgress, bark.TypeFileSaved:
 		var p struct {
 			ID     string `json:"transfer_id"`
@@ -303,4 +308,35 @@ func (v *Viewer) failTransfersLocked() {
 		}
 		delete(v.transfers, id)
 	}
+}
+
+// OnDisplays registers fn for the agent's monitors: the list, which one is
+// being streamed, and why a SelectDisplay failed, if it did. It is called
+// once the control channel opens and whenever the monitor being streamed
+// changes. It runs on the data channel's goroutine and must not block.
+// Register it before Serve.
+func (v *Viewer) OnDisplays(fn func(bark.DisplaysPayload)) { v.onDisplays = fn }
+
+// SelectDisplay asks the agent to stream the monitor with the given index,
+// from the list OnDisplays reported. The outcome arrives through OnDisplays:
+// the new Active once its first frame is captured, or an Error.
+func (v *Viewer) SelectDisplay(index int) error {
+	data, err := bark.EncodeEnvelope(bark.TypeSelectDisplay, v.cfg.AgentID, bark.SelectDisplayPayload{Index: index})
+	if err != nil {
+		return err
+	}
+	return v.sendData(webrtc.DataChannelControl, data)
+}
+
+// requestDisplays asks the agent for its monitors, once the control channel
+// of peer is open.
+func (v *Viewer) requestDisplays(peer *webrtc.PeerSession, label string) {
+	if label != webrtc.DataChannelControl {
+		return
+	}
+	data, err := bark.EncodeEnvelope(bark.TypeListDisplays, v.cfg.AgentID, struct{}{})
+	if err != nil {
+		return
+	}
+	_ = peer.SendData(label, data)
 }

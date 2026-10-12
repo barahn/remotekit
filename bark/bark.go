@@ -23,13 +23,21 @@ const (
 	TypeChirpSessionState MessageType = "chirp_state"
 
 	// Data plane messages carried over a WebRTC data channel; see
-	// tunnel.AgentStreamRunner.RequireDataChannel. Their payloads use the
+	// stream.Runner.RequireDataChannel. Their payloads use the
 	// same field names as the signalling-socket messages of the same type.
 	TypeClipboard    MessageType = "clipboard"
 	TypeFileStart    MessageType = "file_start"
 	TypeFileComplete MessageType = "file_complete"
 	TypeFileProgress MessageType = "file_progress"
 	TypeFileSaved    MessageType = "file_saved"
+
+	// Monitor selection, over the control data channel. A viewer asks for
+	// the list with TypeListDisplays and picks one with TypeSelectDisplay;
+	// the agent answers both, and announces any change of monitor, with
+	// TypeDisplays.
+	TypeListDisplays  MessageType = "list_displays"
+	TypeSelectDisplay MessageType = "select_display"
+	TypeDisplays      MessageType = "displays"
 )
 
 // Envelope is the top-level wire format for Yamux Bark multiplexed streams.
@@ -107,6 +115,32 @@ type ConsentResponsePayload struct {
 	Granted   bool      `json:"granted"`
 	Reason    string    `json:"reason,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
+}
+
+// DisplayInfo describes one monitor of the agent's machine. X, Y, Width and
+// Height are its rectangle in the machine's global screen coordinates.
+type DisplayInfo struct {
+	Index   int    `json:"index"`
+	Name    string `json:"name"`
+	X       int    `json:"x"`
+	Y       int    `json:"y"`
+	Width   int    `json:"width"`
+	Height  int    `json:"height"`
+	Primary bool   `json:"primary"`
+}
+
+// DisplaysPayload is the agent's list of monitors. Active is the index of the
+// one being streamed, or -1 before the first frame says which. Error, when
+// set, says why the last TypeSelectDisplay was not applied.
+type DisplaysPayload struct {
+	Displays []DisplayInfo `json:"displays"`
+	Active   int           `json:"active"`
+	Error    string        `json:"error,omitempty"`
+}
+
+// SelectDisplayPayload asks the agent to stream another monitor.
+type SelectDisplayPayload struct {
+	Index int `json:"index"`
 }
 
 // ChirpStatePayload represents state updates for on-demand Chirp sessions.

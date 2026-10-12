@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
 	"image/jpeg"
 	"log"
 	"strings"
@@ -46,6 +47,8 @@ type Runner struct {
 	// clip replaces the system clipboard when set; tests use it so they do
 	// not touch the clipboard of whoever runs them.
 	clip clipboard.Manager
+	// newCapturer replaces screen.NewCapturer when set, for the same reason.
+	newCapturer func(screen.CaptureConfig) (screen.Capturer, error)
 	// handlers holds message types layered on top of the core session by a
 	// consumer; see Handle.
 	handlers map[string]MessageHandler
@@ -212,6 +215,61 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 	clipWatcher := clipboard.NewWatcher(clipMgr, 500*time.Millisecond)
 	transferMgr, _ := transfer.NewManager("")
 	dp := &dataPlane{r: r, clipMgr: clipMgr, clipWatcher: clipWatcher, transfer: transferMgr}
+
+	// The monitor being streamed, as the frames report it; -1 until the
+	// first one. See displays.go.
+	activeDisplay := -1
+	currentCapturer := func() screen.Capturer {
+		stateMu.RLock()
+		defer stateMu.RUnlock()
+		return capturer
+	}
+	dp.displays = func() (bark.DisplaysPayload, bool) {
+		c := currentCapturer()
+		if c == nil {
+			return bark.DisplaysPayload{}, false
+		}
+		stateMu.RLock()
+		active := activeDisplay
+		stateMu.RUnlock()
+		return displaysPayload(c, active), true
+	}
+	dp.selectDisplay = func(index int) error {
+		c := currentCapturer()
+		if c == nil {
+			return errNoCapture
+		}
+		if err := c.SetDisplay(index); err != nil {
+			return err
+		}
+		// The new monitor's first frame has to be a key frame for every
+		// viewer, and the differ must not compare it with the old one.
+		videoEncoder.Reset()
+		return nil
+	}
+	// announceDisplays sends the monitor list to every viewer with a
+	// control channel, when the monitor being streamed changes.
+	announceDisplays := func() {
+		payload, ok := dp.displays()
+		if !ok {
+			return
+		}
+		env, err := bark.EncodeEnvelope(bark.TypeDisplays, r.id, payload)
+		if err != nil {
+			return
+		}
+		stateMu.RLock()
+		live := make([]*webrtc.PeerSession, 0, len(peers))
+		for _, p := range peers {
+			if p.DataChannelOpen(webrtc.DataChannelControl) {
+				live = append(live, p)
+			}
+		}
+		stateMu.RUnlock()
+		for _, p := range live {
+			_ = p.SendData(webrtc.DataChannelControl, env)
+		}
+	}
 	var refusal relayRefusal
 	relay := &relayGate{disabled: r.disableRelay, onChange: r.onRelayMode}
 
@@ -417,7 +475,11 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 			stateMu.Unlock()
 
 			if !isAlreadyCapturing {
-				cap, err := screen.NewCapturer(screen.DefaultConfig())
+				newCapturer := r.newCapturer
+				if newCapturer == nil {
+					newCapturer = screen.NewCapturer
+				}
+				cap, err := newCapturer(screen.DefaultConfig())
 				var framesChan <-chan *screen.Frame
 
 				if err == nil {
@@ -453,6 +515,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 						}
 					}()
 					frameCount := 0
+					var inputBounds image.Rectangle
 					lastSample := time.Time{}
 					for frame := range framesChan {
 						frameCount++
@@ -469,8 +532,24 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 						if r.requireScreenView && !r.Granted(PermissionScreenView) {
 							continue
 						}
-						if frameCount == 1 && r.injector != nil {
-							r.injector.SetScreenBounds(frame.Image.Bounds())
+						// Input lands on the monitor being streamed. Bounds is
+						// that monitor in global coordinates, which the
+						// injector needs to aim at any monitor but the first;
+						// it changes when the viewer picks another one.
+						bounds := frame.Bounds
+						if bounds.Empty() {
+							bounds = frame.Image.Bounds()
+						}
+						if bounds != inputBounds && r.injector != nil {
+							r.injector.SetScreenBounds(bounds)
+							inputBounds = bounds
+						}
+						stateMu.Lock()
+						changed := frame.DisplayIndex != activeDisplay
+						activeDisplay = frame.DisplayIndex
+						stateMu.Unlock()
+						if changed {
+							announceDisplays()
 						}
 
 						// Which viewers are reachable over WebRTC right now, and
