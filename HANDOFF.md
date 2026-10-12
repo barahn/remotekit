@@ -145,13 +145,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `23ba6be`** — docs: refresh the handoff status block
+**`develop` is at `8bdbba5`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#104](https://github.com/barahn/remotekit/pull/104) | chore(release): merge develop → main (23 commits) — Merge pull request #103 from barahn/claude/runner-viewer-events | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/114977403861) |
+| [#104](https://github.com/barahn/remotekit/pull/104) | chore(release): merge develop → main (23 commits) — Merge pull request #103 from barahn/claude/runner-viewer-events | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38299139103/job/114977761216)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38299139103/job/114977761098)<br>signal/nostr module ✅<br>Build, Test & SAST ✅<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/114977491896) |
+| [#105](https://github.com/barahn/remotekit/pull/105) | fix(stream): follow-ups to monitor selection (#100) | `fix/viewer-displays-followups` | Aikido Security: Deep Review ⏳ (in_progress)<br>Aikido Security: check code ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38301408564/job/114984954641)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38301408643/job/114984954392)<br>Refresh the handoff status block ⏳ (in_progress)<br>DCO Sign-off ✅<br>signal/nostr module ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38301408547/job/114984952163)<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
