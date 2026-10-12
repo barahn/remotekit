@@ -28,6 +28,11 @@ type dataPlane struct {
 	clipMgr     clipboard.Manager
 	clipWatcher *clipboard.Watcher
 	transfer    *transfer.Manager
+
+	// displays and selectDisplay reach the session's capturer; see
+	// displays.go. Nil outside a session.
+	displays      func() (bark.DisplaysPayload, bool)
+	selectDisplay func(index int) error
 }
 
 // replyFunc sends a response of the given type back the way the message it
@@ -138,6 +143,10 @@ func (d *dataPlane) handleChannelMessage(ctx context.Context, peer *webrtc.PeerS
 		return
 	}
 	msgType := string(env.Type)
+	if label == webrtc.DataChannelControl && isDisplayMessage(env.Type) {
+		d.handleDisplayMessage(ctx, peer, label, env)
+		return
+	}
 	if !isDataPlane(msgType) {
 		return
 	}

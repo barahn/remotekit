@@ -33,9 +33,10 @@ import (
 //	go v.Serve(ctx, conn)
 //	_ = v.SendInput(bark.InputEvent{Type: "mouse_move", X: 0.5, Y: 0.5})
 //
-// Clipboard goes both ways (SendClipboard, OnClipboard), and files go to the
-// agent (SendFile), over the data channels, as far as the person at the
-// machine has granted them.
+// Clipboard goes both ways (SendClipboard, OnClipboard), files go to the agent
+// (SendFile), and the monitor to stream can be chosen (OnDisplays,
+// SelectDisplay), over the data channels, as far as the person at the machine
+// has granted them.
 type Viewer struct {
 	cfg  ViewerConfig
 	conf webrtc.PeerConfig
@@ -43,6 +44,7 @@ type Viewer struct {
 	onFrame     func(img *image.YCbCr)
 	onNotice    func(Notice)
 	onClipboard func(text string)
+	onDisplays  func(bark.DisplaysPayload)
 
 	writeMu sync.Mutex
 	conn    SignalConn
@@ -251,6 +253,7 @@ func (v *Viewer) offer() error {
 	dec := vp8.NewDecoder()
 	peer.OnVideoFrame(func(frame []byte, _ bool) { v.decode(peer, dec, frame) })
 	peer.OnDataMessage(func(_ string, msg []byte) { v.handleData(peer, msg) })
+	peer.OnDataChannelOpen(func(label string) { v.requestDisplays(peer, label) })
 
 	// pion gathers from inside CreateOffer, so candidates can be ready before
 	// the offer is sent. The agent drops a candidate for a viewer it has no
