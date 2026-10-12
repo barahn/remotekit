@@ -320,27 +320,32 @@ func (c *windowsCapturer) Close() {
 	c.Stop()
 }
 
-func (c *windowsCapturer) getActiveDisplayBounds() (image.Rectangle, int, int) {
+// getActiveDisplayBounds returns the selected monitor's rectangle in global
+// virtual-desktop coordinates, the same one Displays reports for that index.
+// Its Min is where BitBlt reads from on the desktop DC. The index is returned
+// alongside so a frame never pairs one monitor's rect with another's index.
+func (c *windowsCapturer) getActiveDisplayBounds() (image.Rectangle, int) {
 	c.mu.Lock()
 	dispIdx := c.config.DisplayIndex
 	c.mu.Unlock()
 
-	displays, err := c.Displays()
-	if err == nil && dispIdx >= 0 && dispIdx < len(displays) {
-		b := displays[dispIdx].Bounds
-		return image.Rect(0, 0, b.Dx(), b.Dy()), b.Min.X, b.Min.Y
-	}
 	cx, _, _ := procGetSystemMetrics.Call(0) // SM_CXSCREEN
 	cy, _, _ := procGetSystemMetrics.Call(1) // SM_CYSCREEN
-	w := int(cx)
-	h := int(cy)
+	w := int(int32(cx))
+	h := int(int32(cy))
 	if w <= 0 {
 		w = 1920
 	}
 	if h <= 0 {
 		h = 1080
 	}
-	return image.Rect(0, 0, w, h), 0, 0
+	fallback := image.Rect(0, 0, w, h)
+
+	displays, err := c.Displays()
+	if err != nil {
+		displays = nil
+	}
+	return selectedDisplayRect(displays, dispIdx, fallback), dispIdx
 }
 
 func (c *windowsCapturer) captureLoop(ctx context.Context) {
@@ -369,15 +374,9 @@ func (c *windowsCapturer) captureLoop(ctx context.Context) {
 				return
 			}
 
-			bounds, srcX, srcY := c.getActiveDisplayBounds()
+			bounds, currentDispIdx := c.getActiveDisplayBounds()
 			w := bounds.Dx()
 			h := bounds.Dy()
-			if w <= 0 {
-				w = 1920
-			}
-			if h <= 0 {
-				h = 1080
-			}
 
 			if w != currentW || h != currentH || len(bgraBuf) != w*h*4 {
 				currentW = w
@@ -388,7 +387,7 @@ func (c *windowsCapturer) captureLoop(ctx context.Context) {
 				bmi.bmiHeader.biHeight = -int32(h) // Negative for top-down DIB
 			}
 
-			err := c.captureFrame(bgraBuf, &bmi, srcX, srcY, w, h)
+			err := c.captureFrame(bgraBuf, &bmi, bounds.Min.X, bounds.Min.Y, w, h)
 			if err != nil {
 				continue
 			}
@@ -398,13 +397,12 @@ func (c *windowsCapturer) captureLoop(ctx context.Context) {
 			rgba := image.NewRGBA(image.Rect(0, 0, w, h))
 			copy(rgba.Pix, rgbaBuf)
 
-			c.mu.Lock()
-			currentDispIdx := c.config.DisplayIndex
-			c.mu.Unlock()
-
 			frame := &Frame{
-				Image:        rgba,
-				Bounds:       image.Rect(0, 0, w, h),
+				Image: rgba,
+				// The monitor's rectangle in global virtual-desktop
+				// coordinates, not an origin-anchored one: input injection
+				// needs the offset to aim clicks at the monitor being viewed.
+				Bounds:       bounds,
 				DisplayIndex: currentDispIdx,
 				CapturedAt:   time.Now(),
 				SequenceNum:  c.seqNum.Add(1),

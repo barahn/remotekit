@@ -267,31 +267,11 @@ func (i *windowsInjector) absoluteCoordinates(x, y float64) (int32, int32) {
 		return normalizeCoordinates(x, y)
 	}
 
-	if x < 0 {
-		x = 0
-	} else if x > 1.0 {
-		x = 1.0
-	}
-	if y < 0 {
-		y = 0
-	} else if y > 1.0 {
-		y = 1.0
-	}
-
-	globalX := float64(b.Min.X) + x*float64(b.Dx()-1)
-	globalY := float64(b.Min.Y) + y*float64(b.Dy()-1)
-
 	v := virtualScreen()
-	spanX := float64(v.Dx() - 1)
-	spanY := float64(v.Dy() - 1)
-	if spanX <= 0 || spanY <= 0 {
+	if v.Dx() <= 0 || v.Dy() <= 0 {
 		return normalizeCoordinates(x, y)
 	}
-
-	return normalizeCoordinates(
-		(globalX-float64(v.Min.X))/spanX,
-		(globalY-float64(v.Min.Y))/spanY,
-	)
+	return virtualDeskAbsolute(b, v, x, y)
 }
 
 func sendInputs(inputs []winInput) error {
