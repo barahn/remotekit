@@ -34,7 +34,15 @@ type dataPlane struct {
 	// displays.go. Nil outside a session.
 	displays      func() (bark.DisplaysPayload, bool)
 	selectDisplay func(index int) error
+
+	// refused holds the transfers already told they were refused; see
+	// refuseFile.
+	refusedMu sync.Mutex
+	refused   map[string]struct{}
 }
+
+// maxRefused bounds refused. A sender that outlives it is told again, once.
+const maxRefused = 256
 
 // replyFunc sends a response of the given type back the way the message it
 // answers came.
@@ -71,18 +79,18 @@ func (d *dataPlane) handle(ctx context.Context, viewerID, msgType string, fields
 		size, _ := fields["size"].(float64)
 		sha, _ := fields["sha256"].(string)
 		if id != "" && !r.allow(PermissionFileTransfer, "file transfer") {
-			refuseFile(id, PermissionFileTransfer+" has not been granted", reply)
+			d.refuseFile(id, PermissionFileTransfer+" has not been granted", reply)
 			return
 		}
 		if id != "" && d.transfer == nil {
-			refuseFile(id, "the agent cannot store files", reply)
+			d.refuseFile(id, "the agent cannot store files", reply)
 			return
 		}
 		if id != "" && name != "" {
 			session := d.transfer.StartSession(id, name, int64(size), sha)
 			if r.onFileOffer != nil && !r.onFileOffer(FileOffer{ViewerID: viewerID, TransferID: id, Name: session.FileName, Size: int64(size)}) {
 				d.transfer.Discard(id)
-				refuseFile(id, "the agent refused the file", reply)
+				d.refuseFile(id, "the agent refused the file", reply)
 				return
 			}
 			log.Printf("[AgentStream] Started file transfer session %s (%s, %s bytes)\n", logSafe(id), logSafe(name), logSafe(fmt.Sprintf("%.0f", size)))
@@ -93,15 +101,15 @@ func (d *dataPlane) handle(ctx context.Context, viewerID, msgType string, fields
 		idx, _ := fields["index"].(float64)
 		b64Data, _ := fields["data"].(string)
 		if id != "" && !r.allow(PermissionFileTransfer, "file chunk") {
-			refuseFile(id, PermissionFileTransfer+" has not been granted", reply)
+			d.refuseFile(id, PermissionFileTransfer+" has not been granted", reply)
 			return
 		}
 		if id != "" && d.transfer != nil {
 			prog, done, err := d.transfer.AddChunkBase64(id, int(idx), b64Data)
 			if errors.Is(err, transfer.ErrTransferNotFound) {
-				// Refused at file_start, or never started: say so once
-				// per chunk rather than acknowledge data that is dropped.
-				refuseFile(id, "no such transfer", reply)
+				// Refused at file_start, or never started: refuse it
+				// rather than acknowledge data that is dropped.
+				d.refuseFile(id, "no such transfer", reply)
 				return
 			}
 			if err != nil {
@@ -117,7 +125,7 @@ func (d *dataPlane) handle(ctx context.Context, viewerID, msgType string, fields
 	case "file_complete":
 		id, _ := fields["transfer_id"].(string)
 		if id != "" && !r.allow(PermissionFileTransfer, "file save") {
-			refuseFile(id, PermissionFileTransfer+" has not been granted", reply)
+			d.refuseFile(id, PermissionFileTransfer+" has not been granted", reply)
 			return
 		}
 		if id != "" && d.transfer != nil {
@@ -146,7 +154,23 @@ func (d *dataPlane) handle(ctx context.Context, viewerID, msgType string, fields
 // refuseFile tells the sender a file message was refused, and why, with the
 // file_saved it would otherwise wait for, so it stops sending instead of
 // waiting for replies that will never come.
-func refuseFile(id, reason string, reply replyFunc) {
+//
+// It says so once per transfer. A sender that does not wait for each chunk's
+// reply has a whole file's chunks in flight by the time the refusal reaches
+// it, and one file_saved per chunk would be one error per chunk.
+func (d *dataPlane) refuseFile(id, reason string, reply replyFunc) {
+	d.refusedMu.Lock()
+	_, told := d.refused[id]
+	if !told {
+		if d.refused == nil || len(d.refused) >= maxRefused {
+			d.refused = make(map[string]struct{})
+		}
+		d.refused[id] = struct{}{}
+	}
+	d.refusedMu.Unlock()
+	if told {
+		return
+	}
 	reply("file_saved", map[string]interface{}{
 		"transfer_id": id,
 		"error":       reason,

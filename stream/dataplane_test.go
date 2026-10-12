@@ -381,3 +381,28 @@ func (c wsConn) WriteMessage(data []byte) error {
 }
 
 func (c wsConn) Close() error { return c.ws.Close() }
+
+// A refused transfer is told so once, however many of its chunks were already
+// in flight, and each transfer is told on its own.
+func TestRefusedTransferIsToldOnce(t *testing.T) {
+	d := &dataPlane{r: &Runner{id: "agent-1"}} // file_transfer not granted
+	var replies []string
+	reply := func(msgType string, fields map[string]interface{}) {
+		id, _ := fields["transfer_id"].(string)
+		replies = append(replies, msgType+":"+id)
+	}
+
+	ctx := context.Background()
+	for _, id := range []string{"t1", "t2"} {
+		d.handle(ctx, "viewer-1", "file_start", map[string]interface{}{"transfer_id": id, "name": "a.bin", "size": float64(3)}, reply)
+		for i := 0; i < 5; i++ {
+			d.handle(ctx, "viewer-1", "file_chunk", map[string]interface{}{"transfer_id": id, "index": float64(i), "data": "YQ=="}, reply)
+		}
+		d.handle(ctx, "viewer-1", "file_complete", map[string]interface{}{"transfer_id": id}, reply)
+	}
+
+	want := []string{"file_saved:t1", "file_saved:t2"}
+	if strings.Join(replies, " ") != strings.Join(want, " ") {
+		t.Fatalf("replies = %v, want %v", replies, want)
+	}
+}
