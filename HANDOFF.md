@@ -145,7 +145,7 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `b04875b`** — Merge pull request #109 from barahn/develop
+**`develop` is at `e2ec700`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
