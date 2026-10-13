@@ -5,6 +5,7 @@ package stream
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -44,6 +45,14 @@ type dataPlane struct {
 // maxRefused bounds refused. A sender that outlives it is told again, once.
 const maxRefused = 256
 
+// sender is who a data plane message came from: the viewer_id it is routed
+// under, and, for a data channel under RequireSignedViewers, the key whose
+// signed offer set the channel up.
+type sender struct {
+	id  string
+	key ed25519.PublicKey
+}
+
 // replyFunc sends a response of the given type back the way the message it
 // answers came.
 type replyFunc func(msgType string, fields map[string]interface{})
@@ -59,15 +68,16 @@ func isDataPlane(msgType string) bool {
 
 // handle applies one data plane message. fields is its content: for input,
 // the input event itself; for the rest, the message's own fields.
-func (d *dataPlane) handle(ctx context.Context, viewerID, msgType string, fields map[string]interface{}, reply replyFunc) {
+func (d *dataPlane) handle(ctx context.Context, from sender, msgType string, fields map[string]interface{}, reply replyFunc) {
 	r := d.r
 	switch msgType {
 	case "input":
 		r.handleInputPayload(fields)
 
 	case "clipboard":
-		text, _ := fields["text"].(string)
-		if text != "" && r.allow(PermissionClipboard, "clipboard write") {
+		// An empty text is a valid clipboard: it clears it.
+		text, ok := fields["text"].(string)
+		if ok && r.allow(PermissionClipboard, "clipboard write") {
 			d.clipWatcher.UpdateLastText(text)
 			_ = d.clipMgr.SetText(ctx, text)
 			log.Printf("[AgentStream] Received and applied clipboard sync (%d bytes)\n", len(text))
@@ -86,9 +96,10 @@ func (d *dataPlane) handle(ctx context.Context, viewerID, msgType string, fields
 			d.refuseFile(id, "the agent cannot store files", reply)
 			return
 		}
-		if id != "" && name != "" {
+		if id != "" {
+			// An empty name is saved under transfer's fallback name.
 			session := d.transfer.StartSession(id, name, int64(size), sha)
-			if r.onFileOffer != nil && !r.onFileOffer(FileOffer{ViewerID: viewerID, TransferID: id, Name: session.FileName, Size: int64(size)}) {
+			if r.onFileOffer != nil && !r.onFileOffer(FileOffer{ViewerID: from.id, Key: from.key, TransferID: id, Name: session.FileName, Size: int64(size)}) {
 				d.transfer.Discard(id)
 				d.refuseFile(id, "the agent refused the file", reply)
 				return
@@ -138,7 +149,7 @@ func (d *dataPlane) handle(ctx context.Context, viewerID, msgType string, fields
 			} else {
 				log.Printf("[AgentStream] File transfer %s completed! Saved to: %s (SHA: %s)\n", logSafe(id), logSafe(destPath), sha)
 				if r.onFileSaved != nil {
-					r.onFileSaved(ReceivedFile{ViewerID: viewerID, TransferID: id, Name: name, Path: destPath, SHA256: sha, Size: size})
+					r.onFileSaved(ReceivedFile{ViewerID: from.id, Key: from.key, TransferID: id, Name: name, Path: destPath, SHA256: sha, Size: size})
 				}
 			}
 			reply("file_saved", map[string]interface{}{
@@ -181,7 +192,7 @@ func (d *dataPlane) refuseFile(id, reason string, reply replyFunc) {
 // message is a bark.Envelope; its reply goes back on the same channel, as an
 // envelope too. Anything that is not a data plane message is ignored: the
 // channel carries the user's data, not signalling.
-func (d *dataPlane) handleChannelMessage(ctx context.Context, viewerID string, peer *webrtc.PeerSession, label string, msg []byte) {
+func (d *dataPlane) handleChannelMessage(ctx context.Context, from sender, peer *webrtc.PeerSession, label string, msg []byte) {
 	var env bark.Envelope
 	if err := json.Unmarshal(msg, &env); err != nil {
 		return
@@ -199,7 +210,7 @@ func (d *dataPlane) handleChannelMessage(ctx context.Context, viewerID string, p
 		return
 	}
 	agentID := d.r.id
-	d.handle(ctx, viewerID, msgType, fields, func(replyType string, replyFields map[string]interface{}) {
+	d.handle(ctx, from, msgType, fields, func(replyType string, replyFields map[string]interface{}) {
 		data, err := bark.EncodeEnvelope(bark.MessageType(replyType), agentID, replyFields)
 		if err != nil {
 			return

@@ -393,12 +393,13 @@ func TestRefusedTransferIsToldOnce(t *testing.T) {
 	}
 
 	ctx := context.Background()
+	from := sender{id: "viewer-1"}
 	for _, id := range []string{"t1", "t2"} {
-		d.handle(ctx, "viewer-1", "file_start", map[string]interface{}{"transfer_id": id, "name": "a.bin", "size": float64(3)}, reply)
+		d.handle(ctx, from, "file_start", map[string]interface{}{"transfer_id": id, "name": "a.bin", "size": float64(3)}, reply)
 		for i := 0; i < 5; i++ {
-			d.handle(ctx, "viewer-1", "file_chunk", map[string]interface{}{"transfer_id": id, "index": float64(i), "data": "YQ=="}, reply)
+			d.handle(ctx, from, "file_chunk", map[string]interface{}{"transfer_id": id, "index": float64(i), "data": "YQ=="}, reply)
 		}
-		d.handle(ctx, "viewer-1", "file_complete", map[string]interface{}{"transfer_id": id}, reply)
+		d.handle(ctx, from, "file_complete", map[string]interface{}{"transfer_id": id}, reply)
 	}
 
 	want := []string{"file_saved:t1", "file_saved:t2"}

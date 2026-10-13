@@ -145,13 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `23ba6be`** — docs: refresh the handoff status block
+**`develop` is at `676ff08`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#104](https://github.com/barahn/remotekit/pull/104) | chore(release): merge develop → main (23 commits) — Merge pull request #103 from barahn/claude/runner-viewer-events | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/114977403861) |
+| [#105](https://github.com/barahn/remotekit/pull/105) | fix(stream): follow-ups to monitor selection (#100) | `fix/viewer-displays-followups` | CodeQL ✅<br>Aikido Security: Deep Review ✅<br>Aikido Security: check code ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38301408564/job/114984954641)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38301408643/job/114984954392)<br>Refresh the handoff status block ✅<br>DCO Sign-off ✅<br>signal/nostr module ✅<br>Analyze (Go) ✅<br>Build, Test & SAST ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38301408547/job/114984952163)<br>gitleaks ✅<br>Review dependency changes ✅ |
 
 <!-- END GENERATED: handoff status -->
 
