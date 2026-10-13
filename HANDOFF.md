@@ -145,14 +145,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `769f8d9`** — docs: refresh the handoff status block
+**`develop` is at `0e19583`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#104](https://github.com/barahn/remotekit/pull/104) | chore(release): merge develop → main (30 commits) — Merge pull request #106 from barahn/claude/review-fixes | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/114991066897) |
-| [#105](https://github.com/barahn/remotekit/pull/105) | fix(stream): follow-ups to monitor selection (#100) | `fix/viewer-displays-followups` | CodeQL ✅<br>Aikido Security: Deep Review ✅<br>Aikido Security: check code ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38301408564/job/114984954641)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38301408643/job/114984954392)<br>Refresh the handoff status block ✅<br>DCO Sign-off ✅<br>signal/nostr module ✅<br>Analyze (Go) ✅<br>Build, Test & SAST ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38301408547/job/114984952163)<br>gitleaks ✅<br>Review dependency changes ✅ |
+| [#107](https://github.com/barahn/remotekit/pull/107) | feat(pake): bind two peers' ed25519 keys over a short shared code | `feat/pake-cpace` | CodeQL ✅<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38364334223/job/115185742394)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38364334228/job/115185740477)<br>Build, Test & SAST ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38364334248/job/115185739983)<br>signal/nostr module ✅<br>DCO Sign-off ✅<br>gitleaks ✅<br>Analyze (Go) ✅<br>Review dependency changes ✅<br>Aikido Security: Deep Review ✅<br>Aikido Security: check code ✅ |
+| [#109](https://github.com/barahn/remotekit/pull/109) | chore(release): merge develop → main (16 commits) — Merge pull request #105 from barahn/fix/viewer-displays-followups | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/115190627704) |
 
 <!-- END GENERATED: handoff status -->
 
