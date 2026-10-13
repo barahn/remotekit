@@ -185,6 +185,9 @@ Ordered work, as proposed:
   reverse streams (`TunnelClient.ConsentReverseStream`, opt-in, asked after
   the port allowlist), and consent on the screen itself
   (`AgentStreamRunner.RequireScreenViewConsent`, opt-in).
+  For peers with no enrolment, `pake` binds the two keys over a short
+  shared code (CPace, barahn/remotekit#96), so a consumer has keys to trust
+  without trusting the carrier that brought them.
   Input, clipboard and file messages are not signed themselves: Phase 1
   moves them onto a data channel inside the DTLS session the signed offer
   and answer set up.
