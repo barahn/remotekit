@@ -626,8 +626,10 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 						capturer = cap
 						activeCapCancel = cancelCap
 						// A restarted capture begins on its own default
-						// monitor, so the previous one's is no longer known.
+						// monitor, so neither the monitor the previous one
+						// streamed nor the one last asked of it holds.
 						activeDisplay = -1
+						requested = -1
 						stateMu.Unlock()
 						framesChan = cap.Frames()
 					} else {
