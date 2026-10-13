@@ -6,12 +6,10 @@ package pake
 import (
 	"crypto/ed25519"
 	"crypto/hkdf"
-	"crypto/hmac"
 	"crypto/sha512"
-	"crypto/subtle"
 	"errors"
 
-	"github.com/gtank/ristretto255"
+	"github.com/mendsec/cpace"
 )
 
 // Errors a caller can act on.
@@ -57,192 +55,107 @@ type Result struct {
 	Key []byte
 }
 
-// Message tags. Each message starts with one, so that a message out of
-// place is refused rather than misread.
-const (
-	tagStart   = 0x01 // initiator → responder: Ya, ADa
-	tagReply   = 0x02 // responder → initiator: Yb, ADb, Tb
-	tagConfirm = 0x03 // initiator → responder: Ta
-)
-
-// macSize is the length of a key-confirmation tag: HMAC-SHA-512.
-const macSize = sha512.Size
-
 // Initiator is the end that speaks first: in Chirp, the controller, who has
 // typed the code.
-type Initiator struct {
-	cfg Config
-	y   *ristretto255.Scalar
-	ya  []byte
-	ada []byte
-}
+type Initiator struct{ c *cpace.Initiator }
 
 // NewInitiator starts an exchange. It returns the first message, for the
 // responder.
 func NewInitiator(cfg Config) (*Initiator, []byte, error) {
-	ada, err := checkConfig(cfg)
+	c, err := cpaceConfig(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
-	y, err := sampleScalar(randReader)
+	ini, start, err := cpace.NewInitiator(c)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, mapErr(err)
 	}
-	ya := scalarMult(y, calculateGenerator(cfg.Secret, cfg.Context, cfg.SessionID))
-	msg := append([]byte{tagStart}, lvCat(ya, ada)...)
-	return &Initiator{cfg: cfg, y: y, ya: ya, ada: ada}, msg, nil
+	return &Initiator{c: ini}, start, nil
 }
 
 // Finish reads the responder's reply. If the responder proves it holds the
 // same secret, Finish returns the last message, for the responder, and the
 // result; otherwise ErrAuthFailed, and nothing is to be sent.
 func (i *Initiator) Finish(reply []byte) ([]byte, Result, error) {
-	f, ok := parse(reply, tagReply, 3)
-	if !ok || len(f[0]) != groupSizeBytes || len(f[1]) != ed25519.PublicKeySize || len(f[2]) != macSize {
-		return nil, Result{}, ErrMalformed
-	}
-	yb, adb, tb := f[0], f[1], f[2]
-	k := scalarMultVfy(i.y, yb)
-	key, err := isk(i.cfg.SessionID, k, i.ya, i.ada, yb, adb)
+	confirm, r, err := i.c.Finish(reply)
 	if err != nil {
-		return nil, Result{}, ErrAuthFailed
+		return nil, Result{}, mapErr(err)
 	}
-	mk := macKey(i.cfg.SessionID, key)
-	if !hmac.Equal(tb, tag(mk, yb, adb)) {
-		return nil, Result{}, ErrAuthFailed
+	res, err := result(r)
+	if err != nil {
+		return nil, Result{}, err
 	}
-	confirm := append([]byte{tagConfirm}, lvCat(tag(mk, i.ya, i.ada))...)
-	return confirm, result(adb, key), nil
+	return confirm, res, nil
 }
 
 // Responder is the end that answers: in Chirp, the owner, whose code it is.
-type Responder struct {
-	cfg  Config
-	ya   []byte
-	ada  []byte
-	mk   []byte
-	key  []byte
-	done bool
-}
+type Responder struct{ c *cpace.Responder }
 
 // NewResponder answers the initiator's first message. It returns the reply,
 // for the initiator; the exchange is not authenticated until Finish accepts
 // the initiator's confirmation.
 func NewResponder(cfg Config, start []byte) (*Responder, []byte, error) {
-	adb, err := checkConfig(cfg)
+	c, err := cpaceConfig(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
-	f, ok := parse(start, tagStart, 2)
-	if !ok || len(f[0]) != groupSizeBytes || len(f[1]) != ed25519.PublicKeySize {
-		return nil, nil, ErrMalformed
-	}
-	ya, ada := f[0], f[1]
-	y, err := sampleScalar(randReader)
+	res, reply, err := cpace.NewResponder(c, start)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, mapErr(err)
 	}
-	yb := scalarMult(y, calculateGenerator(cfg.Secret, cfg.Context, cfg.SessionID))
-	k := scalarMultVfy(y, ya)
-	key, err := isk(cfg.SessionID, k, ya, ada, yb, adb)
-	if err != nil {
-		return nil, nil, ErrAuthFailed
-	}
-	mk := macKey(cfg.SessionID, key)
-	reply := append([]byte{tagReply}, lvCat(yb, adb, tag(mk, yb, adb))...)
-	return &Responder{cfg: cfg, ya: ya, ada: ada, mk: mk, key: key}, reply, nil
+	return &Responder{c: res}, reply, nil
 }
 
 // Finish reads the initiator's confirmation. It returns the result if the
 // initiator proves it holds the same secret, and ErrAuthFailed otherwise.
 // A Responder finishes once; a second call fails.
 func (r *Responder) Finish(confirm []byte) (Result, error) {
-	if r.done {
-		return Result{}, ErrMalformed
+	c, err := r.c.Finish(confirm)
+	if err != nil {
+		return Result{}, mapErr(err)
 	}
-	r.done = true
-	f, ok := parse(confirm, tagConfirm, 1)
-	if !ok || len(f[0]) != macSize {
-		return Result{}, ErrMalformed
-	}
-	if !hmac.Equal(f[0], tag(r.mk, r.ya, r.ada)) {
-		return Result{}, ErrAuthFailed
-	}
-	return result(r.ada, r.key), nil
+	return result(c)
 }
 
-// checkConfig checks cfg and returns this end's associated data: its ed25519
-// public key, which the transcript binds and the other end learns.
-func checkConfig(cfg Config) ([]byte, error) {
+// cpaceConfig checks cfg and maps it onto CPace: this end's ed25519 public
+// key is its associated data, which the transcript binds and the
+// confirmation tags prove.
+func cpaceConfig(cfg Config) (cpace.Config, error) {
 	if len(cfg.Secret) == 0 {
-		return nil, ErrNoSecret
+		return cpace.Config{}, ErrNoSecret
 	}
 	if len(cfg.Key) != ed25519.PrivateKeySize {
-		return nil, ErrInvalidKey
+		return cpace.Config{}, ErrInvalidKey
 	}
 	pub, ok := cfg.Key.Public().(ed25519.PublicKey)
 	if !ok {
-		return nil, ErrInvalidKey
+		return cpace.Config{}, ErrInvalidKey
 	}
-	return append([]byte(nil), pub...), nil
+	return cpace.Config{PRS: cfg.Secret, CI: cfg.Context, SID: cfg.SessionID, AD: pub}, nil
 }
 
-// macKey is the draft's key-confirmation key (section 10.4):
-// H.hash(b"CPaceMac" || sid || ISK).
-func macKey(sid, isk []byte) []byte {
-	h := sha512.New()
-	h.Write([]byte("CPaceMac"))
-	h.Write(sid)
-	h.Write(isk)
-	return h.Sum(nil)
-}
-
-// tag is a key-confirmation tag over one end's message, as section 10.4 has
-// it: MAC(mac_key, lv_cat(Y, AD)).
-func tag(macKey, y, ad []byte) []byte {
-	m := hmac.New(sha512.New, macKey)
-	m.Write(lvCat(y, ad))
-	return m.Sum(nil)
-}
-
-// result derives what the application gets from ISK. The draft recommends
-// running ISK through a KDF before use (section 10.3).
-func result(peerKey, isk []byte) Result {
-	key, err := hkdf.Key(sha512.New, isk, nil, "remotekit pake v1", 32)
+// result derives what the application gets. The peer's associated data must
+// be an ed25519 public key; ISK goes through HKDF, as the draft recommends
+// (section 10.3).
+func result(r cpace.Result) (Result, error) {
+	if len(r.PeerAD) != ed25519.PublicKeySize {
+		return Result{}, ErrMalformed
+	}
+	key, err := hkdf.Key(sha512.New, r.ISK, nil, "remotekit pake v1", 32)
 	if err != nil {
-		panic("pake: hkdf refused 32 bytes") // cannot happen
+		return Result{}, err
 	}
-	return Result{PeerKey: ed25519.PublicKey(append([]byte(nil), peerKey...)), Key: key}
+	return Result{PeerKey: ed25519.PublicKey(append([]byte(nil), r.PeerAD...)), Key: key}, nil
 }
 
-// parse reads a message: its tag, then exactly n length-prefixed fields.
-func parse(msg []byte, want byte, n int) ([][]byte, bool) {
-	if len(msg) == 0 || msg[0] != want {
-		return nil, false
+func mapErr(err error) error {
+	switch {
+	case errors.Is(err, cpace.ErrAuthFailed):
+		return ErrAuthFailed
+	case errors.Is(err, cpace.ErrMalformed):
+		return ErrMalformed
+	case errors.Is(err, cpace.ErrNoPassword):
+		return ErrNoSecret
 	}
-	rest := msg[1:]
-	fields := make([][]byte, 0, n)
-	for len(rest) > 0 {
-		l, used, ok := readLen(rest)
-		if !ok || l > len(rest)-used {
-			return nil, false
-		}
-		fields = append(fields, rest[used:used+l])
-		rest = rest[used+l:]
-	}
-	return fields, len(fields) == n
+	return err
 }
-
-// readLen reads a LEB128 length of at most two bytes: no field here is
-// longer than 16383 bytes.
-func readLen(b []byte) (n, used int, ok bool) {
-	for i := 0; i < len(b) && i < 2; i++ {
-		n |= int(b[i]&0x7f) << (7 * i)
-		if b[i]&0x80 == 0 {
-			return n, i + 1, true
-		}
-	}
-	return 0, 0, false
-}
-
-func subtleEqual(a, b []byte) bool { return subtle.ConstantTimeCompare(a, b) == 1 }

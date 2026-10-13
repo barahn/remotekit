@@ -9,6 +9,8 @@ import (
 	"crypto/rand"
 	"errors"
 	"testing"
+
+	"github.com/mendsec/cpace"
 )
 
 func newKey(t *testing.T) ed25519.PrivateKey {
@@ -31,6 +33,33 @@ func config(t *testing.T, secret string) Config {
 }
 
 func pub(k ed25519.PrivateKey) ed25519.PublicKey { return k.Public().(ed25519.PublicKey) }
+
+// The wire format, for forging messages: a tag byte, then length-prefixed
+// fields (mendsec/cpace). Fields here are short, so one length byte does.
+const (
+	tagStart   = 0x01
+	tagReply   = 0x02
+	tagConfirm = 0x03
+)
+
+func lvCat(fields ...[]byte) []byte {
+	var out []byte
+	for _, f := range fields {
+		out = append(append(out, byte(len(f))), f...)
+	}
+	return out
+}
+
+func parse(msg []byte, _ byte, n int) ([][]byte, bool) {
+	rest := msg[1:]
+	var fields [][]byte
+	for len(rest) > 0 {
+		l := int(rest[0])
+		fields = append(fields, rest[1:1+l])
+		rest = rest[1+l:]
+	}
+	return fields, len(fields) == n
+}
 
 // run carries the three messages between a and b directly.
 func run(t *testing.T, a, b Config) (Result, Result, error, error) {
@@ -222,4 +251,21 @@ func FuzzNewResponder(f *testing.F) {
 	f.Fuzz(func(t *testing.T, msg []byte) {
 		_, _, _ = NewResponder(Config{Secret: []byte("5071"), Key: ed25519.NewKeyFromSeed(make([]byte, 32))}, msg)
 	})
+}
+
+// A peer whose associated data is not an ed25519 key -- CPace itself, used
+// without this package -- is refused even though the secret matches.
+func TestAPeerWithoutAnEd25519KeyIsRefused(t *testing.T) {
+	a := config(t, "5071")
+	ini, start, err := NewInitiator(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, reply, err := cpace.NewResponder(cpace.Config{PRS: a.Secret, CI: a.Context, SID: a.SessionID, AD: []byte("not a key")}, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ini.Finish(reply); !errors.Is(err, ErrMalformed) {
+		t.Errorf("Finish = %v, want ErrMalformed", err)
+	}
 }

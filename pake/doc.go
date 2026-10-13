@@ -17,9 +17,10 @@
 //
 // It is CPace (draft-irtf-cfrg-cpace-21) in its CPACE-RISTRETTO255-SHA512
 // cipher suite, in the initiator-responder setting, with the explicit key
-// confirmation of the draft's section 10.4. Each end's ed25519 public key is
-// its associated data (ADa, ADb), so the transcript both ends hash binds
-// both keys, and the confirmation tags prove it:
+// confirmation of the draft's section 10.4, from github.com/mendsec/cpace.
+// Each end's ed25519 public key is its associated data (ADa, ADb), so the
+// transcript both ends hash binds both keys, and the confirmation tags prove
+// it:
 //
 //	initiator                                  responder
 //	NewInitiator  -- start:   Ya, ADa  -->     NewResponder
@@ -39,13 +40,11 @@
 // What it does not do: say who the other person is. The secret proves only
 // that both ends have it.
 //
-// # Why it is implemented here
+// # Where CPace comes from
 //
-// The Go implementations surveyed for barahn/chirp#21 do not follow the
-// current draft (bytemare/cpace builds the generator and ISK differently and
-// tests only against vectors it generates itself; filippo.io/cpace follows
-// draft-haase-cpace-01 from 2020) or are not CPace or standard SPAKE2
-// (schollz/pake). This package does no arithmetic of its own: the group is
-// gtank/ristretto255 (RFC 9496), and the protocol is checked byte for byte
-// against the draft's test vectors in appendix B.3.
+// CPace itself is github.com/mendsec/cpace, which implements the draft and is
+// checked byte for byte against its test vectors. The Go implementations
+// surveyed for barahn/chirp#21 do not follow the current draft
+// (barahn/remotekit#96). This package adds only what binding keys needs:
+// each end's ed25519 public key as its associated data, and HKDF over ISK.
 package pake
