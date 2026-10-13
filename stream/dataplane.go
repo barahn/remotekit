@@ -5,7 +5,9 @@ package stream
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
@@ -28,6 +30,19 @@ type dataPlane struct {
 	clipMgr     clipboard.Manager
 	clipWatcher *clipboard.Watcher
 	transfer    *transfer.Manager
+
+	// displays and selectDisplay reach the session's capturer; see
+	// displays.go. Nil outside a session.
+	displays      func() (bark.DisplaysPayload, bool)
+	selectDisplay func(index int) error
+}
+
+// sender is who a data plane message came from: the viewer_id it is routed
+// under, and, for a data channel under RequireSignedViewers, the key whose
+// signed offer set the channel up.
+type sender struct {
+	id  string
+	key ed25519.PublicKey
 }
 
 // replyFunc sends a response of the given type back the way the message it
@@ -45,15 +60,16 @@ func isDataPlane(msgType string) bool {
 
 // handle applies one data plane message. fields is its content: for input,
 // the input event itself; for the rest, the message's own fields.
-func (d *dataPlane) handle(ctx context.Context, msgType string, fields map[string]interface{}, reply replyFunc) {
+func (d *dataPlane) handle(ctx context.Context, from sender, msgType string, fields map[string]interface{}, reply replyFunc) {
 	r := d.r
 	switch msgType {
 	case "input":
 		r.handleInputPayload(fields)
 
 	case "clipboard":
-		text, _ := fields["text"].(string)
-		if text != "" && r.allow(PermissionClipboard, "clipboard write") {
+		// An empty text is a valid clipboard: it clears it.
+		text, ok := fields["text"].(string)
+		if ok && r.allow(PermissionClipboard, "clipboard write") {
 			d.clipWatcher.UpdateLastText(text)
 			_ = d.clipMgr.SetText(ctx, text)
 			log.Printf("[AgentStream] Received and applied clipboard sync (%d bytes)\n", len(text))
@@ -64,8 +80,22 @@ func (d *dataPlane) handle(ctx context.Context, msgType string, fields map[strin
 		name, _ := fields["name"].(string)
 		size, _ := fields["size"].(float64)
 		sha, _ := fields["sha256"].(string)
-		if id != "" && name != "" && r.allow(PermissionFileTransfer, "file transfer") {
-			d.transfer.StartSession(id, name, int64(size), sha)
+		if id != "" && !r.allow(PermissionFileTransfer, "file transfer") {
+			refuseFile(id, PermissionFileTransfer+" has not been granted", reply)
+			return
+		}
+		if id != "" && d.transfer == nil {
+			refuseFile(id, "the agent cannot store files", reply)
+			return
+		}
+		if id != "" {
+			// An empty name is saved under transfer's fallback name.
+			session := d.transfer.StartSession(id, name, int64(size), sha)
+			if r.onFileOffer != nil && !r.onFileOffer(FileOffer{ViewerID: from.id, Key: from.key, TransferID: id, Name: session.FileName, Size: int64(size)}) {
+				d.transfer.Discard(id)
+				refuseFile(id, "the agent refused the file", reply)
+				return
+			}
 			log.Printf("[AgentStream] Started file transfer session %s (%s, %s bytes)\n", logSafe(id), logSafe(name), logSafe(fmt.Sprintf("%.0f", size)))
 		}
 
@@ -73,8 +103,18 @@ func (d *dataPlane) handle(ctx context.Context, msgType string, fields map[strin
 		id, _ := fields["transfer_id"].(string)
 		idx, _ := fields["index"].(float64)
 		b64Data, _ := fields["data"].(string)
-		if id != "" && r.allow(PermissionFileTransfer, "file chunk") {
+		if id != "" && !r.allow(PermissionFileTransfer, "file chunk") {
+			refuseFile(id, PermissionFileTransfer+" has not been granted", reply)
+			return
+		}
+		if id != "" && d.transfer != nil {
 			prog, done, err := d.transfer.AddChunkBase64(id, int(idx), b64Data)
+			if errors.Is(err, transfer.ErrTransferNotFound) {
+				// Refused at file_start, or never started: say so once
+				// per chunk rather than acknowledge data that is dropped.
+				refuseFile(id, "no such transfer", reply)
+				return
+			}
 			if err != nil {
 				log.Printf("[AgentStream] File chunk error: %v\n", err)
 			}
@@ -87,7 +127,12 @@ func (d *dataPlane) handle(ctx context.Context, msgType string, fields map[strin
 
 	case "file_complete":
 		id, _ := fields["transfer_id"].(string)
-		if id != "" && r.allow(PermissionFileTransfer, "file save") {
+		if id != "" && !r.allow(PermissionFileTransfer, "file save") {
+			refuseFile(id, PermissionFileTransfer+" has not been granted", reply)
+			return
+		}
+		if id != "" && d.transfer != nil {
+			name, size := d.transfer.Describe(id)
 			destPath, sha, err := d.transfer.AssembleFile(id)
 			errStr := ""
 			if err != nil {
@@ -95,6 +140,9 @@ func (d *dataPlane) handle(ctx context.Context, msgType string, fields map[strin
 				log.Printf("[AgentStream] File assembly error for %s: %v\n", logSafe(id), err)
 			} else {
 				log.Printf("[AgentStream] File transfer %s completed! Saved to: %s (SHA: %s)\n", logSafe(id), logSafe(destPath), sha)
+				if r.onFileSaved != nil {
+					r.onFileSaved(ReceivedFile{ViewerID: from.id, Key: from.key, TransferID: id, Name: name, Path: destPath, SHA256: sha, Size: size})
+				}
 			}
 			reply("file_saved", map[string]interface{}{
 				"transfer_id": id,
@@ -106,16 +154,30 @@ func (d *dataPlane) handle(ctx context.Context, msgType string, fields map[strin
 	}
 }
 
+// refuseFile tells the sender a file message was refused, and why, with the
+// file_saved it would otherwise wait for, so it stops sending instead of
+// waiting for replies that will never come.
+func refuseFile(id, reason string, reply replyFunc) {
+	reply("file_saved", map[string]interface{}{
+		"transfer_id": id,
+		"error":       reason,
+	})
+}
+
 // handleChannelMessage applies one message from a viewer's data channel. The
 // message is a bark.Envelope; its reply goes back on the same channel, as an
 // envelope too. Anything that is not a data plane message is ignored: the
 // channel carries the user's data, not signalling.
-func (d *dataPlane) handleChannelMessage(ctx context.Context, peer *webrtc.PeerSession, label string, msg []byte) {
+func (d *dataPlane) handleChannelMessage(ctx context.Context, from sender, peer *webrtc.PeerSession, label string, msg []byte) {
 	var env bark.Envelope
 	if err := json.Unmarshal(msg, &env); err != nil {
 		return
 	}
 	msgType := string(env.Type)
+	if label == webrtc.DataChannelControl && isDisplayMessage(env.Type) {
+		d.handleDisplayMessage(ctx, peer, label, env)
+		return
+	}
 	if !isDataPlane(msgType) {
 		return
 	}
@@ -124,7 +186,7 @@ func (d *dataPlane) handleChannelMessage(ctx context.Context, peer *webrtc.PeerS
 		return
 	}
 	agentID := d.r.id
-	d.handle(ctx, msgType, fields, func(replyType string, replyFields map[string]interface{}) {
+	d.handle(ctx, from, msgType, fields, func(replyType string, replyFields map[string]interface{}) {
 		data, err := bark.EncodeEnvelope(bark.MessageType(replyType), agentID, replyFields)
 		if err != nil {
 			return

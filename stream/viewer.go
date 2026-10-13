@@ -32,12 +32,19 @@ import (
 //	v.OnFrame(func(img *image.YCbCr) { /* draw it */ })
 //	go v.Serve(ctx, conn)
 //	_ = v.SendInput(bark.InputEvent{Type: "mouse_move", X: 0.5, Y: 0.5})
+//
+// Clipboard goes both ways (SendClipboard, OnClipboard), files go to the agent
+// (SendFile), and the monitor to stream can be chosen (OnDisplays,
+// SelectDisplay), over the data channels, as far as the person at the machine
+// has granted them.
 type Viewer struct {
 	cfg  ViewerConfig
 	conf webrtc.PeerConfig
 
-	onFrame  func(img *image.YCbCr)
-	onNotice func(Notice)
+	onFrame     func(img *image.YCbCr)
+	onNotice    func(Notice)
+	onClipboard func(text string)
+	onDisplays  func(bark.DisplaysPayload)
 
 	writeMu sync.Mutex
 	conn    SignalConn
@@ -52,6 +59,8 @@ type Viewer struct {
 	pending   []string
 	confirmed bool
 	nonces    *webrtc.NonceCache
+	// transfers holds SendFile's waiters by transfer ID; see viewer_data.go.
+	transfers map[string]chan fileEvent
 }
 
 // ViewerConfig is who a Viewer is, and whom it views.
@@ -81,17 +90,18 @@ type ViewerConfig struct {
 
 // Notice is something the agent told the viewer instead of streaming: that
 // the person at the machine has not consented, that the machine cannot
-// capture its screen, or that input must go over a data channel.
+// capture its screen, that input must go over a data channel, or that the
+// agent ended this viewer's connection.
 type Notice struct {
 	// Type is the agent's message type: "consent_required",
-	// "capture_unavailable" or "data_channel_required".
+	// "capture_unavailable", "data_channel_required" or "disconnected".
 	Type string
 	// Detail is the permission, the reason or the message type concerned.
 	Detail string
 }
 
-// ErrNotConnected is what SendInput returns while the control channel to the
-// agent is not open.
+// ErrNotConnected is what SendInput, SendClipboard and SendFile return while
+// the data channel they need is not open.
 var ErrNotConnected = errors.New("stream: the viewer is not connected to the agent")
 
 // NewViewer returns a Viewer for cfg.
@@ -198,6 +208,20 @@ func (v *Viewer) handle(data []byte) {
 		v.notify(Notice{Type: head.Type, Detail: head.Reason})
 	case "data_channel_required":
 		v.notify(Notice{Type: head.Type, Detail: head.MsgType})
+	case "disconnected":
+		if head.ViewerID != v.cfg.ID {
+			return // another viewer's
+		}
+		// It ends the peer that answered offer_id. If this viewer has
+		// offered again since, the notice is about a peer already gone.
+		v.mu.Lock()
+		stale := head.OfferID != "" && head.OfferID != v.offerID
+		v.mu.Unlock()
+		if stale {
+			return
+		}
+		v.closePeer()
+		v.notify(Notice{Type: head.Type})
 	}
 }
 
@@ -243,6 +267,8 @@ func (v *Viewer) offer() error {
 	}
 	dec := vp8.NewDecoder()
 	peer.OnVideoFrame(func(frame []byte, _ bool) { v.decode(peer, dec, frame) })
+	peer.OnDataMessage(func(_ string, msg []byte) { v.handleData(peer, msg) })
+	peer.OnDataChannelOpen(func(label string) { v.requestDisplays(peer, label) })
 
 	// pion gathers from inside CreateOffer, so candidates can be ready before
 	// the offer is sent. The agent drops a candidate for a viewer it has no
@@ -277,6 +303,7 @@ func (v *Viewer) offer() error {
 	v.offers++
 	id := strconv.Itoa(v.offers)
 	v.peer, v.offerID, v.answered, v.pending, v.confirmed = peer, id, false, nil, false
+	v.failTransfersLocked()
 	v.mu.Unlock()
 	if old != nil {
 		_ = old.Close()
@@ -432,6 +459,7 @@ func (v *Viewer) closePeer() {
 	v.mu.Lock()
 	peer := v.peer
 	v.peer = nil
+	v.failTransfersLocked()
 	v.mu.Unlock()
 	if peer != nil {
 		_ = peer.Close()

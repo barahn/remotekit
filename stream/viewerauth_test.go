@@ -67,10 +67,10 @@ func TestViewerAuth_Check(t *testing.T) {
 	t.Run("trusted and targeted is accepted once", func(t *testing.T) {
 		a := &viewerAuth{trust: trustOnly(pub), nonces: webrtc.NewNonceCache()}
 		raw := signedViewerMessage(t, priv, offer, "agent-1", now)
-		if err := a.check(raw, "agent-1", now); err != nil {
+		if _, err := a.check(raw, "agent-1", now); err != nil {
 			t.Fatalf("first delivery: %v", err)
 		}
-		if err := a.check(raw, "agent-1", now.Add(time.Second)); !errors.Is(err, ErrViewerReplay) {
+		if _, err := a.check(raw, "agent-1", now.Add(time.Second)); !errors.Is(err, ErrViewerReplay) {
 			t.Fatalf("second delivery: want ErrViewerReplay, got %v", err)
 		}
 	})
@@ -78,7 +78,7 @@ func TestViewerAuth_Check(t *testing.T) {
 	t.Run("unsigned is refused", func(t *testing.T) {
 		a := &viewerAuth{trust: trustOnly(pub), nonces: webrtc.NewNonceCache()}
 		raw := []byte(`{"type":"offer","sdp":"v=0","viewer_id":"viewer-a"}`)
-		if err := a.check(raw, "agent-1", now); !errors.Is(err, webrtc.ErrSignalUnsigned) {
+		if _, err := a.check(raw, "agent-1", now); !errors.Is(err, webrtc.ErrSignalUnsigned) {
 			t.Fatalf("want ErrSignalUnsigned, got %v", err)
 		}
 	})
@@ -86,7 +86,7 @@ func TestViewerAuth_Check(t *testing.T) {
 	t.Run("a stranger's key is refused", func(t *testing.T) {
 		a := &viewerAuth{trust: trustOnly(pub), nonces: webrtc.NewNonceCache()}
 		raw := signedViewerMessage(t, strangerPriv, offer, "agent-1", now)
-		if err := a.check(raw, "agent-1", now); !errors.Is(err, ErrViewerUntrusted) {
+		if _, err := a.check(raw, "agent-1", now); !errors.Is(err, ErrViewerUntrusted) {
 			t.Fatalf("want ErrViewerUntrusted, got %v", err)
 		}
 	})
@@ -94,7 +94,7 @@ func TestViewerAuth_Check(t *testing.T) {
 	t.Run("signed for another agent is refused", func(t *testing.T) {
 		a := &viewerAuth{trust: trustOnly(pub), nonces: webrtc.NewNonceCache()}
 		raw := signedViewerMessage(t, priv, offer, "agent-2", now)
-		if err := a.check(raw, "agent-1", now); !errors.Is(err, ErrViewerWrongTarget) {
+		if _, err := a.check(raw, "agent-1", now); !errors.Is(err, ErrViewerWrongTarget) {
 			t.Fatalf("want ErrViewerWrongTarget, got %v", err)
 		}
 	})
@@ -103,7 +103,7 @@ func TestViewerAuth_Check(t *testing.T) {
 		a := &viewerAuth{trust: trustOnly(pub), nonces: webrtc.NewNonceCache()}
 		raw := signedViewerMessage(t, priv, offer, "agent-1", now)
 		raw = bytes.Replace(raw, []byte(`v=0`), []byte(`v=1`), 1)
-		if err := a.check(raw, "agent-1", now); !errors.Is(err, webrtc.ErrSignalBadSig) {
+		if _, err := a.check(raw, "agent-1", now); !errors.Is(err, webrtc.ErrSignalBadSig) {
 			t.Fatalf("want ErrSignalBadSig, got %v", err)
 		}
 	})
@@ -111,7 +111,7 @@ func TestViewerAuth_Check(t *testing.T) {
 	t.Run("expired is refused", func(t *testing.T) {
 		a := &viewerAuth{trust: trustOnly(pub), nonces: webrtc.NewNonceCache()}
 		raw := signedViewerMessage(t, priv, offer, "agent-1", now)
-		if err := a.check(raw, "agent-1", now.Add(2*time.Minute)); !errors.Is(err, webrtc.ErrSignalExpired) {
+		if _, err := a.check(raw, "agent-1", now.Add(2*time.Minute)); !errors.Is(err, webrtc.ErrSignalExpired) {
 			t.Fatalf("want ErrSignalExpired, got %v", err)
 		}
 	})
@@ -128,10 +128,10 @@ func TestViewerAuth_Check(t *testing.T) {
 			nonces: webrtc.NewNonceCache(),
 		}
 		raw := signedViewerMessage(t, priv, offer, "agent-1", now)
-		if err := a.check(raw, "agent-1", now); !errors.Is(err, ErrViewerUntrusted) {
+		if _, err := a.check(raw, "agent-1", now); !errors.Is(err, ErrViewerUntrusted) {
 			t.Fatalf("first: want ErrViewerUntrusted, got %v", err)
 		}
-		if err := a.check(raw, "agent-1", now); err != nil {
+		if _, err := a.check(raw, "agent-1", now); err != nil {
 			t.Fatalf("once trusted, the same message should pass: %v", err)
 		}
 	})
