@@ -240,7 +240,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 	dp := &dataPlane{r: r, clipMgr: clipMgr, clipWatcher: clipWatcher, transfer: transferMgr}
 
 	// The monitor being streamed, as the frames report it; -1 until the
-	// first one. See displays.go.
+	// first one of the current capture. See displays.go.
 	activeDisplay := -1
 	currentCapturer := func() screen.Capturer {
 		stateMu.RLock()
@@ -625,6 +625,11 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 						stateMu.Lock()
 						capturer = cap
 						activeCapCancel = cancelCap
+						// A restarted capture begins on its own default
+						// monitor, so neither the monitor the previous one
+						// streamed nor the one last asked of it holds.
+						activeDisplay = -1
+						requested = -1
 						stateMu.Unlock()
 						framesChan = cap.Frames()
 					} else {
@@ -681,9 +686,15 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 							r.injector.SetScreenBounds(bounds)
 							inputBounds = bounds
 						}
+						// A frame still buffered from a capture that has since
+						// been stopped or replaced must not overwrite what the
+						// current one reports.
 						stateMu.Lock()
-						changed := frame.DisplayIndex != activeDisplay
-						activeDisplay = frame.DisplayIndex
+						current := capturer == cap
+						changed := current && frame.DisplayIndex != activeDisplay
+						if current {
+							activeDisplay = frame.DisplayIndex
+						}
 						stateMu.Unlock()
 						if changed {
 							announceDisplays()
