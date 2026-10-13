@@ -6,6 +6,7 @@ package stream
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -383,18 +384,17 @@ func (c wsConn) WriteMessage(data []byte) error {
 func (c wsConn) Close() error { return c.ws.Close() }
 
 // A refused transfer is told so once, however many of its chunks were already
-// in flight, and each transfer is told on its own.
+// in flight. Each transfer is told on its own, and a transfer is its sender
+// and its ID together: one viewer reusing another's ID still gets its reply.
 func TestRefusedTransferIsToldOnce(t *testing.T) {
 	d := &dataPlane{r: &Runner{id: "agent-1"}} // file_transfer not granted
 	var replies []string
-	reply := func(msgType string, fields map[string]interface{}) {
-		id, _ := fields["transfer_id"].(string)
-		replies = append(replies, msgType+":"+id)
-	}
-
 	ctx := context.Background()
-	from := sender{id: "viewer-1"}
-	for _, id := range []string{"t1", "t2"} {
+	send := func(from sender, id string) {
+		reply := func(msgType string, fields map[string]interface{}) {
+			tid, _ := fields["transfer_id"].(string)
+			replies = append(replies, from.id+":"+msgType+":"+tid)
+		}
 		d.handle(ctx, from, "file_start", map[string]interface{}{"transfer_id": id, "name": "a.bin", "size": float64(3)}, reply)
 		for i := 0; i < 5; i++ {
 			d.handle(ctx, from, "file_chunk", map[string]interface{}{"transfer_id": id, "index": float64(i), "data": "YQ=="}, reply)
@@ -402,8 +402,34 @@ func TestRefusedTransferIsToldOnce(t *testing.T) {
 		d.handle(ctx, from, "file_complete", map[string]interface{}{"transfer_id": id}, reply)
 	}
 
-	want := []string{"file_saved:t1", "file_saved:t2"}
+	v1, v2 := sender{id: "viewer-1"}, sender{id: "viewer-2"}
+	send(v1, "t1")
+	send(v1, "t2")
+	send(v2, "t1")
+	send(v1, "t1")
+
+	want := []string{"viewer-1:file_saved:t1", "viewer-1:file_saved:t2", "viewer-2:file_saved:t1"}
 	if strings.Join(replies, " ") != strings.Join(want, " ") {
 		t.Fatalf("replies = %v, want %v", replies, want)
+	}
+}
+
+// The refusal record holds a fixed-size key per transfer, whatever the length
+// of the IDs, and fields that only concatenate alike stay apart.
+func TestRefusalKey(t *testing.T) {
+	if refusalKey(sender{id: "a"}, "bc") == refusalKey(sender{id: "ab"}, "c") {
+		t.Fatal("refusal keys collide when the field boundary moves")
+	}
+	if refusalKey(sender{id: "v", key: []byte{1}}, "t") == refusalKey(sender{id: "v"}, "t") {
+		t.Fatal("refusal keys ignore the sender's key")
+	}
+
+	d := &dataPlane{r: &Runner{id: "agent-1"}}
+	long := strings.Repeat("x", 1<<20)
+	for i := 0; i < maxRefused*2; i++ {
+		d.refuseFile(sender{id: "v"}, fmt.Sprint(i)+long, "refused", func(string, map[string]interface{}) {})
+	}
+	if n := len(d.refused); n > maxRefused {
+		t.Fatalf("refused holds %d transfers, want at most %d", n, maxRefused)
 	}
 }
