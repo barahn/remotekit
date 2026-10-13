@@ -49,6 +49,7 @@ layered on top register through extension points such as
 | `bark` | The wire envelope shared by everything above |
 | `heartbeat` | Generic keepalive with server-side staleness monitoring |
 | `rendezvous` | Two peers that have never met find each other by a short single-use code, or a link that mints one; failed attempts throttled per origin |
+| `pake` | Two peers that share only a short code learn each other's ed25519 key over a carrier they do not trust: CPace (draft-irtf-cfrg-cpace-21) on ristretto255, with key confirmation |
 | `tray` | System tray icon and menu |
 | `service` | Install and manage an OS service (systemd, launchd, SCM) |
 | `osinfo` | Host details |
