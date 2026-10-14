@@ -145,13 +145,15 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `ebd1a9d`** — docs: refresh the handoff status block
+**`develop` is at `3d44536`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#110](https://github.com/barahn/remotekit/pull/110) | chore(release): merge develop → main (6 commits) — Merge pull request #107 from barahn/feat/pake-cpace | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/115194507196) |
+| [#110](https://github.com/barahn/remotekit/pull/110) | chore(release): merge develop → main (6 commits) — Merge pull request #107 from barahn/feat/pake-cpace | `develop` | Dependabot ⏳ (in_progress)<br>Dependabot ⏳ (in_progress)<br>Dependabot ✅<br>CodeQL ✅<br>signal/nostr module ✅<br>DCO Sign-off ✅<br>Build, Test & SAST ✅<br>Release source ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38367064279/job/115204371258)<br>Review dependency changes ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38367064281/job/115204366500)<br>Analyze (Go) ✅<br>gitleaks ✅<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/115194598430)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38367055583/job/115194595133)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38367055583/job/115194595007)<br>signal/nostr module ✅<br>Build, Test & SAST ✅ |
+| [#111](https://github.com/barahn/remotekit/pull/111) | deps: Bump github.com/pion/webrtc/v4 from 4.2.22 to 4.2.23 in the pion group | `dependabot/go_modules/develop/pion-3d424415c3` | [Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38490548471/job/115614446607)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38490548469/job/115614446480)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38490548498/job/115614445512)<br>Analyze (Go) ⏳ (in_progress)<br>DCO Sign-off ✅<br>signal/nostr module ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/115614443447)<br>Aikido Security: check code ✅ |
+| [#112](https://github.com/barahn/remotekit/pull/112) | deps: Bump the golang-x group with 2 updates | `dependabot/go_modules/develop/golang-x-f6d315049e` | [Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/115614469492)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38490555217/job/115614468286)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38490555088/job/115614468280)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38490554940/job/115614467693)<br>gitleaks ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>DCO Sign-off ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>Aikido Security: check code ✅ |
 
 <!-- END GENERATED: handoff status -->
 
