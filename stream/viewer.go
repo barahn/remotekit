@@ -45,6 +45,7 @@ type Viewer struct {
 	onNotice    func(Notice)
 	onClipboard func(text string)
 	onDisplays  func(bark.DisplaysPayload)
+	onGranted   func(granted []string)
 
 	writeMu sync.Mutex
 	conn    SignalConn
@@ -268,7 +269,10 @@ func (v *Viewer) offer() error {
 	dec := vp8.NewDecoder()
 	peer.OnVideoFrame(func(frame []byte, _ bool) { v.decode(peer, dec, frame) })
 	peer.OnDataMessage(func(_ string, msg []byte) { v.handleData(peer, msg) })
-	peer.OnDataChannelOpen(func(label string) { v.requestDisplays(peer, label) })
+	peer.OnDataChannelOpen(func(label string) {
+		v.requestDisplays(peer, label)
+		v.requestPermissions(peer, label)
+	})
 
 	// pion gathers from inside CreateOffer, so candidates can be ready before
 	// the offer is sent. The agent drops a candidate for a viewer it has no
