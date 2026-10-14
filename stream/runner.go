@@ -90,6 +90,10 @@ type Runner struct {
 	sessionsMu sync.Mutex
 	sessions   map[*sessionHook]struct{}
 
+	// noClipboardWatch keeps the host's clipboard from being watched; see
+	// DisableClipboardWatch.
+	noClipboardWatch bool
+
 	// disableRelay and onRelayMode govern the JPEG fallback; see
 	// DisableRelayFallback and OnRelayMode.
 	disableRelay bool
@@ -363,7 +367,11 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 	clipCtx, clipCancel := context.WithCancel(ctx)
 	defer clipCancel()
 
-	go clipWatcher.Start(clipCtx, func(newText string) {
+	watch := clipWatcher.Start
+	if r.noClipboardWatch {
+		watch = func(context.Context, func(string)) {}
+	}
+	go watch(clipCtx, func(newText string) {
 		if !r.allow(PermissionClipboard, "host clipboard sync") {
 			return
 		}
@@ -447,7 +455,11 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 		}
 	}
 
-	unregister := r.registerSession(func(id string) bool {
+	sendClipboard := clipboardSender(r.id, func() (map[string]*webrtc.PeerSession, func()) {
+		stateMu.RLock()
+		return peers, stateMu.RUnlock
+	})
+	unregister := r.registerSession(sendClipboard, func(id string) bool {
 		stateMu.Lock()
 		peer := peers[id]
 		offerID := peerOffers[id]

@@ -73,17 +73,18 @@ func (r *Runner) Disconnect(viewerID string) bool {
 	return found
 }
 
-// sessionHook is how Disconnect, and a change of permissions, reach a running
-// Serve.
+// sessionHook is how Disconnect, SendClipboard and a change of permissions
+// reach a running Serve.
 type sessionHook struct {
-	disconnect  func(viewerID string) bool
-	permissions func()
+	disconnect    func(viewerID string) bool
+	sendClipboard func(text string) int
+	permissions   func()
 }
 
-// registerSession makes a running Serve reachable by Disconnect and
-// announcePermissions until the returned function is called.
-func (r *Runner) registerSession(disconnect func(string) bool, permissions func()) func() {
-	h := &sessionHook{disconnect: disconnect, permissions: permissions}
+// registerSession makes a running Serve reachable by Disconnect,
+// SendClipboard and announcePermissions until the returned function is called.
+func (r *Runner) registerSession(sendClipboard func(string) int, disconnect func(string) bool, permissions func()) func() {
+	h := &sessionHook{disconnect: disconnect, sendClipboard: sendClipboard, permissions: permissions}
 	r.sessionsMu.Lock()
 	if r.sessions == nil {
 		r.sessions = make(map[*sessionHook]struct{})

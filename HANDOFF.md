@@ -304,6 +304,20 @@ Also open, unrelated to the above: macOS is stubbed out —
 CGDisplayStream/ScreenCaptureKit respectively. Doing that without CGo is the
 hard part; discuss before starting.
 
+### The host's clipboard, on demand
+
+Once `clipboard` is granted, the runner watches the host's clipboard every 500 ms and
+sends each change to every viewer: continuous sync. A consumer that promises
+the person at the machine never to read their clipboard on its own (Chirp,
+whose decision 4 says so) turns the watch off with
+`Runner.DisableClipboardWatch(true)` and calls `Runner.SendClipboard(text)`
+when that person asks. `SendClipboard` sends exactly the text it is given,
+once, over the control data channel only. It never falls back to the
+signalling socket (`ErrNoDataChannel`), and it needs `clipboard` granted
+(`ErrNotGranted`). Text from viewers is applied either way, as far as the
+grant allows. The default is unchanged, so consumers that want the sync
+need no change.
+
 ## 6. What to do now
 
 1. Clear whatever §4's generated block shows red. A failing check on an open

@@ -21,12 +21,22 @@ import (
 // each other, and waits until the viewer's data channels are open.
 func dataSession(t *testing.T, permissions ...string) (*Runner, *Viewer, *clipboard.MemoryClipboard) {
 	t.Helper()
+	return dataSessionWith(t, nil, permissions...)
+}
+
+// dataSessionWith is dataSession with setup run on the Runner and the Viewer
+// before either serves, for what must be set by then.
+func dataSessionWith(t *testing.T, setup func(*Runner, *Viewer), permissions ...string) (*Runner, *Viewer, *clipboard.MemoryClipboard) {
+	t.Helper()
 	clip := clipboard.NewMemoryClipboard()
 	r := New(Config{ID: "agent-1"})
 	r.clip = clip
 	r.RequireDataChannel(true)
 	r.Grant(permissions...)
 	v := NewViewer(ViewerConfig{ID: "viewer-1", AgentID: "agent-1"})
+	if setup != nil {
+		setup(r, v)
+	}
 	session(t, r, v)
 
 	deadline := time.Now().Add(20 * time.Second)
