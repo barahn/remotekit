@@ -283,10 +283,12 @@ func (v *Viewer) handleData(peer *webrtc.PeerSession, msg []byte) {
 		if json.Unmarshal(env.Payload, &p) != nil || v.onGranted == nil {
 			return
 		}
-		// A list older than the last one delivered from this peer arrived
-		// late, after a newer change: it is out of date.
+		// A list from a peer that has since been replaced, or older than
+		// the last one delivered from this peer, is out of date. The check
+		// and the update are one critical section, so a list from a peer
+		// replaced meanwhile cannot overwrite the current peer's.
 		v.mu.Lock()
-		stale := v.permPeer == peer && p.Generation < v.permGen
+		stale := v.peer != peer || (v.permPeer == peer && p.Generation < v.permGen)
 		if !stale {
 			v.permPeer, v.permGen = peer, p.Generation
 		}
