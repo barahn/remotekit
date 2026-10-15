@@ -38,6 +38,13 @@ const (
 	TypeListDisplays  MessageType = "list_displays"
 	TypeSelectDisplay MessageType = "select_display"
 	TypeDisplays      MessageType = "displays"
+
+	// What the person at the machine has granted, over the control data
+	// channel. A viewer asks with TypeListPermissions; the agent answers,
+	// and announces every later change, with TypePermissions, so that a
+	// viewer can show what it may not do instead of failing silently.
+	TypeListPermissions MessageType = "list_permissions"
+	TypePermissions     MessageType = "permissions"
 )
 
 // Envelope is the top-level wire format for Yamux Bark multiplexed streams.
@@ -136,6 +143,19 @@ type DisplaysPayload struct {
 	Displays []DisplayInfo `json:"displays"`
 	Active   int           `json:"active"`
 	Error    string        `json:"error,omitempty"`
+}
+
+// PermissionsPayload names what the agent lets the viewer do, sorted: the
+// permissions the person at the machine agreed to, any standing ones, and
+// any the agent does not gate (stream.Runner names screen_view when it does
+// not require consent for it). A permission not named is refused.
+//
+// Generation counts the agent's changes to the list. Lists can arrive out of
+// order when changes race, so a viewer keeps the one with the highest
+// generation. An agent that does not count sends zero.
+type PermissionsPayload struct {
+	Granted    []string `json:"granted"`
+	Generation uint64   `json:"generation,omitempty"`
 }
 
 // SelectDisplayPayload asks the agent to stream another monitor.

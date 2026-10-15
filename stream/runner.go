@@ -61,6 +61,10 @@ type Runner struct {
 	granted   map[string]bool
 	standing  map[string]bool
 	warned    map[string]bool
+	// permGen counts changes to what viewers may do, under consentMu; each
+	// list sent to a viewer carries it, so a viewer can drop a list that
+	// arrives after a newer one. See permissions.go.
+	permGen uint64
 
 	// viewerAuth, when set, restricts negotiation to signed viewers; see
 	// RequireSignedViewers.
@@ -320,6 +324,23 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 			_ = p.SendData(webrtc.DataChannelControl, env)
 		}
 	}
+	// announcePermissions tells every viewer with a control channel what is
+	// granted now; Grant, Revoke and SetStandingPermissions call it through
+	// registerSession.
+	announcePermissions := func() {
+		granted, gen := r.effectivePermissions()
+		stateMu.RLock()
+		live := make([]*webrtc.PeerSession, 0, len(peers))
+		for _, p := range peers {
+			if p.DataChannelOpen(webrtc.DataChannelControl) {
+				live = append(live, p)
+			}
+		}
+		stateMu.RUnlock()
+		for _, p := range live {
+			sendPermissions(p, webrtc.DataChannelControl, r.id, granted, gen)
+		}
+	}
 	var refusal relayRefusal
 	relay := &relayGate{disabled: r.disableRelay, onChange: r.onRelayMode}
 
@@ -438,7 +459,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 		notice, _ := json.Marshal(map[string]string{"type": "disconnected", "viewer_id": id, "offer_id": offerID})
 		_ = safeWrite(notice)
 		return true
-	})
+	}, announcePermissions)
 	defer unregister()
 
 	defer func() {

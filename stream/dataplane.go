@@ -224,6 +224,11 @@ func (d *dataPlane) handleChannelMessage(ctx context.Context, from sender, peer 
 		d.handleDisplayMessage(ctx, peer, label, env)
 		return
 	}
+	if label == webrtc.DataChannelControl && env.Type == bark.TypeListPermissions {
+		granted, gen := d.r.effectivePermissions()
+		sendPermissions(peer, label, d.r.id, granted, gen)
+		return
+	}
 	if !isDataPlane(msgType) {
 		return
 	}

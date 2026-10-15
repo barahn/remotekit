@@ -45,6 +45,7 @@ type Viewer struct {
 	onNotice    func(Notice)
 	onClipboard func(text string)
 	onDisplays  func(bark.DisplaysPayload)
+	onGranted   func(granted []string)
 
 	writeMu sync.Mutex
 	conn    SignalConn
@@ -61,6 +62,10 @@ type Viewer struct {
 	nonces    *webrtc.NonceCache
 	// transfers holds SendFile's waiters by transfer ID; see viewer_data.go.
 	transfers map[string]chan fileEvent
+	// permPeer and permGen are the peer the last permissions list came
+	// from and its generation, so an older list arriving late is dropped.
+	permPeer *webrtc.PeerSession
+	permGen  uint64
 }
 
 // ViewerConfig is who a Viewer is, and whom it views.
@@ -268,7 +273,10 @@ func (v *Viewer) offer() error {
 	dec := vp8.NewDecoder()
 	peer.OnVideoFrame(func(frame []byte, _ bool) { v.decode(peer, dec, frame) })
 	peer.OnDataMessage(func(_ string, msg []byte) { v.handleData(peer, msg) })
-	peer.OnDataChannelOpen(func(label string) { v.requestDisplays(peer, label) })
+	peer.OnDataChannelOpen(func(label string) {
+		v.requestDisplays(peer, label)
+		v.requestPermissions(peer, label)
+	})
 
 	// pion gathers from inside CreateOffer, so candidates can be ready before
 	// the offer is sent. The agent drops a candidate for a viewer it has no

@@ -73,15 +73,17 @@ func (r *Runner) Disconnect(viewerID string) bool {
 	return found
 }
 
-// sessionHook is how Disconnect reaches a running Serve.
+// sessionHook is how Disconnect, and a change of permissions, reach a running
+// Serve.
 type sessionHook struct {
-	disconnect func(viewerID string) bool
+	disconnect  func(viewerID string) bool
+	permissions func()
 }
 
-// registerSession makes a running Serve reachable by Disconnect until the
-// returned function is called.
-func (r *Runner) registerSession(disconnect func(string) bool) func() {
-	h := &sessionHook{disconnect: disconnect}
+// registerSession makes a running Serve reachable by Disconnect and
+// announcePermissions until the returned function is called.
+func (r *Runner) registerSession(disconnect func(string) bool, permissions func()) func() {
+	h := &sessionHook{disconnect: disconnect, permissions: permissions}
 	r.sessionsMu.Lock()
 	if r.sessions == nil {
 		r.sessions = make(map[*sessionHook]struct{})
@@ -92,6 +94,25 @@ func (r *Runner) registerSession(disconnect func(string) bool) func() {
 		r.sessionsMu.Lock()
 		delete(r.sessions, h)
 		r.sessionsMu.Unlock()
+	}
+}
+
+// announcePermissions tells the viewers of every running Serve what is
+// granted now. It is called after the consent lock is released, since each
+// Serve reads the permissions again, and it holds no lock while they send:
+// two changes racing each other may be sent in either order, and the
+// generation each list carries lets a viewer keep the newer one.
+func (r *Runner) announcePermissions() {
+	r.sessionsMu.Lock()
+	hooks := make([]*sessionHook, 0, len(r.sessions))
+	for h := range r.sessions {
+		hooks = append(hooks, h)
+	}
+	r.sessionsMu.Unlock()
+	for _, h := range hooks {
+		if h.permissions != nil {
+			h.permissions()
+		}
 	}
 }
 

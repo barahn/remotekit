@@ -3,7 +3,11 @@
 
 package stream
 
-import "log"
+import (
+	"log"
+	"slices"
+	"sort"
+)
 
 // The permissions a session can be granted, as named in
 // bark.ConsentRequestPayload.RequestedPermissions. PermissionScreenView is
@@ -28,9 +32,12 @@ const (
 // accepted. Nothing on the signalling socket grants, because the server is not
 // who consents; the only other source of permission is the consumer's own
 // policy, through SetStandingPermissions.
+//
+// Grant, Revoke and SetStandingPermissions each tell every connected viewer
+// what is granted now, with a bark.TypePermissions message on its control
+// channel, so the viewer can show what it may not do.
 func (r *Runner) Grant(permissions ...string) {
 	r.consentMu.Lock()
-	defer r.consentMu.Unlock()
 	if r.granted == nil {
 		r.granted = make(map[string]bool)
 	}
@@ -38,22 +45,27 @@ func (r *Runner) Grant(permissions ...string) {
 		r.granted[p] = true
 		delete(r.warned, p)
 	}
+	r.permGen++
+	r.consentMu.Unlock()
+	r.announcePermissions()
 }
 
 // Revoke withdraws the named permissions, or every permission if none are
 // named. It also runs when the server closes the session. It withdraws only
 // what Grant gave; standing permissions are changed with
-// SetStandingPermissions.
+// SetStandingPermissions. It can run mid-session: a permission withdrawn stops
+// at once, the screen included.
 func (r *Runner) Revoke(permissions ...string) {
 	r.consentMu.Lock()
-	defer r.consentMu.Unlock()
 	if len(permissions) == 0 {
 		r.granted = nil
-		return
 	}
 	for _, p := range permissions {
 		delete(r.granted, p)
 	}
+	r.permGen++
+	r.consentMu.Unlock()
+	r.announcePermissions()
 }
 
 // SetStandingPermissions replaces the permissions the consumer's own policy
@@ -68,7 +80,6 @@ func (r *Runner) Revoke(permissions ...string) {
 // Where somebody is at the machine to ask, ask them and use Grant instead.
 func (r *Runner) SetStandingPermissions(permissions ...string) {
 	r.consentMu.Lock()
-	defer r.consentMu.Unlock()
 	r.standing = nil
 	for _, p := range permissions {
 		if r.standing == nil {
@@ -77,6 +88,9 @@ func (r *Runner) SetStandingPermissions(permissions ...string) {
 		r.standing[p] = true
 		delete(r.warned, p)
 	}
+	r.permGen++
+	r.consentMu.Unlock()
+	r.announcePermissions()
 }
 
 // Granted reports whether permission has been granted, by Grant or as a
@@ -85,6 +99,48 @@ func (r *Runner) Granted(permission string) bool {
 	r.consentMu.RLock()
 	defer r.consentMu.RUnlock()
 	return r.granted[permission] || r.standing[permission]
+}
+
+// GrantedPermissions lists every permission granted, by Grant or as a
+// standing permission, sorted. It is what viewers are told in a
+// bark.TypePermissions message.
+func (r *Runner) GrantedPermissions() []string {
+	r.consentMu.RLock()
+	defer r.consentMu.RUnlock()
+	return r.grantedLocked()
+}
+
+// grantedLocked is GrantedPermissions, for a caller holding consentMu.
+func (r *Runner) grantedLocked() []string {
+	list := make([]string, 0, len(r.granted)+len(r.standing))
+	for p, ok := range r.granted {
+		if ok {
+			list = append(list, p)
+		}
+	}
+	for p, ok := range r.standing {
+		if ok && !r.granted[p] {
+			list = append(list, p)
+		}
+	}
+	sort.Strings(list)
+	return list
+}
+
+// effectivePermissions is what viewers are told, with the change it is as
+// of: GrantedPermissions, plus screen_view while the screen is not withheld
+// for want of it (see RequireScreenViewConsent), since the screen is then
+// streamed anyway and a viewer must not show it as refused. Both are read
+// under one lock, so a list and its generation always belong together.
+func (r *Runner) effectivePermissions() ([]string, uint64) {
+	r.consentMu.RLock()
+	defer r.consentMu.RUnlock()
+	list := r.grantedLocked()
+	if !r.requireScreenView && !slices.Contains(list, PermissionScreenView) {
+		list = append(list, PermissionScreenView)
+		sort.Strings(list)
+	}
+	return list, r.permGen
 }
 
 // allow is Granted plus a log line when it refuses, so a session that does
@@ -123,5 +179,9 @@ func (r *Runner) allow(permission, what string) bool {
 //
 // Call it before Serve.
 func (r *Runner) RequireScreenViewConsent(required bool) {
+	r.consentMu.Lock()
 	r.requireScreenView = required
+	r.permGen++
+	r.consentMu.Unlock()
+	r.announcePermissions()
 }
