@@ -69,11 +69,11 @@ func TestViewerIsToldWhatIsGranted(t *testing.T) {
 func TestAnUngatedScreenIsReportedAsAllowed(t *testing.T) {
 	r := New(Config{ID: "agent-1"})
 	r.Grant(PermissionClipboard)
-	if got, want := r.effectivePermissions(), []string{PermissionClipboard, PermissionScreenView}; !slices.Equal(got, want) {
+	if got, want := first(r.effectivePermissions()), []string{PermissionClipboard, PermissionScreenView}; !slices.Equal(got, want) {
 		t.Fatalf("ungated: told %v, want %v", got, want)
 	}
 	r.RequireScreenViewConsent(true)
-	if got, want := r.effectivePermissions(), []string{PermissionClipboard}; !slices.Equal(got, want) {
+	if got, want := first(r.effectivePermissions()), []string{PermissionClipboard}; !slices.Equal(got, want) {
 		t.Fatalf("gated: told %v, want %v", got, want)
 	}
 	if got := r.GrantedPermissions(); !slices.Equal(got, []string{PermissionClipboard}) {
@@ -113,7 +113,7 @@ func TestRacingChangesEndOnTheLatestList(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
-	want := r.effectivePermissions()
+	want, _ := r.effectivePermissions()
 
 	var last []string
 	for {
@@ -127,5 +127,25 @@ func TestRacingChangesEndOnTheLatestList(t *testing.T) {
 	}
 	if !slices.Equal(last, want) {
 		t.Fatalf("last told %v, but the runner grants %v", last, want)
+	}
+}
+
+// first is the list effectivePermissions returns, without its generation.
+func first(list []string, _ uint64) []string { return list }
+
+// Every change moves the generation on, so lists can be ordered.
+func TestEveryChangeMovesTheGenerationOn(t *testing.T) {
+	r := New(Config{ID: "agent-1"})
+	_, g0 := r.effectivePermissions()
+	r.Grant(PermissionClipboard)
+	_, g1 := r.effectivePermissions()
+	r.Revoke(PermissionClipboard)
+	_, g2 := r.effectivePermissions()
+	r.SetStandingPermissions(PermissionFileTransfer)
+	_, g3 := r.effectivePermissions()
+	r.RequireScreenViewConsent(true)
+	_, g4 := r.effectivePermissions()
+	if g0 >= g1 || g1 >= g2 || g2 >= g3 || g3 >= g4 {
+		t.Fatalf("generations %d %d %d %d %d, want each change to raise it", g0, g1, g2, g3, g4)
 	}
 }

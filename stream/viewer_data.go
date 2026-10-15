@@ -280,7 +280,18 @@ func (v *Viewer) handleData(peer *webrtc.PeerSession, msg []byte) {
 		}
 	case bark.TypePermissions:
 		var p bark.PermissionsPayload
-		if json.Unmarshal(env.Payload, &p) == nil && v.onGranted != nil {
+		if json.Unmarshal(env.Payload, &p) != nil || v.onGranted == nil {
+			return
+		}
+		// A list older than the last one delivered from this peer arrived
+		// late, after a newer change: it is out of date.
+		v.mu.Lock()
+		stale := v.permPeer == peer && p.Generation < v.permGen
+		if !stale {
+			v.permPeer, v.permGen = peer, p.Generation
+		}
+		v.mu.Unlock()
+		if !stale {
 			v.onGranted(p.Granted)
 		}
 	case bark.TypeFileProgress, bark.TypeFileSaved:

@@ -19,12 +19,18 @@ import (
 // allow, and screen_view as well while RequireScreenViewConsent is off, since
 // the screen is then streamed without it. It is answered whatever has been
 // granted: it names permissions, not anything of the machine's, and a viewer
-// refused everything most needs to know. Announcements and answers are sent
-// under the Runner's announceMu, in the order the changes were made.
+// refused everything most needs to know.
+//
+// Each list carries the generation of the change it reflects, read with it
+// under the consent lock. Lists are sent with no lock held, so that a viewer
+// slow to take them holds up nobody else; two racing changes may then reach
+// a viewer in either order, and the Viewer drops a list older than the last
+// one it delivered.
 
-// sendPermissions sends the granted permissions to peer on label.
-func sendPermissions(peer *webrtc.PeerSession, label, agentID string, granted []string) {
-	data, err := bark.EncodeEnvelope(bark.TypePermissions, agentID, bark.PermissionsPayload{Granted: granted})
+// sendPermissions sends the granted permissions, as of generation gen, to
+// peer on label.
+func sendPermissions(peer *webrtc.PeerSession, label, agentID string, granted []string, gen uint64) {
+	data, err := bark.EncodeEnvelope(bark.TypePermissions, agentID, bark.PermissionsPayload{Granted: granted, Generation: gen})
 	if err != nil {
 		return
 	}

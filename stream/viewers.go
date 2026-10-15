@@ -99,12 +99,10 @@ func (r *Runner) registerSession(disconnect func(string) bool, permissions func(
 
 // announcePermissions tells the viewers of every running Serve what is
 // granted now. It is called after the consent lock is released, since each
-// Serve reads the permissions again, and it holds announceMu while they do:
-// two changes racing each other could otherwise be announced in the wrong
-// order, and leave a viewer with the older list.
+// Serve reads the permissions again, and it holds no lock while they send:
+// two changes racing each other may be sent in either order, and the
+// generation each list carries lets a viewer keep the newer one.
 func (r *Runner) announcePermissions() {
-	r.announceMu.Lock()
-	defer r.announceMu.Unlock()
 	r.sessionsMu.Lock()
 	hooks := make([]*sessionHook, 0, len(r.sessions))
 	for h := range r.sessions {

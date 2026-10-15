@@ -45,6 +45,7 @@ func (r *Runner) Grant(permissions ...string) {
 		r.granted[p] = true
 		delete(r.warned, p)
 	}
+	r.permGen++
 	r.consentMu.Unlock()
 	r.announcePermissions()
 }
@@ -62,6 +63,7 @@ func (r *Runner) Revoke(permissions ...string) {
 	for _, p := range permissions {
 		delete(r.granted, p)
 	}
+	r.permGen++
 	r.consentMu.Unlock()
 	r.announcePermissions()
 }
@@ -86,6 +88,7 @@ func (r *Runner) SetStandingPermissions(permissions ...string) {
 		r.standing[p] = true
 		delete(r.warned, p)
 	}
+	r.permGen++
 	r.consentMu.Unlock()
 	r.announcePermissions()
 }
@@ -104,6 +107,11 @@ func (r *Runner) Granted(permission string) bool {
 func (r *Runner) GrantedPermissions() []string {
 	r.consentMu.RLock()
 	defer r.consentMu.RUnlock()
+	return r.grantedLocked()
+}
+
+// grantedLocked is GrantedPermissions, for a caller holding consentMu.
+func (r *Runner) grantedLocked() []string {
 	list := make([]string, 0, len(r.granted)+len(r.standing))
 	for p, ok := range r.granted {
 		if ok {
@@ -119,17 +127,20 @@ func (r *Runner) GrantedPermissions() []string {
 	return list
 }
 
-// effectivePermissions is what viewers are told: GrantedPermissions, plus
-// screen_view while the screen is not withheld for want of it (see
-// RequireScreenViewConsent), since the screen is then streamed anyway and a
-// viewer must not show it as refused.
-func (r *Runner) effectivePermissions() []string {
-	list := r.GrantedPermissions()
+// effectivePermissions is what viewers are told, with the change it is as
+// of: GrantedPermissions, plus screen_view while the screen is not withheld
+// for want of it (see RequireScreenViewConsent), since the screen is then
+// streamed anyway and a viewer must not show it as refused. Both are read
+// under one lock, so a list and its generation always belong together.
+func (r *Runner) effectivePermissions() ([]string, uint64) {
+	r.consentMu.RLock()
+	defer r.consentMu.RUnlock()
+	list := r.grantedLocked()
 	if !r.requireScreenView && !slices.Contains(list, PermissionScreenView) {
 		list = append(list, PermissionScreenView)
 		sort.Strings(list)
 	}
-	return list
+	return list, r.permGen
 }
 
 // allow is Granted plus a log line when it refuses, so a session that does
@@ -168,6 +179,9 @@ func (r *Runner) allow(permission, what string) bool {
 //
 // Call it before Serve.
 func (r *Runner) RequireScreenViewConsent(required bool) {
+	r.consentMu.Lock()
 	r.requireScreenView = required
+	r.permGen++
+	r.consentMu.Unlock()
 	r.announcePermissions()
 }

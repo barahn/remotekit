@@ -225,11 +225,8 @@ func (d *dataPlane) handleChannelMessage(ctx context.Context, from sender, peer 
 		return
 	}
 	if label == webrtc.DataChannelControl && env.Type == bark.TypeListPermissions {
-		// Under announceMu, so an answer cannot overtake an announcement
-		// of a later change.
-		d.r.announceMu.Lock()
-		sendPermissions(peer, label, d.r.id, d.r.effectivePermissions())
-		d.r.announceMu.Unlock()
+		granted, gen := d.r.effectivePermissions()
+		sendPermissions(peer, label, d.r.id, granted, gen)
 		return
 	}
 	if !isDataPlane(msgType) {

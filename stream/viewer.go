@@ -62,6 +62,10 @@ type Viewer struct {
 	nonces    *webrtc.NonceCache
 	// transfers holds SendFile's waiters by transfer ID; see viewer_data.go.
 	transfers map[string]chan fileEvent
+	// permPeer and permGen are the peer the last permissions list came
+	// from and its generation, so an older list arriving late is dropped.
+	permPeer *webrtc.PeerSession
+	permGen  uint64
 }
 
 // ViewerConfig is who a Viewer is, and whom it views.

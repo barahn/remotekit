@@ -149,8 +149,13 @@ type DisplaysPayload struct {
 // permissions the person at the machine agreed to, any standing ones, and
 // any the agent does not gate (stream.Runner names screen_view when it does
 // not require consent for it). A permission not named is refused.
+//
+// Generation counts the agent's changes to the list. Lists can arrive out of
+// order when changes race, so a viewer keeps the one with the highest
+// generation. An agent that does not count sends zero.
 type PermissionsPayload struct {
-	Granted []string `json:"granted"`
+	Granted    []string `json:"granted"`
+	Generation uint64   `json:"generation,omitempty"`
 }
 
 // SelectDisplayPayload asks the agent to stream another monitor.
