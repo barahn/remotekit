@@ -15,9 +15,12 @@ import (
 // answers with bark.TypePermissions, then sends one again whenever Grant,
 // Revoke or SetStandingPermissions changes the set.
 //
-// The list is answered whatever has been granted, screen_view included: it
-// names permissions, not anything of the machine's, and a viewer refused
-// everything most needs to know.
+// The list is what the viewer may do: what Grant and SetStandingPermissions
+// allow, and screen_view as well while RequireScreenViewConsent is off, since
+// the screen is then streamed without it. It is answered whatever has been
+// granted: it names permissions, not anything of the machine's, and a viewer
+// refused everything most needs to know. Announcements and answers are sent
+// under the Runner's announceMu, in the order the changes were made.
 
 // sendPermissions sends the granted permissions to peer on label.
 func sendPermissions(peer *webrtc.PeerSession, label, agentID string, granted []string) {

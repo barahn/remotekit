@@ -5,6 +5,7 @@ package stream
 
 import (
 	"log"
+	"slices"
 	"sort"
 )
 
@@ -118,6 +119,19 @@ func (r *Runner) GrantedPermissions() []string {
 	return list
 }
 
+// effectivePermissions is what viewers are told: GrantedPermissions, plus
+// screen_view while the screen is not withheld for want of it (see
+// RequireScreenViewConsent), since the screen is then streamed anyway and a
+// viewer must not show it as refused.
+func (r *Runner) effectivePermissions() []string {
+	list := r.GrantedPermissions()
+	if !r.requireScreenView && !slices.Contains(list, PermissionScreenView) {
+		list = append(list, PermissionScreenView)
+		sort.Strings(list)
+	}
+	return list
+}
+
 // allow is Granted plus a log line when it refuses, so a session that does
 // nothing because consent was never given is not a silent one. Input arrives
 // dozens of times a second, so it logs once per permission until that
@@ -155,4 +169,5 @@ func (r *Runner) allow(permission, what string) bool {
 // Call it before Serve.
 func (r *Runner) RequireScreenViewConsent(required bool) {
 	r.requireScreenView = required
+	r.announcePermissions()
 }

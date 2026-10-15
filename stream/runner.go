@@ -61,6 +61,10 @@ type Runner struct {
 	granted   map[string]bool
 	standing  map[string]bool
 	warned    map[string]bool
+	// announceMu orders what viewers are told of the permissions: each
+	// announcement and each answer to list_permissions reads them and sends
+	// them under it, so the last message a viewer gets is the latest state.
+	announceMu sync.Mutex
 
 	// viewerAuth, when set, restricts negotiation to signed viewers; see
 	// RequireSignedViewers.
@@ -324,7 +328,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 	// granted now; Grant, Revoke and SetStandingPermissions call it through
 	// registerSession.
 	announcePermissions := func() {
-		granted := r.GrantedPermissions()
+		granted := r.effectivePermissions()
 		stateMu.RLock()
 		live := make([]*webrtc.PeerSession, 0, len(peers))
 		for _, p := range peers {

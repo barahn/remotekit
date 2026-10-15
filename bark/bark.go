@@ -145,9 +145,10 @@ type DisplaysPayload struct {
 	Error    string        `json:"error,omitempty"`
 }
 
-// PermissionsPayload names the permissions the agent has granted, sorted:
-// those the person at the machine agreed to and any standing ones. A
-// permission not named is refused.
+// PermissionsPayload names what the agent lets the viewer do, sorted: the
+// permissions the person at the machine agreed to, any standing ones, and
+// any the agent does not gate (stream.Runner names screen_view when it does
+// not require consent for it). A permission not named is refused.
 type PermissionsPayload struct {
 	Granted []string `json:"granted"`
 }
