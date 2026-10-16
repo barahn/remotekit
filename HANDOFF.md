@@ -145,13 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `9b293cb`** — Merge pull request #121 from barahn/deps/pion-and-golang-x
+**`develop` is at `b16acb3`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#122](https://github.com/barahn/remotekit/pull/122) | chore(release): merge develop → main (4 commits) — Merge pull request #120 from barahn/ci/codeql-action-4.38.3 | `develop` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38969494088/job/117204091450)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38969494089/job/117204091093)<br>Release source ⏳ (queued)<br>Build, Test & SAST ⏳ (queued)<br>signal/nostr module ⏳ (queued)<br>gitleaks ⏳ (queued)<br>DCO Sign-off ⏳ (queued)<br>Analyze (Go) ⏳ (queued)<br>Review dependency changes ⏳ (queued)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117204081197)<br>open-pr ⏳ (in_progress) |
+| [#122](https://github.com/barahn/remotekit/pull/122) | chore(release): merge develop → main (6 commits) — Merge pull request #121 from barahn/deps/pion-and-golang-x | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117204133777) |
 
 <!-- END GENERATED: handoff status -->
 
