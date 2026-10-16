@@ -45,3 +45,6 @@ updates:
       day: monday
     commit-message:
       prefix: ci
+    groups:
+      codeql:
+        patterns: [ "github/codeql-action/*" ]
