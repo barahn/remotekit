@@ -145,14 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `918550f`** — docs: refresh the handoff status block
+**`develop` is at `9b293cb`** — Merge pull request #121 from barahn/deps/pion-and-golang-x
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#120](https://github.com/barahn/remotekit/pull/120) | ci: bump github/codeql-action to 4.38.3 and group in dependabot | `ci/codeql-action-4.38.3` | CodeQL ✅<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/117181724096)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38962778023/job/117181722529)<br>Build, Test & SAST ✅<br>DCO Sign-off ✅<br>signal/nostr module ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38962777765/job/117181720858)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38962777769/job/117181720777)<br>Analyze (Go) ✅<br>gitleaks ✅<br>Review dependency changes ✅<br>Aikido Security: check code ✅<br>Refresh the handoff status block ✅ |
-| [#121](https://github.com/barahn/remotekit/pull/121) | deps: bump pion to 4.2.23 and golang-x to latest, sync signal/nostr | `deps/pion-and-golang-x` | CodeQL ✅<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/117184724611)<br>Refresh the handoff status block ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38963671491/job/117184718814)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38963671303/job/117184718798)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38963671473/job/117184718544)<br>Aikido Security: check code ✅<br>signal/nostr module ✅<br>Build, Test & SAST ✅<br>Analyze (Go) ✅<br>DCO Sign-off ✅<br>gitleaks ✅<br>Review dependency changes ✅ |
+| [#122](https://github.com/barahn/remotekit/pull/122) | chore(release): merge develop → main (4 commits) — Merge pull request #120 from barahn/ci/codeql-action-4.38.3 | `develop` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38969494088/job/117204091450)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38969494089/job/117204091093)<br>Release source ⏳ (queued)<br>Build, Test & SAST ⏳ (queued)<br>signal/nostr module ⏳ (queued)<br>gitleaks ⏳ (queued)<br>DCO Sign-off ⏳ (queued)<br>Analyze (Go) ⏳ (queued)<br>Review dependency changes ⏳ (queued)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117204081197)<br>open-pr ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
