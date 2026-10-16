@@ -145,13 +145,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `b16acb3`** — docs: refresh the handoff status block
+**`develop` is at `b658cc5`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#122](https://github.com/barahn/remotekit/pull/122) | chore(release): merge develop → main (6 commits) — Merge pull request #121 from barahn/deps/pion-and-golang-x | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117204133777) |
+| [#122](https://github.com/barahn/remotekit/pull/122) | chore(release): merge develop → main (6 commits) — Merge pull request #121 from barahn/deps/pion-and-golang-x | `develop` | [Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38969533356/job/117204285692)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38969533356/job/117204285617)<br>Build, Test & SAST ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117204222807) |
+| [#123](https://github.com/barahn/remotekit/pull/123) | deps: Bump github.com/godbus/dbus/v5 from 5.2.2 to 5.2.4 | `dependabot/go_modules/develop/github.com/godbus/dbus/v5-5.2.4` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38969564449/job/117204322484)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38969564460/job/117204321755)<br>Refresh the handoff status block ⏳ (in_progress)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38969564465/job/117204321616)<br>gitleaks ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>DCO Sign-off ✅<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/117204313599)<br>Aikido Security: check code ✅ |
 
 <!-- END GENERATED: handoff status -->
 
