@@ -278,6 +278,24 @@ func (v *Viewer) handleData(peer *webrtc.PeerSession, msg []byte) {
 		if json.Unmarshal(env.Payload, &p) == nil && v.onDisplays != nil {
 			v.onDisplays(p)
 		}
+	case bark.TypePermissions:
+		var p bark.PermissionsPayload
+		if json.Unmarshal(env.Payload, &p) != nil || v.onGranted == nil {
+			return
+		}
+		// A list from a peer that has since been replaced, or older than
+		// the last one delivered from this peer, is out of date. The check
+		// and the update are one critical section, so a list from a peer
+		// replaced meanwhile cannot overwrite the current peer's.
+		v.mu.Lock()
+		stale := v.peer != peer || (v.permPeer == peer && p.Generation < v.permGen)
+		if !stale {
+			v.permPeer, v.permGen = peer, p.Generation
+		}
+		v.mu.Unlock()
+		if !stale {
+			v.onGranted(p.Granted)
+		}
 	case bark.TypeFileProgress, bark.TypeFileSaved:
 		var p struct {
 			ID     string `json:"transfer_id"`
@@ -323,6 +341,14 @@ func (v *Viewer) failTransfersLocked() {
 // Register it before Serve.
 func (v *Viewer) OnDisplays(fn func(bark.DisplaysPayload)) { v.onDisplays = fn }
 
+// OnPermissions registers fn for what the person at the machine has granted,
+// sorted, as stream's Permission constants name it; a permission not named is
+// refused. It is called once the control channel opens and whenever the agent
+// grants or withdraws one, so a viewer can grey out what it may not do. An
+// agent from before bark.TypePermissions never calls it. It runs on the data
+// channel's goroutine and must not block. Register it before Serve.
+func (v *Viewer) OnPermissions(fn func(granted []string)) { v.onGranted = fn }
+
 // SelectDisplay asks the agent to stream the monitor with the given index,
 // from the list OnDisplays reported. The outcome arrives through OnDisplays:
 // the new Active once its first frame is captured, or an Error.
@@ -341,6 +367,19 @@ func (v *Viewer) requestDisplays(peer *webrtc.PeerSession, label string) {
 		return
 	}
 	data, err := bark.EncodeEnvelope(bark.TypeListDisplays, v.cfg.AgentID, struct{}{})
+	if err != nil {
+		return
+	}
+	_ = peer.SendData(label, data)
+}
+
+// requestPermissions asks the agent what it has granted, once the control
+// channel opens.
+func (v *Viewer) requestPermissions(peer *webrtc.PeerSession, label string) {
+	if label != webrtc.DataChannelControl {
+		return
+	}
+	data, err := bark.EncodeEnvelope(bark.TypeListPermissions, v.cfg.AgentID, struct{}{})
 	if err != nil {
 		return
 	}

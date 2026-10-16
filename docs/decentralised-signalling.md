@@ -78,6 +78,13 @@ Pairing changes character: the pairing code stops *issuing* trust and starts
 out-of-band ceremony is irreducible — someone has to decide that key X may
 drive machine Y, and no amount of decentralisation removes that step.
 
+Where there is no enrolment at all — two people meeting once, a code read out
+over the phone — the code is that ceremony, and it must bind the keys without
+the carrier seeing it: package `pake` runs CPace over the code's secret part
+and hands each end the other's ed25519 key, authenticated (barahn/remotekit#96).
+That key is what `RequireSignedViewers` trusts and `ViewerConfig.AgentKey`
+pins.
+
 ## 4. Phase 1 — move the data plane off the server
 
 Without this, "decentralised" is a label on an architecture that still shows
