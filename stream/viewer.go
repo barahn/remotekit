@@ -205,7 +205,7 @@ func (v *Viewer) handle(data []byte) {
 		if m.Type == webrtc.SignalAnswer {
 			v.applyAnswer(m.SDP, head.OfferID)
 		} else {
-			v.addCandidate(m.Candidate)
+			v.addCandidate(m.Candidate, head.OfferID)
 		}
 	case "consent_required":
 		v.notify(Notice{Type: head.Type, Detail: head.Permission})
@@ -280,8 +280,9 @@ func (v *Viewer) offer() error {
 
 	// pion gathers from inside CreateOffer, so candidates can be ready before
 	// the offer is sent. The agent drops a candidate for a viewer it has no
-	// peer for yet, or gives it to the peer this offer replaces, so they wait
-	// for the offer; a replaced peer's are not sent at all.
+	// peer for yet, or for an offer it has not seen, so they wait for the
+	// offer; a replaced peer's are not sent at all. Each carries its offer's
+	// ID, for the agent to tell a late one from a replaced peer apart.
 	var (
 		gateMu    sync.Mutex
 		offerSent bool
@@ -290,9 +291,10 @@ func (v *Viewer) offer() error {
 	sendCandidate := func(c string) {
 		v.mu.Lock()
 		current := v.peer == peer
+		offerID := v.offerID
 		v.mu.Unlock()
 		if current {
-			_ = v.sendSignal(webrtc.SignalMessage{Type: webrtc.SignalCandidate, Candidate: c}, "")
+			_ = v.sendSignal(webrtc.SignalMessage{Type: webrtc.SignalCandidate, Candidate: c}, offerID)
 		}
 	}
 	peer.OnICECandidate(func(c string) {
@@ -405,11 +407,14 @@ func (v *Viewer) applyAnswer(sdp, offerID string) {
 const maxPendingCandidates = 64
 
 // addCandidate adds a remote candidate, or holds it until the answer: pion
-// refuses candidates before the remote description.
-func (v *Viewer) addCandidate(c string) {
+// refuses candidates before the remote description. A candidate the agent
+// gathered for an earlier offer is dropped, as its answer is: the agent
+// answers every offer, and that peer's ICE credentials are not this one's.
+// One without an offer_id comes from an agent that predates them.
+func (v *Viewer) addCandidate(c, offerID string) {
 	v.mu.Lock()
 	peer := v.peer
-	if peer == nil {
+	if peer == nil || offerID != "" && offerID != v.offerID {
 		v.mu.Unlock()
 		return
 	}
