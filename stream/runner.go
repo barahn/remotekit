@@ -180,8 +180,9 @@ const signalTTL = 2 * time.Minute
 // cannot be replayed to another. viewer_id is still set alongside it, since
 // that is what the server routes on.
 //
-// offerID, when the viewer's offer carried one, is echoed on its answer, so a
-// viewer that offered more than once can tell which offer an answer is for.
+// offerID, when the viewer's offer carried one, is echoed on its answer and
+// on each of its candidates, so a viewer that offered more than once can tell
+// which offer an answer or a candidate is for.
 // It is not covered by the signature: whoever can rewrite it could only make
 // the viewer drop a genuine answer, which dropping the message achieves too.
 func encodeSignal(m webrtc.SignalMessage, viewerID, offerID string, key ed25519.PrivateKey, now time.Time) ([]byte, error) {
@@ -587,7 +588,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 							Type:      webrtc.SignalCandidate,
 							SessionID: r.id,
 							Candidate: candJSON,
-						}, viewerID, "", signKey, time.Now())
+						}, viewerID, offerID, signKey, time.Now())
 						if err != nil {
 							log.Printf("[AgentStream] not sending ICE candidate to viewer %s: %v\n", logSafe(viewerID), err)
 							return
@@ -834,10 +835,16 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 		case "candidate":
 			cand, _ := signal["candidate"].(string)
 			viewerID, _ := signal["viewer_id"].(string)
+			offerID, _ := signal["offer_id"].(string)
 			stateMu.RLock()
 			peer := peers[viewerID]
+			answered := peerOffers[viewerID]
 			stateMu.RUnlock()
-			if cand != "" && peer != nil {
+			// A candidate for an offer other than the one this viewer's
+			// peer answered belongs to a peer that offer replaced: pion
+			// would refuse it, its ICE credentials being the old ones. One
+			// without an offer_id is from a viewer that predates them.
+			if cand != "" && peer != nil && (offerID == "" || offerID == answered) {
 				_ = peer.AddICECandidate(cand)
 			}
 
