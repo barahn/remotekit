@@ -145,13 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `52bf6df`** — Merge pull request #125 from barahn/fix/aikido-security-code-audit-147545695-vzuu
+**`develop` is at `9ba8a1e`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#122](https://github.com/barahn/remotekit/pull/122) | chore(release): merge develop → main (34 commits) — Merge pull request #127 from barahn/fix/aikido-security-code-audi... | `develop` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39052687415/job/117454294066)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39052687406/job/117454294064)<br>gitleaks ⏳ (queued)<br>Analyze (Go) ⏳ (queued)<br>Review dependency changes ⏳ (in_progress)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117454285831)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39052683258/job/117454281523)<br>gitleaks ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>open-pr ⏳ (in_progress) |
+| [#122](https://github.com/barahn/remotekit/pull/122) | chore(release): merge develop → main (40 commits) — Merge pull request #125 from barahn/fix/aikido-security-code-audi... | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117454321094) |
 
 <!-- END GENERATED: handoff status -->
 
