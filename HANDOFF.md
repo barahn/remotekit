@@ -145,13 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `ffddfe3`** — Merge pull request #127 from barahn/fix/aikido-security-code-audit-147550526-gpxg
+**`develop` is at `267f2a8`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#122](https://github.com/barahn/remotekit/pull/122) | chore(release): merge develop → main (30 commits) — Merge pull request #128 from barahn/fix/aikido-security-code-audi... | `develop` | [Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39052528220/job/117453835726)<br>gitleaks ⏳ (queued)<br>Review dependency changes ⏳ (queued)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117453830465)<br>gitleaks ⏳ (queued)<br>open-pr ⏳ (in_progress) |
+| [#122](https://github.com/barahn/remotekit/pull/122) | chore(release): merge develop → main (34 commits) — Merge pull request #127 from barahn/fix/aikido-security-code-audi... | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117453860044) |
 | [#125](https://github.com/barahn/remotekit/pull/125) | [Aikido] Prevent privilege escalation via untrusted credential paths in root processes | `fix/aikido-security-code-audit-147545695-vzuu` | CodeQL ✅<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39052430603/job/117453545707)<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/117453545561)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39052430589/job/117453545371)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39052430586/job/117453545190)<br>signal/nostr module ✅<br>Build, Test & SAST ⏳ (in_progress)<br>DCO Sign-off ✅<br>gitleaks ✅<br>Analyze (Go) ✅<br>Review dependency changes ✅<br>Aikido Security: check code ✅ |
 
 <!-- END GENERATED: handoff status -->
