@@ -9,6 +9,8 @@ package pathtrust
 
 import "os"
 
+func privileged() bool { return false }
+
 // VerifyPath is a no-op on Windows, where POSIX ownership checks do not apply.
 func VerifyPath(path string) error { return nil }
 
