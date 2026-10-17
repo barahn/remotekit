@@ -849,7 +849,13 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 			}
 
 		case "input", "clipboard", "file_start", "file_chunk", "file_complete":
-			if r.requireDataChannel {
+			// Under RequireSignedViewers the relay is outside the trust
+			// boundary, and these messages carry no signature that covers
+			// their content: anything arriving over the socket could have
+			// been forged or altered by it. They are accepted only over a
+			// data channel, which the signed offer and answer bind to the
+			// trusted viewer's DTLS session.
+			if r.requireDataChannel || r.viewerAuth != nil {
 				refusal.refuse(msgType, safeWrite)
 				continue
 			}

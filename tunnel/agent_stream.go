@@ -123,6 +123,11 @@ func (r *AgentStreamRunner) Start(ctx context.Context) {
 		return
 	}
 
+	if err := ValidateServerAddr(r.creds.ServerAddr); err != nil {
+		log.Printf("[AgentStream Error] %v; not connecting\n", err)
+		return
+	}
+
 	wsURL := r.creds.ServerAddr
 	if strings.HasPrefix(wsURL, "https://") {
 		wsURL = "wss://" + wsURL[8:]

@@ -41,9 +41,15 @@ type Manager struct {
 
 func NewManager(downloadDir string) (*Manager, error) {
 	if downloadDir == "" {
-		downloadDir = os.TempDir()
-	}
-	if err := os.MkdirAll(downloadDir, 0750); err != nil {
+		// The system temporary directory is shared with other local users,
+		// who could pre-create names or links in it. Use a private directory
+		// with an unpredictable name (mode 0700, created exclusively).
+		dir, err := os.MkdirTemp("", "remote-transfer-")
+		if err != nil {
+			return nil, fmt.Errorf("failed to create private download directory: %w", err)
+		}
+		downloadDir = dir
+	} else if err := os.MkdirAll(downloadDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create download directory %s: %w", downloadDir, err)
 	}
 

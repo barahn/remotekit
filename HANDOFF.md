@@ -145,13 +145,15 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `881305f`** — docs: refresh the handoff status block
+**`develop` is at `f9590bb`** — Merge pull request #128 from barahn/fix/aikido-security-code-audit-147551442-g4er
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#122](https://github.com/barahn/remotekit/pull/122) | chore(release): merge develop → main (17 commits) — Merge pull request #123 from barahn/dependabot/go_modules/develop... | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117443861705) |
+| [#122](https://github.com/barahn/remotekit/pull/122) | chore(release): merge develop → main (30 commits) — Merge pull request #128 from barahn/fix/aikido-security-code-audi... | `develop` | [Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39052503624/job/117453758558)<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117453749842)<br>open-pr ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress) |
+| [#125](https://github.com/barahn/remotekit/pull/125) | [Aikido] Prevent privilege escalation via untrusted credential paths in root processes | `fix/aikido-security-code-audit-147545695-vzuu` | CodeQL ✅<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39052430603/job/117453545707)<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/117453545561)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39052430589/job/117453545371)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39052430586/job/117453545190)<br>signal/nostr module ✅<br>Build, Test & SAST ⏳ (in_progress)<br>DCO Sign-off ✅<br>gitleaks ✅<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ✅<br>Aikido Security: check code ✅ |
+| [#127](https://github.com/barahn/remotekit/pull/127) | [Aikido] Enforce HTTPS for server addresses to prevent cleartext token transmission | `fix/aikido-security-code-audit-147550526-gpxg` | CodeQL ✅<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/117449130776)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39050911738/job/117449128368)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39050911791/job/117449128122)<br>Refresh the handoff status block ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39050911775/job/117449127569)<br>Aikido Security: check code ✅<br>Build, Test & SAST ✅<br>signal/nostr module ✅<br>gitleaks ✅<br>Analyze (Go) ✅<br>DCO Sign-off ✅<br>Review dependency changes ✅ |
 
 <!-- END GENERATED: handoff status -->
 
