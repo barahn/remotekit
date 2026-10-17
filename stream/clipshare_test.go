@@ -19,6 +19,17 @@ func noWatch(got chan<- string) func(*Runner, *Viewer) {
 	}
 }
 
+func TestWatchesClipboardSaysWhetherTheWatchIsOn(t *testing.T) {
+	r := New(Config{ID: "agent"})
+	if !r.WatchesClipboard() {
+		t.Fatal("a new runner does not watch the clipboard; the default changed")
+	}
+	r.DisableClipboardWatch(true)
+	if r.WatchesClipboard() {
+		t.Fatal("the runner still watches the clipboard after DisableClipboardWatch(true)")
+	}
+}
+
 // With the watch off, nothing the person at the machine copies reaches a
 // viewer on its own -- and the viewer's own text is still applied.
 func TestDisableClipboardWatchSendsNothingOnItsOwn(t *testing.T) {

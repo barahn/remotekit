@@ -44,6 +44,12 @@ func (r *Runner) DisableClipboardWatch(disabled bool) {
 	r.noClipboardWatch = disabled
 }
 
+// WatchesClipboard reports whether the runner watches the host's clipboard,
+// and so sends every change to the viewers once PermissionClipboard is
+// granted: true unless DisableClipboardWatch turned it off. A consumer can
+// test that it did.
+func (r *Runner) WatchesClipboard() bool { return !r.noClipboardWatch }
+
 // SendClipboard sends text to every viewer, once, as the host's clipboard: for
 // a consumer that shares the clipboard only when the person at the machine
 // asks, with DisableClipboardWatch on. The text is the caller's to read; the
