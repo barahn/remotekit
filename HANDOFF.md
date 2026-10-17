@@ -145,15 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `e6c3d13`** — docs: refresh the handoff status block
+**`develop` is at `9ba8a1e`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#110](https://github.com/barahn/remotekit/pull/110) | chore(release): merge develop → main (31 commits) — Merge pull request #113 from barahn/dependabot/go_modules/signal/... | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117184817146)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38963698228/job/117184815556)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38963698228/job/117184815550)<br>signal/nostr module ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress) |
-| [#120](https://github.com/barahn/remotekit/pull/120) | ci: bump github/codeql-action to 4.38.3 and group in dependabot | `ci/codeql-action-4.38.3` | CodeQL ✅<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/117181724096)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38962778023/job/117181722529)<br>Build, Test & SAST ✅<br>DCO Sign-off ✅<br>signal/nostr module ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38962777765/job/117181720858)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38962777769/job/117181720777)<br>Analyze (Go) ✅<br>gitleaks ✅<br>Review dependency changes ✅<br>Aikido Security: check code ✅<br>Refresh the handoff status block ✅ |
-| [#121](https://github.com/barahn/remotekit/pull/121) | deps: bump pion to 4.2.23 and golang-x to latest, sync signal/nostr | `deps/pion-and-golang-x` | [Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/117184724611)<br>Refresh the handoff status block ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38963671491/job/117184718814)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38963671303/job/117184718798)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/38963671473/job/117184718544)<br>Aikido Security: check code ✅<br>signal/nostr module ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>DCO Sign-off ✅<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ✅ |
+| [#122](https://github.com/barahn/remotekit/pull/122) | chore(release): merge develop → main (40 commits) — Merge pull request #125 from barahn/fix/aikido-security-code-audi... | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117454321094) |
 
 <!-- END GENERATED: handoff status -->
 

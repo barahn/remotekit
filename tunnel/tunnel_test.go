@@ -154,7 +154,7 @@ func TestLoadCredentials_PathTraversal(t *testing.T) {
 	validPath := filepath.Join(tmpDir, "valid_agent.pem")
 
 	// Create some dummy valid content
-	validCreds := `{"agent_id":"123","agent_token":"abc","server_addr":"http://test"}`
+	validCreds := `{"agent_id":"123","agent_token":"abc","server_addr":"https://test"}`
 	if err := os.WriteFile(validPath, []byte(validCreds), 0600); err != nil {
 		t.Fatalf("failed to write valid creds: %v", err)
 	}

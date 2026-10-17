@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/barahn/remotekit/internal/pathtrust"
 )
 
 type linuxServiceManager struct {
@@ -54,6 +56,24 @@ func (m *linuxServiceManager) Install(cfg Config) error {
 	unitFile := m.unitPath()
 	if _, err := os.Stat(unitFile); err == nil {
 		return ErrServiceAlreadyInstalled
+	}
+
+	// The unit runs as root, so refuse to persist a credential path that an
+	// unprivileged user can modify, before anything is written.
+	for i, a := range cfg.Args {
+		if a == "--config" && i+1 < len(cfg.Args) {
+			credPath := cfg.Args[i+1]
+			if !filepath.IsAbs(credPath) {
+				base := cfg.WorkDir
+				if base == "" {
+					base = "/etc/barahn"
+				}
+				credPath = filepath.Join(base, credPath)
+			}
+			if err := pathtrust.VerifyPath(credPath); err != nil {
+				return fmt.Errorf("refusing to install service with untrusted credential path: %w", err)
+			}
+		}
 	}
 
 	description := cfg.Description

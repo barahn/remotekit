@@ -49,9 +49,12 @@ type viewerAuth struct {
 // with another viewer's ID, which misroutes the agent's answer but cannot
 // start a session the trusted viewer did not ask for.
 //
-// Only negotiation is covered. Input, clipboard and file messages still ride
-// the signalling socket unsigned; they are gated by consent (see Grant) until
-// they move to a DataChannel in Phase 1 of docs/implementation-phases.md.
+// Input, clipboard and file messages carry no signature of their own, so with
+// this requirement on they are refused when they arrive over the signalling
+// socket, as RequireDataChannel does, and are accepted only over the data
+// channels of a session negotiated by a trusted viewer. Viewers must
+// therefore open the bark-control and bark-transfer channels. Consent (see
+// Grant) still applies on top.
 // "close" is accepted unsigned, since all it can do is end the session.
 //
 // Call it before Serve. Passing nil turns the requirement off.

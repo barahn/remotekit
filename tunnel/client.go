@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/barahn/remotekit/heartbeat"
+	"github.com/barahn/remotekit/internal/pathtrust"
 	"github.com/barahn/remotekit/osinfo"
 	"github.com/hashicorp/yamux"
 )
@@ -158,6 +159,9 @@ func enroll(serverAddr, pairingCode, hostname, osName, arch, pubKey, keyProof, s
 	if parsedURL.Host == "" {
 		return nil, fmt.Errorf("invalid server address host: host cannot be empty")
 	}
+	if err := ValidateServerAddr(serverAddr); err != nil {
+		return nil, err
+	}
 
 	pairURL := parsedURL.JoinPath("tunnel", "pair").String()
 
@@ -242,6 +246,39 @@ func EnrollWithDeviceKey(serverAddr, pairingCode, hostname, osName, arch, keyPat
 	return creds, nil
 }
 
+// ErrInsecureServerAddr is returned for a control-plane address that would
+// carry the pairing code, agent token or session data in cleartext.
+var ErrInsecureServerAddr = errors.New("tunnel: insecure server address: https is required for non-loopback hosts")
+
+// ValidateServerAddr reports whether addr may be used as the control-plane
+// address. https is always accepted; plain http is accepted only when the host
+// is a loopback address (localhost, 127.0.0.0/8 or ::1), where traffic does not
+// leave the machine. Any other scheme or an empty host is refused.
+func ValidateServerAddr(addr string) error {
+	u, err := url.ParseRequestURI(addr)
+	if err != nil {
+		return fmt.Errorf("invalid server address: %w", err)
+	}
+	if u.Hostname() == "" {
+		return fmt.Errorf("invalid server address host: host cannot be empty")
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		return nil
+	case "http":
+		host := strings.ToLower(u.Hostname())
+		if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+			return nil
+		}
+		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+			return nil
+		}
+		return ErrInsecureServerAddr
+	default:
+		return fmt.Errorf("invalid server address scheme: must be http or https")
+	}
+}
+
 func saveCredentials(path string, creds *AgentCredentials) error {
 	cleanPath := filepath.Clean(path)
 	dir := filepath.Dir(cleanPath)
@@ -263,7 +300,10 @@ func LoadCredentials(path string) (*AgentCredentials, error) {
 	}
 
 	cleanPath := filepath.Clean(path)
-	data, err := os.ReadFile(cleanPath) // #nosec G304 -- cleanPath is sanitized via filepath.Clean and checked for traversal
+	// When running as root, refuse credentials that a local user could have
+	// planted or altered (non-root owner, group/world-writable file or
+	// ancestor directory, symlinked file).
+	data, err := pathtrust.ReadFile(cleanPath)
 	if err != nil {
 		return nil, err
 	}
@@ -272,12 +312,18 @@ func LoadCredentials(path string) (*AgentCredentials, error) {
 	if err := json.Unmarshal(data, &creds); err != nil {
 		return nil, err
 	}
+	if err := ValidateServerAddr(creds.ServerAddr); err != nil {
+		return nil, fmt.Errorf("refusing credentials in %s: %w", cleanPath, err)
+	}
 
 	return &creds, nil
 }
 
 // Connect connects outbound over WebSocket/TLS 1.3 to the control plane, initializes Yamux, and accepts reverse streams.
 func (tc *TunnelClient) Connect(ctx context.Context, creds *AgentCredentials) error {
+	if err := ValidateServerAddr(creds.ServerAddr); err != nil {
+		return err
+	}
 	wsURL := creds.ServerAddr
 	if strings.HasPrefix(wsURL, "https://") {
 		wsURL = "wss" + wsURL[5:]
