@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/barahn/remotekit/heartbeat"
+	"github.com/barahn/remotekit/internal/pathtrust"
 	"github.com/barahn/remotekit/osinfo"
 	"github.com/hashicorp/yamux"
 )
@@ -263,7 +264,10 @@ func LoadCredentials(path string) (*AgentCredentials, error) {
 	}
 
 	cleanPath := filepath.Clean(path)
-	data, err := os.ReadFile(cleanPath) // #nosec G304 -- cleanPath is sanitized via filepath.Clean and checked for traversal
+	// When running as root, refuse credentials that a local user could have
+	// planted or altered (non-root owner, group/world-writable file or
+	// ancestor directory, symlinked file).
+	data, err := pathtrust.ReadFile(cleanPath)
 	if err != nil {
 		return nil, err
 	}
