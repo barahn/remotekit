@@ -83,6 +83,7 @@ func (d *dataPlane) handle(ctx context.Context, from sender, msgType string, fie
 			d.clipWatcher.UpdateLastText(text)
 			_ = d.clipMgr.SetText(ctx, text)
 			log.Printf("[AgentStream] Received and applied clipboard sync (%d bytes)\n", len(text))
+			r.clipboardEvent(ClipboardEvent{Direction: ClipboardToHost, ViewerID: from.id, Key: from.key, Size: len(text)})
 		}
 
 	case "file_start":
