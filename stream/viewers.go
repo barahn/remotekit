@@ -5,6 +5,7 @@ package stream
 
 import (
 	"crypto/ed25519"
+	"github.com/barahn/remotekit/webrtc"
 	"sync"
 	"time"
 )
@@ -78,12 +79,13 @@ func (r *Runner) Disconnect(viewerID string) bool {
 type sessionHook struct {
 	disconnect  func(viewerID string) bool
 	permissions func()
+	peer        func(viewerID string) *webrtc.PeerSession
 }
 
-// registerSession makes a running Serve reachable by Disconnect and
-// announcePermissions until the returned function is called.
-func (r *Runner) registerSession(disconnect func(string) bool, permissions func()) func() {
-	h := &sessionHook{disconnect: disconnect, permissions: permissions}
+// registerSession makes a running Serve reachable by Disconnect,
+// announcePermissions and SendFile until the returned function is called.
+func (r *Runner) registerSession(disconnect func(string) bool, permissions func(), peer func(string) *webrtc.PeerSession) func() {
+	h := &sessionHook{disconnect: disconnect, permissions: permissions, peer: peer}
 	r.sessionsMu.Lock()
 	if r.sessions == nil {
 		r.sessions = make(map[*sessionHook]struct{})

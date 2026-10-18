@@ -424,12 +424,12 @@ func TestRefusalKey(t *testing.T) {
 		t.Fatal("refusal keys ignore the sender's key")
 	}
 
-	d := &dataPlane{r: &Runner{id: "agent-1"}}
+	var in fileInbox
 	long := strings.Repeat("x", 1<<20)
 	for i := 0; i < maxRefused*2; i++ {
-		d.refuseFile(sender{id: "v"}, fmt.Sprint(i)+long, "refused", func(string, map[string]interface{}) {})
+		in.refuseFile(sender{id: "v"}, fmt.Sprint(i)+long, "refused", func(string, map[string]interface{}) {})
 	}
-	if n := len(d.refused); n > maxRefused {
+	if n := len(in.refused); n > maxRefused {
 		t.Fatalf("refused holds %d transfers, want at most %d", n, maxRefused)
 	}
 }
