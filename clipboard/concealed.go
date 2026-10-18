@@ -1,0 +1,70 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2026 Fabrintek Engenharia Digital Ltda
+
+package clipboard
+
+import (
+	"bytes"
+	"context"
+)
+
+// Password managers mark what they copy so that clipboard monitors and
+// history leave it alone. A consumer that syncs the clipboard to another
+// machine is such a monitor: whatever is marked must never leave the host
+// (barahn/remotekit#130).
+
+// Concealer is implemented by a Manager that can tell whether what is on the
+// clipboard now was marked as secret by whoever put it there. The Watcher
+// asks it before handing a change on, and holds back what is concealed.
+type Concealer interface {
+	// Concealed reports whether the current clipboard content is marked as
+	// secret. An error means it could not tell; the Watcher then holds the
+	// content back rather than risk sending a password.
+	Concealed(ctx context.Context) (bool, error)
+}
+
+// kdePasswordHint is the target KeePassXC, KDE's Klipper and others offer on
+// X11 and Wayland alongside a secret; its content is "secret".
+const kdePasswordHint = "x-kde-passwordManagerHint"
+
+// concealedByTargets says whether a selection offering targets is marked
+// secret, reading the hint's content with read. A hint that cannot be read
+// counts as secret: it was offered for a reason.
+func concealedByTargets(targets []string, read func(target string) ([]byte, error)) bool {
+	for _, t := range targets {
+		if t != kdePasswordHint {
+			continue
+		}
+		v, err := read(kdePasswordHint)
+		if err != nil {
+			return true
+		}
+		return string(bytes.TrimSpace(v)) == "secret"
+	}
+	return false
+}
+
+// The formats Windows password managers add, by registered name.
+// ExcludeClipboardContentFromMonitorProcessing's mere presence asks monitors
+// to ignore the content, and so does the older Clipboard Viewer Ignore;
+// CanIncludeInClipboardHistory set to zero keeps it out of the history.
+const (
+	winExcludeFormat      = "ExcludeClipboardContentFromMonitorProcessing"
+	winViewerIgnoreFormat = "Clipboard Viewer Ignore"
+	winHistoryFormat      = "CanIncludeInClipboardHistory"
+)
+
+// concealedByWindowsFormats says whether Windows clipboard content is marked
+// secret: has reports whether a registered format is on the clipboard, and
+// dword reads one as a DWORD.
+func concealedByWindowsFormats(has func(name string) bool, dword func(name string) (uint32, bool)) bool {
+	if has(winExcludeFormat) || has(winViewerIgnoreFormat) {
+		return true
+	}
+	if has(winHistoryFormat) {
+		if v, ok := dword(winHistoryFormat); ok && v == 0 {
+			return true
+		}
+	}
+	return false
+}

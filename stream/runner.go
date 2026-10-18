@@ -83,6 +83,12 @@ type Runner struct {
 	downloadDir string
 	onFileOffer func(FileOffer) bool
 	onFileSaved func(ReceivedFile)
+	// onClipboardEvent hears every clipboard sync; see OnClipboardEvent.
+	onClipboardEvent func(ClipboardEvent)
+	// outgoing holds SendFile's waiters by transfer ID, with the viewer
+	// each file goes to; see agentfiles.go.
+	outgoingMu sync.Mutex
+	outgoing   map[string]outgoingFile
 
 	// onViewer and sessions serve ViewerEvents and Disconnect; see
 	// viewers.go.
@@ -242,7 +248,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 		// Files are refused, with this reason, rather than the session.
 		log.Printf("[AgentStream] cannot receive files: %v\n", err)
 	}
-	dp := &dataPlane{r: r, clipMgr: clipMgr, clipWatcher: clipWatcher, transfer: transferMgr}
+	dp := &dataPlane{r: r, clipMgr: clipMgr, clipWatcher: clipWatcher, files: fileInbox{transfer: transferMgr}}
 
 	// The monitor being streamed, as the frames report it; -1 until the
 	// first one of the current capture. See displays.go.
@@ -363,6 +369,14 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 	clipCtx, clipCancel := context.WithCancel(ctx)
 	defer clipCancel()
 
+	// A copy a password manager marked never leaves; the consumer hears
+	// that one was held back.
+	clipWatcher.OnConcealed(func() {
+		if r.allow(PermissionClipboard, "host clipboard sync") {
+			log.Printf("[AgentStream] Held back a concealed host clipboard change\n")
+			r.clipboardEvent(ClipboardEvent{Direction: ClipboardFromHost, Concealed: true})
+		}
+	})
 	go clipWatcher.Start(clipCtx, func(newText string) {
 		if !r.allow(PermissionClipboard, "host clipboard sync") {
 			return
@@ -402,6 +416,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 			}
 		}
 		log.Printf("[AgentStream] Dispatched host clipboard change to remote (%d bytes)\n", len(newText))
+		r.clipboardEvent(ClipboardEvent{Direction: ClipboardFromHost, Size: len(newText)})
 	})
 
 	// Send agent_ready ping so any waiting browser viewer immediately initiates the WebRTC offer
@@ -460,7 +475,11 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 		notice, _ := json.Marshal(map[string]string{"type": "disconnected", "viewer_id": id, "offer_id": offerID})
 		_ = safeWrite(notice)
 		return true
-	}, announcePermissions)
+	}, announcePermissions, func(id string) *webrtc.PeerSession {
+		stateMu.RLock()
+		defer stateMu.RUnlock()
+		return peers[id]
+	})
 	defer unregister()
 
 	defer func() {

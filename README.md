@@ -41,7 +41,7 @@ layered on top register through extension points such as
 | `screen/codec/vp8` | Pure-Go VP8 encoder — real bitstream, verified byte-exact against libvpx |
 | `screen/codec/ivf` | IVF container writer, for dumping streams to disk |
 | `input` | Keyboard and mouse injection |
-| `clipboard` | Cross-platform clipboard read/write with a change watcher |
+| `clipboard` | Cross-platform clipboard read/write with a change watcher that never hands on what password managers mark as secret |
 | `transfer` | Chunked file transfer with resume |
 | `webrtc` | Peer session, video track and signalling helpers over pion |
 | `stream` | The agent side of a session over any signalling transport: WebRTC negotiation, screen, input/clipboard/file data plane, consent, signed viewers. Imports neither `tunnel` nor yamux |

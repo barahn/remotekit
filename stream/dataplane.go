@@ -6,17 +6,12 @@ package stream
 import (
 	"context"
 	"crypto/ed25519"
-	"crypto/sha256"
-	"encoding/binary"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"log"
 	"sync"
 
 	"github.com/barahn/remotekit/bark"
 	"github.com/barahn/remotekit/clipboard"
-	"github.com/barahn/remotekit/transfer"
 	"github.com/barahn/remotekit/webrtc"
 )
 
@@ -31,21 +26,14 @@ type dataPlane struct {
 	r           *Runner
 	clipMgr     clipboard.Manager
 	clipWatcher *clipboard.Watcher
-	transfer    *transfer.Manager
+	// files receives the files viewers send; see fileinbox.go.
+	files fileInbox
 
 	// displays and selectDisplay reach the session's capturer; see
 	// displays.go. Nil outside a session.
 	displays      func() (bark.DisplaysPayload, bool)
 	selectDisplay func(index int) error
-
-	// refused holds the transfers already told they were refused, by
-	// refusalKey; see refuseFile.
-	refusedMu sync.Mutex
-	refused   map[[sha256.Size]byte]struct{}
 }
-
-// maxRefused bounds refused. A transfer that outlives it is told again, once.
-const maxRefused = 256
 
 // sender is who a data plane message came from: the viewer_id it is routed
 // under, and, for a data channel under RequireSignedViewers, the key whose
@@ -83,131 +71,17 @@ func (d *dataPlane) handle(ctx context.Context, from sender, msgType string, fie
 			d.clipWatcher.UpdateLastText(text)
 			_ = d.clipMgr.SetText(ctx, text)
 			log.Printf("[AgentStream] Received and applied clipboard sync (%d bytes)\n", len(text))
+			r.clipboardEvent(ClipboardEvent{Direction: ClipboardToHost, ViewerID: from.id, Key: from.key, Size: len(text)})
 		}
 
-	case "file_start":
-		id, _ := fields["transfer_id"].(string)
-		name, _ := fields["name"].(string)
-		size, _ := fields["size"].(float64)
-		sha, _ := fields["sha256"].(string)
-		if id != "" && !r.allow(PermissionFileTransfer, "file transfer") {
-			d.refuseFile(from, id, PermissionFileTransfer+" has not been granted", reply)
-			return
-		}
-		if id != "" && d.transfer == nil {
-			d.refuseFile(from, id, "the agent cannot store files", reply)
-			return
-		}
-		if id != "" {
-			// An empty name is saved under transfer's fallback name.
-			session := d.transfer.StartSession(id, name, int64(size), sha)
-			if r.onFileOffer != nil && !r.onFileOffer(FileOffer{ViewerID: from.id, Key: from.key, TransferID: id, Name: session.FileName, Size: int64(size)}) {
-				d.transfer.Discard(id)
-				d.refuseFile(from, id, "the agent refused the file", reply)
-				return
+	case "file_start", "file_chunk", "file_complete":
+		d.files.handle(from, msgType, fields, "agent", func(stage string) string {
+			if !r.allow(PermissionFileTransfer, stage) {
+				return PermissionFileTransfer + " has not been granted"
 			}
-			log.Printf("[AgentStream] Started file transfer session %s (%s, %s bytes)\n", logSafe(id), logSafe(name), logSafe(fmt.Sprintf("%.0f", size)))
-		}
-
-	case "file_chunk":
-		id, _ := fields["transfer_id"].(string)
-		idx, _ := fields["index"].(float64)
-		b64Data, _ := fields["data"].(string)
-		if id != "" && !r.allow(PermissionFileTransfer, "file chunk") {
-			d.refuseFile(from, id, PermissionFileTransfer+" has not been granted", reply)
-			return
-		}
-		if id != "" && d.transfer != nil {
-			prog, done, err := d.transfer.AddChunkBase64(id, int(idx), b64Data)
-			if errors.Is(err, transfer.ErrTransferNotFound) {
-				// Refused at file_start, or never started: refuse it
-				// rather than acknowledge data that is dropped.
-				d.refuseFile(from, id, "no such transfer", reply)
-				return
-			}
-			if err != nil {
-				log.Printf("[AgentStream] File chunk error: %v\n", err)
-			}
-			reply("file_progress", map[string]interface{}{
-				"transfer_id": id,
-				"progress":    prog,
-				"done":        done,
-			})
-		}
-
-	case "file_complete":
-		id, _ := fields["transfer_id"].(string)
-		if id != "" && !r.allow(PermissionFileTransfer, "file save") {
-			d.refuseFile(from, id, PermissionFileTransfer+" has not been granted", reply)
-			return
-		}
-		if id != "" && d.transfer != nil {
-			name, size := d.transfer.Describe(id)
-			destPath, sha, err := d.transfer.AssembleFile(id)
-			errStr := ""
-			if err != nil {
-				errStr = err.Error()
-				log.Printf("[AgentStream] File assembly error for %s: %v\n", logSafe(id), err)
-			} else {
-				log.Printf("[AgentStream] File transfer %s completed! Saved to: %s (SHA: %s)\n", logSafe(id), logSafe(destPath), sha)
-				if r.onFileSaved != nil {
-					r.onFileSaved(ReceivedFile{ViewerID: from.id, Key: from.key, TransferID: id, Name: name, Path: destPath, SHA256: sha, Size: size})
-				}
-			}
-			reply("file_saved", map[string]interface{}{
-				"transfer_id": id,
-				"path":        destPath,
-				"sha256":      sha,
-				"error":       errStr,
-			})
-		}
+			return ""
+		}, r.onFileOffer, true, r.onFileSaved, reply)
 	}
-}
-
-// refuseFile tells the sender a file message was refused, and why, with the
-// file_saved it would otherwise wait for, so it stops sending instead of
-// waiting for replies that will never come.
-//
-// It says so once per transfer. A sender that does not wait for each chunk's
-// reply has a whole file's chunks in flight by the time the refusal reaches
-// it, and one file_saved per chunk would be one error per chunk. A transfer
-// is its sender and its ID together, so one viewer reusing another's ID
-// cannot silence the refusal the other is owed.
-func (d *dataPlane) refuseFile(from sender, id, reason string, reply replyFunc) {
-	key := refusalKey(from, id)
-	d.refusedMu.Lock()
-	_, told := d.refused[key]
-	if !told {
-		if d.refused == nil || len(d.refused) >= maxRefused {
-			d.refused = make(map[[sha256.Size]byte]struct{})
-		}
-		d.refused[key] = struct{}{}
-	}
-	d.refusedMu.Unlock()
-	if told {
-		return
-	}
-	reply("file_saved", map[string]interface{}{
-		"transfer_id": id,
-		"error":       reason,
-	})
-}
-
-// refusalKey identifies a transfer in refused. It is a hash, not the IDs
-// themselves, so the record stays maxRefused small hashes however long the
-// IDs a sender makes up; each field is length-prefixed so no two different
-// transfers share one.
-func refusalKey(from sender, id string) [sha256.Size]byte {
-	h := sha256.New()
-	for _, field := range [][]byte{[]byte(from.id), from.key, []byte(id)} {
-		var n [8]byte
-		binary.BigEndian.PutUint64(n[:], uint64(len(field)))
-		h.Write(n[:])
-		h.Write(field)
-	}
-	var key [sha256.Size]byte
-	h.Sum(key[:0])
-	return key
 }
 
 // handleChannelMessage applies one message from a viewer's data channel. The
@@ -227,6 +101,10 @@ func (d *dataPlane) handleChannelMessage(ctx context.Context, from sender, peer 
 	if label == webrtc.DataChannelControl && env.Type == bark.TypeListPermissions {
 		granted, gen := d.r.effectivePermissions()
 		sendPermissions(peer, label, d.r.id, granted, gen)
+		return
+	}
+	if label == webrtc.DataChannelTransfer && (env.Type == bark.TypeFileProgress || env.Type == bark.TypeFileSaved) {
+		d.r.fileReply(from, env)
 		return
 	}
 	if !isDataPlane(msgType) {
