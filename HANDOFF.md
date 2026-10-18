@@ -145,14 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `9a60b3d`** — docs: refresh the handoff status block
+**`develop` is at `19ced6e`** — feat(stream): send files from the agent to a viewer (#133)
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#133](https://github.com/barahn/remotekit/pull/133) | feat(stream): send files from the agent to a viewer | `feature/agent-files` | CodeQL ✅<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/117544777976)<br>Aikido Security: check code ✅<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39083373513/job/117544774454)<br>Refresh the handoff status block ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39083373519/job/117544774237)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39083373472/job/117544773987)<br>Build, Test & SAST ✅<br>signal/nostr module ✅<br>gitleaks ✅<br>DCO Sign-off ✅<br>Review dependency changes ✅<br>Analyze (Go) ✅ |
-| [#134](https://github.com/barahn/remotekit/pull/134) | chore(release): merge develop → main (7 commits) — feat(clipboard,stream): clipboard events, no pre-session copies, n... | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117561437844) |
+| [#134](https://github.com/barahn/remotekit/pull/134) | chore(release): merge develop → main (10 commits) — feat(stream): send files from the agent to a viewer (#133) | `develop` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39090834817/job/117567049073)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39090834840/job/117567048914)<br>Release source ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>DCO Sign-off ⏳ (in_progress)<br>signal/nostr module ⏳ (queued)<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117567044882)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39090832043/job/117567040601)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39090832043/job/117567040588)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39090832077/job/117567040368)<br>Refresh the handoff status block ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>open-pr ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
