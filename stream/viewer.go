@@ -46,6 +46,12 @@ type Viewer struct {
 	onClipboard func(text string)
 	onDisplays  func(bark.DisplaysPayload)
 	onGranted   func(granted []string)
+	// onFileOffer, onFileSaved and inbox receive files from the agent;
+	// see agentfiles.go.
+	onFileOffer func(FileOffer) bool
+	onFileSaved func(ReceivedFile)
+	inbox       fileInbox
+	inboxOnce   sync.Once
 
 	writeMu sync.Mutex
 	conn    SignalConn
@@ -91,6 +97,11 @@ type ViewerConfig struct {
 	// PeerConfig is the ICE configuration, as in Config. Nil means
 	// webrtc.DefaultPeerConfig().
 	PeerConfig *webrtc.PeerConfig
+
+	// DownloadDir is where files the agent sends are saved, as in Config;
+	// empty means the system's temporary directory. The viewer takes files
+	// only with OnFileOffer registered.
+	DownloadDir string
 }
 
 // Notice is something the agent told the viewer instead of streaming: that

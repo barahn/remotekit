@@ -90,21 +90,6 @@ func (v *Viewer) SendClipboard(text string) error {
 // the file. A re-negotiation in the middle of a transfer fails it, and the
 // caller sends it again.
 func (v *Viewer) SendFile(ctx context.Context, name string, r io.ReadSeeker, progress func(sent, total int64)) (SavedFile, error) {
-	// What is sent is what is left of r, from where it stands now.
-	offset, err := r.Seek(0, io.SeekCurrent)
-	if err != nil {
-		return SavedFile{}, err
-	}
-	hasher := sha256.New()
-	size, err := io.Copy(hasher, r)
-	if err != nil {
-		return SavedFile{}, err
-	}
-	sum := hex.EncodeToString(hasher.Sum(nil))
-	if _, err := r.Seek(offset, io.SeekStart); err != nil {
-		return SavedFile{}, err
-	}
-
 	id, err := transferID()
 	if err != nil {
 		return SavedFile{}, err
@@ -129,6 +114,30 @@ func (v *Viewer) SendFile(ctx context.Context, name string, r io.ReadSeeker, pro
 		}
 		return v.sendData(webrtc.DataChannelTransfer, data)
 	}
+	return sendFileOver(ctx, id, name, r, progress, send, events)
+}
+
+// sendFileOver sends what is left of r as the file name, transfer id, with
+// send, and waits for the receiver's replies on events: the sending half of
+// the file protocol, the same from either end (fileinbox.go is the
+// receiving half). It returns once the receiver has saved the file or
+// refused it, or ctx ends.
+func sendFileOver(ctx context.Context, id, name string, r io.ReadSeeker, progress func(sent, total int64), send func(bark.MessageType, interface{}) error, events <-chan fileEvent) (SavedFile, error) {
+	// What is sent is what is left of r, from where it stands now.
+	offset, err := r.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return SavedFile{}, err
+	}
+	hasher := sha256.New()
+	size, err := io.Copy(hasher, r)
+	if err != nil {
+		return SavedFile{}, err
+	}
+	sum := hex.EncodeToString(hasher.Sum(nil))
+	if _, err := r.Seek(offset, io.SeekStart); err != nil {
+		return SavedFile{}, err
+	}
+
 	if err := send(bark.TypeFileStart, map[string]interface{}{
 		"transfer_id": id,
 		"name":        name,
@@ -296,6 +305,8 @@ func (v *Viewer) handleData(peer *webrtc.PeerSession, msg []byte) {
 		if !stale {
 			v.onGranted(p.Granted)
 		}
+	case bark.TypeFileStart, bark.TypeFileChunk, bark.TypeFileComplete:
+		v.receiveFile(peer, env)
 	case bark.TypeFileProgress, bark.TypeFileSaved:
 		var p struct {
 			ID     string `json:"transfer_id"`
