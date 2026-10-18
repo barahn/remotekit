@@ -145,13 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `19ced6e`** — feat(stream): send files from the agent to a viewer (#133)
+**`develop` is at `c241dad`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#134](https://github.com/barahn/remotekit/pull/134) | chore(release): merge develop → main (10 commits) — feat(stream): send files from the agent to a viewer (#133) | `develop` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39090834817/job/117567049073)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39090834840/job/117567048914)<br>Release source ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>DCO Sign-off ⏳ (in_progress)<br>signal/nostr module ⏳ (queued)<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117567044882)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39090832043/job/117567040601)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39090832043/job/117567040588)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39090832077/job/117567040368)<br>Refresh the handoff status block ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>open-pr ⏳ (in_progress) |
+| [#134](https://github.com/barahn/remotekit/pull/134) | chore(release): merge develop → main (10 commits) — feat(stream): send files from the agent to a viewer (#133) | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117567083871) |
 
 <!-- END GENERATED: handoff status -->
 
