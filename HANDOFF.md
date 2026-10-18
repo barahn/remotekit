@@ -145,13 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `e92f930`** — docs: refresh the handoff status block
+**`develop` is at `196b1a0`** — docs(release): how remotekit is versioned and released (#136)
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#136](https://github.com/barahn/remotekit/pull/136) | docs(release): how remotekit is versioned and released | `docs/release-policy` | [Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/117697408889)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39134932397/job/117697407026)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39134932351/job/117697406724)<br>gitleaks ⏳ (in_progress)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39134932164/job/117697405978)<br>Aikido Security: check code ✅<br>Review dependency changes ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>DCO Sign-off ✅<br>signal/nostr module ⏳ (in_progress) |
+| [#137](https://github.com/barahn/remotekit/pull/137) | chore(release): merge develop → main (4 commits) — docs(release): how remotekit is versioned and released (#136) | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39136180921/job/117701049287)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39136180936/job/117701049274)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39136180921/job/117701049247)<br>signal/nostr module ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>open-pr ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
