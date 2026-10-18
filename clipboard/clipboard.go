@@ -21,8 +21,9 @@ type Manager interface {
 
 // MemoryClipboard provides a thread-safe in-memory fallback clipboard implementation.
 type MemoryClipboard struct {
-	mu      sync.RWMutex
-	content string
+	mu        sync.RWMutex
+	content   string
+	concealed bool
 }
 
 func NewMemoryClipboard() *MemoryClipboard {
@@ -38,6 +39,22 @@ func (m *MemoryClipboard) GetText(ctx context.Context) (string, error) {
 func (m *MemoryClipboard) SetText(ctx context.Context, text string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.content = text
+	m.content, m.concealed = text, false
 	return nil
+}
+
+// SetConcealedText puts text on the clipboard marked as secret, as a password
+// manager does.
+func (m *MemoryClipboard) SetConcealedText(ctx context.Context, text string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.content, m.concealed = text, true
+	return nil
+}
+
+// Concealed reports whether the content was set with SetConcealedText.
+func (m *MemoryClipboard) Concealed(ctx context.Context) (bool, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.concealed, nil
 }

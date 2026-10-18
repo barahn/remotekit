@@ -17,7 +17,13 @@ type Watcher struct {
 	lastText        string
 	suppressedText  string
 	suppressedUntil time.Time
+	onConcealed     func()
 }
+
+// OnConcealed registers fn to be called, instead of onChange, when the
+// clipboard changes to content marked as secret (Concealer). Call it before
+// Start.
+func (w *Watcher) OnConcealed(fn func()) { w.onConcealed = fn }
 
 // NewWatcher creates a new clipboard watcher instance.
 func NewWatcher(mgr Manager, interval time.Duration) *Watcher {
@@ -48,17 +54,25 @@ func (w *Watcher) GetLastText() string {
 	return w.lastText
 }
 
-// Start begins the polling loop, invoking onChange whenever the clipboard content changes.
+// Start begins the polling loop, invoking onChange whenever the clipboard
+// content changes.
+//
+// The first content it manages to read is the baseline, never a change, even
+// when the clipboard could not be read at the start: what was copied before
+// the watch began is not handed on. A change to content the Manager reports as
+// concealed (Concealer) calls the OnConcealed callback instead of onChange.
 func (w *Watcher) Start(ctx context.Context, onChange func(text string)) {
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
 
-	// Initial read to seed lastText without broadcasting
-	if initial, err := w.mgr.GetText(ctx); err == nil && initial != "" {
+	seeded := false
+	if initial, err := w.mgr.GetText(ctx); err == nil {
 		w.mu.Lock()
 		w.lastText = initial
 		w.mu.Unlock()
+		seeded = true
 	}
+	concealer, _ := w.mgr.(Concealer)
 
 	for {
 		select {
@@ -66,7 +80,17 @@ func (w *Watcher) Start(ctx context.Context, onChange func(text string)) {
 			return
 		case <-ticker.C:
 			current, err := w.mgr.GetText(ctx)
-			if err != nil || current == "" {
+			if err != nil {
+				continue
+			}
+			if !seeded {
+				w.mu.Lock()
+				w.lastText = current
+				w.mu.Unlock()
+				seeded = true
+				continue
+			}
+			if current == "" {
 				continue
 			}
 
@@ -77,15 +101,23 @@ func (w *Watcher) Start(ctx context.Context, onChange func(text string)) {
 				w.mu.Unlock()
 				continue
 			}
+			if current == w.lastText {
+				w.mu.Unlock()
+				continue
+			}
+			w.lastText = current
+			w.mu.Unlock()
 
-			if current != w.lastText {
-				w.lastText = current
-				w.mu.Unlock()
-				if onChange != nil {
-					onChange(current)
+			if concealer != nil {
+				if hidden, err := concealer.Concealed(ctx); err != nil || hidden {
+					if w.onConcealed != nil {
+						w.onConcealed()
+					}
+					continue
 				}
-			} else {
-				w.mu.Unlock()
+			}
+			if onChange != nil {
+				onChange(current)
 			}
 		}
 	}

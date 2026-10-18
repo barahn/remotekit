@@ -83,6 +83,8 @@ type Runner struct {
 	downloadDir string
 	onFileOffer func(FileOffer) bool
 	onFileSaved func(ReceivedFile)
+	// onClipboardEvent hears every clipboard sync; see OnClipboardEvent.
+	onClipboardEvent func(ClipboardEvent)
 
 	// onViewer and sessions serve ViewerEvents and Disconnect; see
 	// viewers.go.
@@ -363,6 +365,14 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 	clipCtx, clipCancel := context.WithCancel(ctx)
 	defer clipCancel()
 
+	// A copy a password manager marked never leaves; the consumer hears
+	// that one was held back.
+	clipWatcher.OnConcealed(func() {
+		if r.allow(PermissionClipboard, "host clipboard sync") {
+			log.Printf("[AgentStream] Held back a concealed host clipboard change\n")
+			r.clipboardEvent(ClipboardEvent{Direction: ClipboardFromHost, Concealed: true})
+		}
+	})
 	go clipWatcher.Start(clipCtx, func(newText string) {
 		if !r.allow(PermissionClipboard, "host clipboard sync") {
 			return
@@ -402,6 +412,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 			}
 		}
 		log.Printf("[AgentStream] Dispatched host clipboard change to remote (%d bytes)\n", len(newText))
+		r.clipboardEvent(ClipboardEvent{Direction: ClipboardFromHost, Size: len(newText)})
 	})
 
 	// Send agent_ready ping so any waiting browser viewer immediately initiates the WebRTC offer
