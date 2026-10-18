@@ -145,9 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `51c07e1`** — docs: refresh the handoff status block
+**`develop` is at `4e01451`** — docs: refresh the handoff status block
 
-No open pull requests.
+### Open pull requests
+
+| PR | Title | Branch | CI on head |
+|---|---|---|---|
+| [#132](https://github.com/barahn/remotekit/pull/132) | feat(clipboard,stream): clipboard events, no pre-session copies, no passwords | `feature/clipboard-events` | [Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/117543835648)<br>Aikido Security: check code ✅<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39083055546/job/117543832654)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39083055513/job/117543832100)<br>Refresh the handoff status block ⏳ (in_progress)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39083055536/job/117543832030)<br>Build, Test & SAST ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>DCO Sign-off ✅<br>Review dependency changes ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>gitleaks ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
