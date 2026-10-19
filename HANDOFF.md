@@ -145,9 +145,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `fab0e8e`** — docs: refresh the handoff status block
+**`develop` is at `b37017c`** — docs: refresh the handoff status block
 
-No open pull requests.
+### Open pull requests
+
+| PR | Title | Branch | CI on head |
+|---|---|---|---|
+| [#138](https://github.com/barahn/remotekit/pull/138) | deps: Bump github.com/pion/webrtc/v4 from 4.2.23 to 4.2.24 in the pion group | `dependabot/go_modules/develop/pion-b1300fbc43` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305276365/job/118240590501)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305276290/job/118240589505)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305276258/job/118240588076)<br>Analyze (Go) ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>DCO Sign-off ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/118240585300)<br>Refresh the handoff status block ⏳ (in_progress)<br>Aikido Security: check code ✅ |
 
 <!-- END GENERATED: handoff status -->
 
