@@ -145,13 +145,9 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `bec66f9`** — docs: refresh the handoff status block
+**`develop` is at `faac3ed`** — Merge pull request #137 from barahn/develop
 
-### Open pull requests
-
-| PR | Title | Branch | CI on head |
-|---|---|---|---|
-| [#137](https://github.com/barahn/remotekit/pull/137) | chore(release): merge develop → main (4 commits) — docs(release): how remotekit is versioned and released (#136) | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117701103282) |
+No open pull requests.
 
 <!-- END GENERATED: handoff status -->
 
