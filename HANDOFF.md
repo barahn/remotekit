@@ -145,13 +145,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `b37017c`** — docs: refresh the handoff status block
+**`develop` is at `f0acbaf`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#138](https://github.com/barahn/remotekit/pull/138) | deps: Bump github.com/pion/webrtc/v4 from 4.2.23 to 4.2.24 in the pion group | `dependabot/go_modules/develop/pion-b1300fbc43` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305276365/job/118240590501)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305276290/job/118240589505)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305276258/job/118240588076)<br>Analyze (Go) ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>DCO Sign-off ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/118240585300)<br>Refresh the handoff status block ⏳ (in_progress)<br>Aikido Security: check code ✅ |
+| [#138](https://github.com/barahn/remotekit/pull/138) | deps: Bump github.com/pion/webrtc/v4 from 4.2.23 to 4.2.24 in the pion group | `dependabot/go_modules/develop/pion-b1300fbc43` | CodeQL ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305276365/job/118240590501)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305276290/job/118240589505)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305276258/job/118240588076)<br>Analyze (Go) ✅<br>Build, Test & SAST ⏳ (in_progress)<br>DCO Sign-off ✅<br>[signal/nostr module ❌ failure](https://github.com/barahn/remotekit/actions/runs/39305276290/job/118240587358)<br>gitleaks ✅<br>Review dependency changes ✅<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/118240585300)<br>Refresh the handoff status block ✅<br>Aikido Security: check code ✅ |
+| [#139](https://github.com/barahn/remotekit/pull/139) | ci: Bump the codeql group with 3 updates | `dependabot/github_actions/develop/codeql-da882c3ad8` | [Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305729175/job/118242179306)<br>Build, Test & SAST ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>DCO Sign-off ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305727797/job/118242173712)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305727822/job/118242173153)<br>Refresh the handoff status block ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/118242160571)<br>Aikido Security: check code ✅ |
 
 <!-- END GENERATED: handoff status -->
 
