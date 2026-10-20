@@ -3,6 +3,7 @@ module github.com/barahn/remotekit
 go 1.26.5
 
 require (
+	github.com/ebitengine/purego v0.11.2
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
