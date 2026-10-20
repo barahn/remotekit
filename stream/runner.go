@@ -9,6 +9,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -20,6 +21,7 @@ import (
 	"github.com/barahn/remotekit/bark"
 	"github.com/barahn/remotekit/clipboard"
 	"github.com/barahn/remotekit/input"
+	"github.com/barahn/remotekit/permission"
 	"github.com/barahn/remotekit/screen"
 	"github.com/barahn/remotekit/transfer"
 	"github.com/barahn/remotekit/webrtc"
@@ -662,7 +664,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 
 				if err == nil {
 					capCtx, cancelCap := context.WithCancel(ctx)
-					if startErr := cap.Start(capCtx); startErr == nil {
+					if err = cap.Start(capCtx); err == nil {
 						stateMu.Lock()
 						capturer = cap
 						activeCapCancel = cancelCap
@@ -682,11 +684,20 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 				// operator looking at a fabricated desktop has no way to tell it
 				// from the endpoint, and would act on it. See #157.
 				if framesChan == nil {
-					log.Printf("[AgentStream] screen capture unavailable - notifying the viewer instead of streaming placeholder frames")
-					notice, _ := json.Marshal(map[string]string{
+					log.Printf("[AgentStream] screen capture unavailable - notifying the viewer instead of streaming placeholder frames: %v", err)
+					unavailable := map[string]string{
 						"type":   "capture_unavailable",
 						"reason": "no screen capture backend is available on this endpoint",
-					})
+					}
+					// The machine could capture but has not been allowed to
+					// (macOS Screen Recording): say which permission, so the
+					// viewer can tell someone what to grant.
+					var missing *permission.NotGrantedError
+					if errors.As(err, &missing) {
+						unavailable["reason"] = "the " + missing.Permission.String() + " permission is not granted on this endpoint"
+						unavailable["permission"] = missing.Permission.ID()
+					}
+					notice, _ := json.Marshal(unavailable)
 					_ = safeWrite(notice)
 					continue
 				}
