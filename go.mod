@@ -11,7 +11,7 @@ require (
 	github.com/mendsec/cpace v0.1.0
 	github.com/pion/rtcp v1.2.19
 	github.com/pion/rtp v1.10.5
-	github.com/pion/webrtc/v4 v4.2.23
+	github.com/pion/webrtc/v4 v4.2.24
 	golang.org/x/image v0.47.0
 	golang.org/x/sys v0.49.0
 )
@@ -20,7 +20,7 @@ require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/gtank/ristretto255 v0.2.0 // indirect
 	github.com/pion/datachannel v1.6.3 // indirect
-	github.com/pion/dtls/v3 v3.1.10 // indirect
+	github.com/pion/dtls/v3 v3.1.13 // indirect
 	github.com/pion/ice/v4 v4.4.7 // indirect
 	github.com/pion/interceptor v0.1.49 // indirect
 	github.com/pion/logging v0.2.4 // indirect
