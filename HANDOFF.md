@@ -148,14 +148,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `7b9c1c6`** — docs: refresh the handoff status block
+**`develop` is at `423a719`** — feat: macOS capture, input and permission checks (#72) (#140)
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#140](https://github.com/barahn/remotekit/pull/140) | feat: macOS capture, input and permission checks (#72) | `feat/macos-capture-input` | CodeQL ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39649155255/job/119392594159)<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/119392593857)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39649155257/job/119392592952)<br>DCO Sign-off ✅<br>signal/nostr module ✅<br>Analyze (Go) ✅<br>Build, Test & SAST ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39649155049/job/119392589343)<br>gitleaks ✅<br>Review dependency changes ✅<br>Aikido Security: check code ✅ |
-| [#142](https://github.com/barahn/remotekit/pull/142) | chore(release): merge develop → main (3 commits) — ci: Bump the codeql group with 3 updates (#139) | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/119421207098) |
+| [#142](https://github.com/barahn/remotekit/pull/142) | chore(release): merge develop → main (3 commits) — ci: Bump the codeql group with 3 updates (#139) | `develop` | update-go_modules-graph ⏳ (queued)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/119422792536)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39657860299/job/119422786578)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39657860125/job/119422785652)<br>gitleaks ⏳ (in_progress)<br>Build, Test & SAST ⏳ (queued)<br>Release source ⏳ (queued)<br>Analyze (Go) ⏳ (queued)<br>DCO Sign-off ⏳ (queued)<br>Review dependency changes ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39657851215/job/119422757366)<br>Analyze (Go) ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>open-pr ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
