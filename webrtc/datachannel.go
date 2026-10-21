@@ -111,15 +111,6 @@ func (ps *PeerSession) acceptDataChannel(dc *webrtc.DataChannel) {
 func (ps *PeerSession) attachDataChannel(dc *webrtc.DataChannel) {
 	label := dc.Label()
 
-	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
-		ps.dcMu.RLock()
-		fn := ps.onDataMessage
-		ps.dcMu.RUnlock()
-		if fn != nil {
-			fn(label, msg.Data)
-		}
-	})
-
 	opened := func() {
 		ps.dcMu.Lock()
 		if ps.dataChannels[label] == dc {
@@ -136,6 +127,17 @@ func (ps *PeerSession) attachDataChannel(dc *webrtc.DataChannel) {
 			fn(label)
 		}
 	}
+
+	dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+		opened()
+		ps.dcMu.RLock()
+		fn := ps.onDataMessage
+		ps.dcMu.RUnlock()
+		if fn != nil {
+			fn(label, msg.Data)
+		}
+	})
+
 	dc.OnOpen(opened)
 	// A channel the remote peer created may already be open by the time it is
 	// handed over, in which case OnOpen has nothing left to report.

@@ -86,7 +86,7 @@ func (d *dataPlane) handleDisplayMessage(_ context.Context, peer *webrtc.PeerSes
 		selectErr = d.selectDisplay(p.Index)
 	}
 	payload, ok := d.displays()
-	if !ok {
+	if !ok || (env.Type == bark.TypeListDisplays && payload.Active < 0) {
 		if selectErr == nil {
 			return // nothing captured yet; the list follows the first frame
 		}

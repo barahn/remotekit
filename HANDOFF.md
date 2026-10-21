@@ -26,6 +26,7 @@ Packages (each usable on its own):
 | `screen/codec/ivf` | IVF container writer |
 | `screen/codec/vp8check` | Conformance oracle helper (shells out to libvpx `vpxdec`) |
 | `input` | Keyboard/mouse injection, multi-monitor aware |
+| `permission` | macOS Screen Recording / Accessibility status and request; NotRequired elsewhere |
 | `clipboard` | Cross-platform read/write plus change watcher |
 | `transfer` | Chunked file transfer with resume |
 | `webrtc` | pion wrapper: peer session, video track, signalling helpers |
@@ -45,6 +46,8 @@ Packages (each usable on its own):
   reverse. An optional transport goes in its own subpackage; the core must not
   gain a hard dependency on it.
 - **No CGo.** libvpx is only ever a *test-time subprocess*, never linked.
+  macOS frameworks (ScreenCaptureKit, CoreGraphics) are called through
+  `github.com/ebitengine/purego`, bound in `internal/macos`.
 
 ## 2. Ground rules you must follow
 
@@ -145,15 +148,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `c96970f`** — docs: refresh the handoff status block
+**`develop` is at `16baa77`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#139](https://github.com/barahn/remotekit/pull/139) | ci: Bump the codeql group with 3 updates | `dependabot/github_actions/develop/codeql-da882c3ad8` | CodeQL ✅<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305729175/job/118242179306)<br>Build, Test & SAST ✅<br>signal/nostr module ✅<br>DCO Sign-off ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305727797/job/118242173712)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305727822/job/118242173153)<br>Refresh the handoff status block ✅<br>Review dependency changes ✅<br>Analyze (Go) ✅<br>gitleaks ✅<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/118242160571)<br>Aikido Security: check code ✅ |
-| [#140](https://github.com/barahn/remotekit/pull/140) | feat: macOS capture, input and permission checks (#72) | `feat/macos-capture-input` | CodeQL ✅<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/118564195889)<br>Aikido Security: check code ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39403639353/job/118564184507)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39403639324/job/118564184166)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39403639339/job/118564183762)<br>gitleaks ✅<br>signal/nostr module ✅<br>Build, Test & SAST ✅<br>Analyze (Go) ✅<br>DCO Sign-off ✅<br>Review dependency changes ✅ |
-| [#141](https://github.com/barahn/remotekit/pull/141) | chore(release): merge develop → main (6 commits) — deps: Bump github.com/pion/webrtc/v4 from 4.2.23 to 4.2.24 in the ... | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/118574610580) |
+| [#142](https://github.com/barahn/remotekit/pull/142) | chore(release): merge develop → main (6 commits) — feat: macOS capture, input and permission checks (#72) (#140) | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/119422868227) |
 
 <!-- END GENERATED: handoff status -->
 
@@ -304,11 +305,17 @@ on unattended fleet hosts, where nobody is there to ask. To tie it to the
 session, set it to `runner.Granted(tunnel.PermissionReverseStream)`, so the
 stream is refused until the user grants it and again once the session revokes.
 
-Also open, unrelated to the above: macOS is stubbed out —
-`input/input_darwin.go` and `screen/capture_darwin.go` both return
-"not yet implemented" and carry `TODO` notes pointing at CGEvent and
-CGDisplayStream/ScreenCaptureKit respectively. Doing that without CGo is the
-hard part; discuss before starting.
+macOS capture (ScreenCaptureKit, macOS 12.3+) and input (CGEventPost) are
+implemented without CGo, through purego (#72). Their logic lives in untagged
+files (`screen/capture_macos.go`, `input/input_macos.go`) tested on Linux CI
+against fakes; the darwin files only talk to the system. They need Screen
+Recording and Accessibility, reported by the `permission` package; without them
+Start and every injection return an error matching
+`permission.ErrNotGranted`, and the runner's `capture_unavailable` notice names
+the missing permission. Screen Recording takes effect after a relaunch: the
+preflight is fixed per process, and ScreenCaptureKit is never called without
+it because each call made without the permission raises the system dialog
+again.
 
 ## 6. What to do now
 
