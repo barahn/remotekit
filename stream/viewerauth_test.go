@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/barahn/remotekit/clipboard"
+	"github.com/barahn/remotekit/screen"
 	"github.com/barahn/remotekit/webrtc"
 	"github.com/gorilla/websocket"
 )
@@ -143,6 +145,12 @@ func TestViewerAuth_Check(t *testing.T) {
 // a reply and is skipped.
 func firstReply(t *testing.T, r *Runner, msg []byte, wait time.Duration) []byte {
 	t.Helper()
+	if r.clip == nil {
+		r.clip = clipboard.NewMemoryClipboard()
+	}
+	if r.newCapturer == nil {
+		r.newCapturer = func(screen.CaptureConfig) (screen.Capturer, error) { return &fakeCapturer{}, nil }
+	}
 	replied := make(chan []byte, 1)
 	upgrader := websocket.Upgrader{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {

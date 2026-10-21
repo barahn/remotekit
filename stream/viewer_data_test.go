@@ -29,13 +29,7 @@ func dataSession(t *testing.T, permissions ...string) (*Runner, *Viewer, *clipbo
 	v := NewViewer(ViewerConfig{ID: "viewer-1", AgentID: "agent-1"})
 	session(t, r, v)
 
-	deadline := time.Now().Add(20 * time.Second)
-	for !v.channelsOpen() {
-		if time.Now().After(deadline) {
-			t.Fatal("the viewer's data channels did not open within 20s")
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	waitChannels(t, v)
 	return r, v, clip
 }
 

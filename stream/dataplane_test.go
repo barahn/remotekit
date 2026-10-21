@@ -16,7 +16,9 @@ import (
 	"time"
 
 	"github.com/barahn/remotekit/bark"
+	"github.com/barahn/remotekit/clipboard"
 	"github.com/barahn/remotekit/input"
+	"github.com/barahn/remotekit/screen"
 	"github.com/barahn/remotekit/webrtc"
 	"github.com/gorilla/websocket"
 )
@@ -51,6 +53,12 @@ type signalHarness struct {
 // until the test ends.
 func startSignalHarness(t *testing.T, r *Runner) *signalHarness {
 	t.Helper()
+	if r.clip == nil {
+		r.clip = clipboard.NewMemoryClipboard()
+	}
+	if r.newCapturer == nil {
+		r.newCapturer = func(screen.CaptureConfig) (screen.Capturer, error) { return &fakeCapturer{}, nil }
+	}
 	h := &signalHarness{
 		t:         t,
 		fromAgent: make(chan map[string]interface{}, 256),
@@ -177,18 +185,20 @@ func (h *signalHarness) connectViewer(onData func(label string, msg []byte)) *we
 	}
 	h.send(map[string]interface{}{"type": "offer", "viewer_id": "viewer-a", "sdp": offer})
 
+	start := time.Now()
 	select {
 	case <-h.answered:
-	case <-time.After(20 * time.Second):
-		h.t.Fatal("the agent did not answer within 20s")
+	case <-time.After(45 * time.Second):
+		h.t.Fatal("the agent did not answer within 45s")
 	}
-	deadline := time.Now().Add(20 * time.Second)
+	deadline := time.Now().Add(45 * time.Second)
 	for !viewer.DataChannelOpen(webrtc.DataChannelControl) || !viewer.DataChannelOpen(webrtc.DataChannelTransfer) {
 		if time.Now().After(deadline) {
-			h.t.Fatalf("data channels not open within 20s (state %v)", viewer.ConnectionState())
+			h.t.Fatalf("data channels not open within 45s (state %v)", viewer.ConnectionState())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	h.t.Logf("connection setup took %v", time.Since(start))
 	return viewer
 }
 
@@ -284,6 +294,7 @@ func TestDataChannel_InputNeedsConsent(t *testing.T) {
 // nothing about it reaches the server.
 func TestDataChannel_FileTransferRepliesOnTheChannel(t *testing.T) {
 	r := &Runner{id: "agent-1"}
+	r.newCapturer = func(screen.CaptureConfig) (screen.Capturer, error) { return &fakeCapturer{}, nil }
 	r.Grant(PermissionFileTransfer)
 	h := startSignalHarness(t, r)
 

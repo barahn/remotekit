@@ -88,6 +88,7 @@ func TestDisplaySwitchesAreLimited(t *testing.T) {
 	lists := make(chan bark.DisplaysPayload, 16)
 	v.OnDisplays(func(p bark.DisplaysPayload) { lists <- p })
 	session(t, r, v)
+	waitChannels(t, v)
 
 	wait := func(ok func(bark.DisplaysPayload) bool) bark.DisplaysPayload {
 		t.Helper()
@@ -156,6 +157,7 @@ func TestBadDisplayIndexDoesNotBlockSwitching(t *testing.T) {
 	lists := make(chan bark.DisplaysPayload, 16)
 	v.OnDisplays(func(p bark.DisplaysPayload) { lists <- p })
 	session(t, r, v)
+	waitChannels(t, v)
 
 	wait := func(ok func(bark.DisplaysPayload) bool) bark.DisplaysPayload {
 		t.Helper()
