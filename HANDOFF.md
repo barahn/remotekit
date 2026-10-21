@@ -148,9 +148,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `d56f8b7`** — test(stream): stabilize WebRTC session tests and prevent test leaks (#135) (#143)
+**`develop` is at `db2d2e7`** — docs: refresh the handoff status block
 
-No open pull requests.
+### Open pull requests
+
+| PR | Title | Branch | CI on head |
+|---|---|---|---|
+| [#144](https://github.com/barahn/remotekit/pull/144) | chore(release): merge develop → main (4 commits) — test(stream): stabilize WebRTC session tests and prevent test leak... | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/119515675164) |
 
 <!-- END GENERATED: handoff status -->
 
