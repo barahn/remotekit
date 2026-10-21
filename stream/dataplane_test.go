@@ -140,7 +140,7 @@ func (h *signalHarness) read() {
 			}
 			h.candMu.Unlock()
 			_ = h.viewer.AddICECandidate(c)
-		case "frame", "agent_ready", "capture_unavailable":
+		case "frame", "agent_ready", "capture_unavailable", "relay_mode", "relay_fallback_refused":
 			// Screen traffic, whose presence depends on the machine.
 		default:
 			h.fromAgent <- m

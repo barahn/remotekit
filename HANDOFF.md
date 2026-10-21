@@ -26,6 +26,7 @@ Packages (each usable on its own):
 | `screen/codec/ivf` | IVF container writer |
 | `screen/codec/vp8check` | Conformance oracle helper (shells out to libvpx `vpxdec`) |
 | `input` | Keyboard/mouse injection, multi-monitor aware |
+| `permission` | macOS Screen Recording / Accessibility status and request; NotRequired elsewhere |
 | `clipboard` | Cross-platform read/write plus change watcher |
 | `transfer` | Chunked file transfer with resume |
 | `webrtc` | pion wrapper: peer session, video track, signalling helpers |
@@ -45,6 +46,8 @@ Packages (each usable on its own):
   reverse. An optional transport goes in its own subpackage; the core must not
   gain a hard dependency on it.
 - **No CGo.** libvpx is only ever a *test-time subprocess*, never linked.
+  macOS frameworks (ScreenCaptureKit, CoreGraphics) are called through
+  `github.com/ebitengine/purego`, bound in `internal/macos`.
 
 ## 2. Ground rules you must follow
 
@@ -303,11 +306,17 @@ on unattended fleet hosts, where nobody is there to ask. To tie it to the
 session, set it to `runner.Granted(tunnel.PermissionReverseStream)`, so the
 stream is refused until the user grants it and again once the session revokes.
 
-Also open, unrelated to the above: macOS is stubbed out —
-`input/input_darwin.go` and `screen/capture_darwin.go` both return
-"not yet implemented" and carry `TODO` notes pointing at CGEvent and
-CGDisplayStream/ScreenCaptureKit respectively. Doing that without CGo is the
-hard part; discuss before starting.
+macOS capture (ScreenCaptureKit, macOS 12.3+) and input (CGEventPost) are
+implemented without CGo, through purego (#72). Their logic lives in untagged
+files (`screen/capture_macos.go`, `input/input_macos.go`) tested on Linux CI
+against fakes; the darwin files only talk to the system. They need Screen
+Recording and Accessibility, reported by the `permission` package; without them
+Start and every injection return an error matching
+`permission.ErrNotGranted`, and the runner's `capture_unavailable` notice names
+the missing permission. Screen Recording takes effect after a relaunch: the
+preflight is fixed per process, and ScreenCaptureKit is never called without
+it because each call made without the permission raises the system dialog
+again.
 
 ## 6. What to do now
 

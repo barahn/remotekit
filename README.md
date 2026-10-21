@@ -41,6 +41,7 @@ layered on top register through extension points such as
 | `screen/codec/vp8` | Pure-Go VP8 encoder — real bitstream, verified byte-exact against libvpx |
 | `screen/codec/ivf` | IVF container writer, for dumping streams to disk |
 | `input` | Keyboard and mouse injection |
+| `permission` | Check and request the OS privacy permissions capture and input need (macOS Screen Recording and Accessibility) |
 | `clipboard` | Cross-platform clipboard read/write with a change watcher that never hands on what password managers mark as secret |
 | `transfer` | Chunked file transfer with resume |
 | `webrtc` | Peer session, video track and signalling helpers over pion |
@@ -60,6 +61,15 @@ layered on top register through extension points such as
 Linux (X11 and Wayland), Windows and macOS. Capture, input and tray are
 per-platform implementations behind one interface; macOS support is the least
 exercised of the three.
+
+On macOS (12.3 or later) capture uses ScreenCaptureKit and input posts
+CGEvents, both called through [purego](https://github.com/ebitengine/purego)
+rather than CGo, so every platform still builds with `CGO_ENABLED=0`. They need
+the Screen Recording and Accessibility permissions, which macOS grants to the
+application bundle and only the person at the machine can grant, in System
+Settings. `permission.Check` reads them without prompting and
+`permission.Request` raises the system's request; Screen Recording takes effect
+after the application is relaunched.
 
 ## The VP8 encoder
 
