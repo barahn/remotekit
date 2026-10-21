@@ -145,13 +145,15 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `bec66f9`** — docs: refresh the handoff status block
+**`develop` is at `c96970f`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#137](https://github.com/barahn/remotekit/pull/137) | chore(release): merge develop → main (4 commits) — docs(release): how remotekit is versioned and released (#136) | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/117701103282) |
+| [#139](https://github.com/barahn/remotekit/pull/139) | ci: Bump the codeql group with 3 updates | `dependabot/github_actions/develop/codeql-da882c3ad8` | CodeQL ✅<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305729175/job/118242179306)<br>Build, Test & SAST ✅<br>signal/nostr module ✅<br>DCO Sign-off ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305727797/job/118242173712)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305727822/job/118242173153)<br>Refresh the handoff status block ✅<br>Review dependency changes ✅<br>Analyze (Go) ✅<br>gitleaks ✅<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/118242160571)<br>Aikido Security: check code ✅ |
+| [#140](https://github.com/barahn/remotekit/pull/140) | feat: macOS capture, input and permission checks (#72) | `feat/macos-capture-input` | CodeQL ✅<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/118564195889)<br>Aikido Security: check code ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39403639353/job/118564184507)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39403639324/job/118564184166)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39403639339/job/118564183762)<br>gitleaks ✅<br>signal/nostr module ✅<br>Build, Test & SAST ✅<br>Analyze (Go) ✅<br>DCO Sign-off ✅<br>Review dependency changes ✅ |
+| [#141](https://github.com/barahn/remotekit/pull/141) | chore(release): merge develop → main (6 commits) — deps: Bump github.com/pion/webrtc/v4 from 4.2.23 to 4.2.24 in the ... | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/118574610580) |
 
 <!-- END GENERATED: handoff status -->
 
