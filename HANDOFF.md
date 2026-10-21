@@ -145,13 +145,12 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `04804f9`** — docs: refresh the handoff status block
+**`develop` is at `035af44`** — ci: Bump the codeql group with 3 updates (#139)
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#139](https://github.com/barahn/remotekit/pull/139) | ci: Bump the codeql group with 3 updates | `dependabot/github_actions/develop/codeql-da882c3ad8` | CodeQL ✅<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305729175/job/118242179306)<br>Build, Test & SAST ✅<br>signal/nostr module ✅<br>DCO Sign-off ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305727797/job/118242173712)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39305727822/job/118242173153)<br>Refresh the handoff status block ✅<br>Review dependency changes ✅<br>Analyze (Go) ✅<br>gitleaks ✅<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/118242160571)<br>Aikido Security: check code ✅ |
 | [#140](https://github.com/barahn/remotekit/pull/140) | feat: macOS capture, input and permission checks (#72) | `feat/macos-capture-input` | CodeQL ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39649155255/job/119392594159)<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/119392593857)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39649155257/job/119392592952)<br>DCO Sign-off ✅<br>signal/nostr module ✅<br>Analyze (Go) ✅<br>Build, Test & SAST ✅<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39649155049/job/119392589343)<br>gitleaks ✅<br>Review dependency changes ✅<br>Aikido Security: check code ✅ |
 
 <!-- END GENERATED: handoff status -->
