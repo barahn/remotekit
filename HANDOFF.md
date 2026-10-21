@@ -223,12 +223,13 @@ Ordered work, as proposed:
   relays wants `DisableRelayFallback` and `RequireDataChannel` on. How the
   viewer learns the agent's session key and relays (support code, QR, link) is
   the product's rendezvous to design.
-- **Phase 3 — fallback without a central TURN.** Drop the Google STUN default
-  (`webrtc/peer.go:44`); every deployment currently contacts Google on every
-  session, and `pion/turn/v5` is already an indirect dependency. Use ephemeral
-  HMAC-derived per-session TURN credentials rather than the static shared
-  secret the current `PeerConfig.TURNUsername`/`TURNPassword` invites. For
-  native Linux clients QUIC or WireGuard beats WebRTC, which needs the
+- **Phase 3 — fallback without a central TURN.** Dropped the Google STUN default
+  (#63); `DefaultPeerConfig()` returns empty ICE servers (host candidates only),
+  requiring explicit STUN/TURN configuration where needed. Ephemeral HMAC-derived
+  per-session TURN credentials (`GenerateEphemeralTURNCredentials`, #64) generate
+  short-lived user/pass pairs following RFC 5766 / draft-uberti-behave-turn-rest-00
+  conventions verified against `pion/turn/v5`, eliminating static shared secrets on
+  clients. For native Linux clients QUIC or WireGuard beats WebRTC, which needs the
   *transport* to be pluggable too — `agent_stream.go` hardcodes WebRTC; the
   seam is *what to send* (`bark`) versus *how to send it* (`peer`).
 - **Explicitly out of scope for relays:** fleet presence. `heartbeat` fires

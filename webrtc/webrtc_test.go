@@ -4,6 +4,7 @@
 package webrtc
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -103,3 +104,16 @@ func TestPeerSession_WriteVideoSample(t *testing.T) {
 		t.Fatalf("WriteVideoSample failed: %v", err)
 	}
 }
+
+func TestDefaultPeerConfig_NoThirdPartyServers(t *testing.T) {
+	cfg := DefaultPeerConfig()
+	if len(cfg.ICEServers) != 0 {
+		t.Errorf("DefaultPeerConfig().ICEServers = %v, want empty (host-only candidates)", cfg.ICEServers)
+	}
+	for _, s := range cfg.ICEServers {
+		if strings.Contains(strings.ToLower(s), "google") {
+			t.Errorf("DefaultPeerConfig() contains third-party Google server: %s", s)
+		}
+	}
+}
+

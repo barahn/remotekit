@@ -121,10 +121,9 @@ type Config struct {
 
 	// PeerConfig is the ICE configuration -- STUN and TURN servers -- every
 	// viewer's WebRTC connection is built with. Nil means
-	// webrtc.DefaultPeerConfig(), which contacts public STUN servers run by
-	// a third party on every session; a deployment that should not, or that
-	// runs its own STUN/TURN, sets it. A non-nil config with no servers uses
-	// host candidates only, which works on a LAN and fails behind most NATs.
+	// webrtc.DefaultPeerConfig(), which configures no ICE servers (host candidates
+	// only, working on a LAN and failing behind most NATs). A deployment operating
+	// across NATs or firewalls must provide explicit STUN or TURN servers.
 	PeerConfig *webrtc.PeerConfig
 
 	// DownloadDir is where files a viewer sends are saved; it is created if

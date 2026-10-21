@@ -21,7 +21,7 @@
 //	err := r.Serve(ctx, conn) // conn is any SignalConn
 //
 // PeerConfig carries the deployment's own STUN/TURN servers; left nil, the
-// runner falls back to webrtc.DefaultPeerConfig(), which uses public STUN.
+// runner falls back to webrtc.DefaultPeerConfig(), which uses host candidates only.
 //
 // Everything is denied until granted. The checks that make an untrusted
 // transport safe -- RequireSignedViewers, RequireScreenViewConsent,
