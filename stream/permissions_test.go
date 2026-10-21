@@ -41,6 +41,7 @@ func TestViewerIsToldWhatIsGranted(t *testing.T) {
 	lists := make(chan []string, 16)
 	v.OnPermissions(func(granted []string) { lists <- granted })
 	_, notices := session(t, r, v)
+	waitChannels(t, v)
 
 	waitFor := func(want []string) {
 		t.Helper()
@@ -92,6 +93,7 @@ func TestRacingChangesEndOnTheLatestList(t *testing.T) {
 	lists := make(chan []string, 1024)
 	v.OnPermissions(func(granted []string) { lists <- granted })
 	session(t, r, v)
+	waitChannels(t, v)
 
 	select {
 	case <-lists:

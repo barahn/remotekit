@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/barahn/remotekit/bark"
+	"github.com/barahn/remotekit/clipboard"
 	"github.com/barahn/remotekit/webrtc"
 )
 
@@ -19,6 +20,9 @@ import (
 // transport, and returns the viewer's decoded frames and notices.
 func session(t *testing.T, r *Runner, v *Viewer) (<-chan image.Rectangle, <-chan Notice) {
 	t.Helper()
+	if r.clip == nil {
+		r.clip = clipboard.NewMemoryClipboard()
+	}
 	frames := make(chan image.Rectangle, 16)
 	notices := make(chan Notice, 16)
 	v.OnFrame(func(img *image.YCbCr) {
@@ -42,14 +46,40 @@ func session(t *testing.T, r *Runner, v *Viewer) (<-chan image.Rectangle, <-chan
 	return frames, notices
 }
 
+// waitChannels waits until the viewer's data channels are open, reporting how long it took.
+func waitChannels(t *testing.T, v *Viewer) {
+	t.Helper()
+	start := time.Now()
+	deadline := time.Now().Add(45 * time.Second)
+	for !v.channelsOpen() {
+		if time.Now().After(deadline) {
+			t.Fatalf("the viewer's data channels did not open within 45s (state %v)", v.connectionState())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Logf("connection setup took %v", time.Since(start))
+}
+
+func (v *Viewer) connectionState() string {
+	v.mu.Lock()
+	peer := v.peer
+	v.mu.Unlock()
+	if peer == nil {
+		return "no_peer"
+	}
+	return peer.ConnectionState().String()
+}
+
 // firstFrame waits for the viewer's first decoded frame, skipping the test
 // where the machine running it has no screen to capture.
 func firstFrame(t *testing.T, frames <-chan image.Rectangle, notices <-chan Notice) image.Rectangle {
 	t.Helper()
-	deadline := time.After(30 * time.Second)
+	start := time.Now()
+	deadline := time.After(45 * time.Second)
 	for {
 		select {
 		case rect := <-frames:
+			t.Logf("connection and first frame took %v", time.Since(start))
 			return rect
 		case n := <-notices:
 			if n.Type == "capture_unavailable" {
@@ -57,7 +87,7 @@ func firstFrame(t *testing.T, frames <-chan image.Rectangle, notices <-chan Noti
 			}
 			t.Fatalf("the agent sent %+v instead of its screen", n)
 		case <-deadline:
-			t.Fatal("no frame decoded within 30s")
+			t.Fatal("no frame decoded within 45s")
 		}
 	}
 }

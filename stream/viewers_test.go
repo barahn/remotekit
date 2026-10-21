@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/barahn/remotekit/clipboard"
 	"github.com/barahn/remotekit/screen"
 )
 
@@ -108,6 +109,7 @@ func (e *events) next(t *testing.T, id string) ViewerEvent {
 
 func fakeRunner() *Runner {
 	r := New(Config{ID: "agent-1"})
+	r.clip = clipboard.NewMemoryClipboard()
 	r.newCapturer = func(screen.CaptureConfig) (screen.Capturer, error) { return &fakeCapturer{}, nil }
 	return r
 }
@@ -120,8 +122,15 @@ func TestViewerEventsInOrder(t *testing.T) {
 
 	agentEnd, viewerEnd := memPipe()
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = r.Serve(ctx, agentEnd) }()
+	rdone := make(chan struct{})
+	go func() {
+		_ = r.Serve(ctx, agentEnd)
+		close(rdone)
+	}()
+	defer func() {
+		cancel()
+		<-rdone
+	}()
 	vctx, vcancel := context.WithCancel(context.Background())
 	vdone := make(chan struct{})
 	go func() { _ = v.Serve(vctx, viewerEnd); close(vdone) }()
@@ -150,8 +159,16 @@ func TestDisconnectEndsOneViewer(t *testing.T) {
 	ev := watch(r)
 	h := newHub(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = r.Serve(ctx, h.agent) }()
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_ = r.Serve(ctx, h.agent)
+	}()
+	defer func() {
+		cancel()
+		wg.Wait()
+	}()
 
 	frames := map[string]chan struct{}{}
 	notices := map[string]chan Notice{}
@@ -168,7 +185,11 @@ func TestDisconnectEndsOneViewer(t *testing.T) {
 		})
 		v.OnNotice(func(n Notice) { notices[id] <- n })
 		conn := h.connect(id)
-		go func() { _ = v.Serve(ctx, conn) }()
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_ = v.Serve(ctx, conn)
+		}()
 	}
 	for _, id := range []string{"alice", "bob"} {
 		for _, want := range []string{ViewerJoined, ViewerStreaming} {
