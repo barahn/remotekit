@@ -61,8 +61,11 @@ func paddedLen(n int) int {
 	if n <= 32 {
 		return 32
 	}
+	if n > 65536 {
+		return 0
+	}
 	nextPower := 1
-	for nextPower < n {
+	for nextPower < n && nextPower > 0 {
 		nextPower <<= 1
 	}
 	chunk := 32
@@ -77,7 +80,11 @@ func pad(plaintext []byte) ([]byte, error) {
 	if n < nip44MinPlaintext || n > nip44MaxPlaintext {
 		return nil, ErrMessageTooLarge
 	}
-	out := make([]byte, 2+paddedLen(n))
+	plen := paddedLen(n)
+	if plen < 32 || plen > 65536 {
+		return nil, ErrMessageTooLarge
+	}
+	out := make([]byte, 2+plen)
 	binary.BigEndian.PutUint16(out, uint16(n)) //nolint:gosec // n <= 65535, checked above
 	copy(out[2:], plaintext)
 	return out, nil
@@ -88,7 +95,11 @@ func unpad(padded []byte) ([]byte, error) {
 		return nil, errNIP44Padding
 	}
 	n := int(binary.BigEndian.Uint16(padded))
-	if n < nip44MinPlaintext || len(padded) != 2+paddedLen(n) {
+	if n < nip44MinPlaintext || n > nip44MaxPlaintext {
+		return nil, errNIP44Padding
+	}
+	plen := paddedLen(n)
+	if plen < 32 || plen > 65536 || len(padded) != 2+plen {
 		return nil, errNIP44Padding
 	}
 	return padded[2 : 2+n], nil
