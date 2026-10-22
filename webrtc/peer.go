@@ -27,7 +27,7 @@ const defaultKeyFrameRequestInterval = 500 * time.Millisecond
 
 // PeerConfig configures a WebRTC PeerConnection session.
 type PeerConfig struct {
-	// ICEServers lists STUN/TURN server URLs (e.g. "stun:stun.l.google.com:19302" or "turn:127.0.0.1:3478").
+	// ICEServers lists STUN/TURN server URLs (e.g. "stun:stun.example.org:19302" or "turn:127.0.0.1:3478").
 	ICEServers []string
 
 	// TURNUsername is optional credential username for TURN.
@@ -37,14 +37,14 @@ type PeerConfig struct {
 	TURNPassword string
 }
 
-// DefaultPeerConfig returns a default PeerConfig using public STUN.
+// DefaultPeerConfig returns a default PeerConfig with no ICE servers.
+//
+// By default, WebRTC operates in host-candidate-only mode, which works over a
+// local network or between directly reachable addresses. Deployments operating
+// across NATs or firewalls must supply explicit STUN or TURN servers via
+// PeerConfig.ICEServers (and credentials if using TURN).
 func DefaultPeerConfig() PeerConfig {
-	return PeerConfig{
-		ICEServers: []string{
-			"stun:stun.l.google.com:19302",
-			"stun:stun1.l.google.com:19302",
-		},
-	}
+	return PeerConfig{}
 }
 
 // PeerSession manages a Pion WebRTC PeerConnection for screen streaming and
