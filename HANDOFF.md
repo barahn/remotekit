@@ -148,13 +148,14 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `db2d2e7`** — docs: refresh the handoff status block
+**`develop` is at `d7ca0c3`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#144](https://github.com/barahn/remotekit/pull/144) | chore(release): merge develop → main (4 commits) — test(stream): stabilize WebRTC session tests and prevent test leak... | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/119515675164) |
+| [#144](https://github.com/barahn/remotekit/pull/144) | chore(release): merge develop → main (4 commits) — test(stream): stabilize WebRTC session tests and prevent test leak... | `develop` | [DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39684722411/job/119516256575)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39684722411/job/119516256325)<br>Build, Test & SAST ✅<br>signal/nostr module ✅<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/119515779813) |
+| [#145](https://github.com/barahn/remotekit/pull/145) | feat(webrtc): drop Google STUN default and implement ephemeral TURN credentials (#63, #64) | `feat/phase3-stun-turn` | [Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/119589116585)<br>gitleaks ⏳ (in_progress)<br>Aikido Security: check code ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39706946845/job/119589110445)<br>Refresh the handoff status block ⏳ (in_progress)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39706946813/job/119589110246)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39706946812/job/119589109536)<br>Build, Test & SAST ⏳ (in_progress)<br>DCO Sign-off ✅<br>Analyze (Go) ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
