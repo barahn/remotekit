@@ -85,7 +85,7 @@ func pad(plaintext []byte) ([]byte, error) {
 		return nil, ErrMessageTooLarge
 	}
 	out := make([]byte, 2+plen)
-	binary.BigEndian.PutUint16(out, uint16(n)) //nolint:gosec // n <= 65535, checked above
+	binary.BigEndian.PutUint16(out, uint16(n)) // #nosec G115 -- n <= nip44MaxPlaintext (65535), checked above
 	copy(out[2:], plaintext)
 	return out, nil
 }
