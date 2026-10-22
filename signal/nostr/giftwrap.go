@@ -48,6 +48,9 @@ func wrap(content string, sender *SecretKey, recipient string, now time.Time, tt
 	if err != nil {
 		return nil, err
 	}
+	if len(rumorJSON) > nip44MaxPlaintext {
+		return nil, ErrMessageTooLarge
+	}
 
 	sealed, err := nip44Encrypt(rumorJSON, conversationKey(sender, recipientPub))
 	if err != nil {
@@ -64,6 +67,9 @@ func wrap(content string, sender *SecretKey, recipient string, now time.Time, tt
 	sealJSON, err := json.Marshal(seal)
 	if err != nil {
 		return nil, err
+	}
+	if len(sealJSON) > nip44MaxPlaintext {
+		return nil, ErrMessageTooLarge
 	}
 
 	oneTime, err := GenerateKey()

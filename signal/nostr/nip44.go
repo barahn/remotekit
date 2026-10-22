@@ -84,7 +84,11 @@ func pad(plaintext []byte) ([]byte, error) {
 	if plen < 32 || plen > 65536 {
 		return nil, ErrMessageTooLarge
 	}
-	out := make([]byte, 2+plen)
+	totalSize := 2 + plen
+	if totalSize < 34 || totalSize > 65538 {
+		return nil, ErrMessageTooLarge
+	}
+	out := make([]byte, totalSize)
 	binary.BigEndian.PutUint16(out, uint16(n)) // #nosec G115 -- n <= nip44MaxPlaintext (65535), checked above
 	copy(out[2:], plaintext)
 	return out, nil
