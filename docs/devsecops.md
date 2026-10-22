@@ -137,13 +137,12 @@ half of DevSecOps a pull request cannot deliver:
 
 ## A note on `handoff.yml`
 
-It runs on `pull_request_target` with a write token, which is the trigger
-behind "pwn request" attacks when a workflow checks out and runs a pull
-request's code. This one does not: it checks out the default branch explicitly
-and runs only `scripts/gen-handoff-status.sh` from it. It does write pull
-request titles — text anyone who can open a pull request controls — into a
-committed file; that the script escapes them was not verified here. The
-repository does not allow forks, which limits who can open one.
+It runs on `push` to `main` and `develop` and on `workflow_dispatch`. It
+previously ran on `pull_request_target` with a write token; because this
+repository is public and allows forks, that trigger was removed to prevent any
+untrusted pull request from triggering a workflow with write permissions.
+`scripts/gen-handoff-status.sh` additionally sanitizes newlines and pipe characters
+in pull request titles and branch names before splicing them into `HANDOFF.md`.
 
 ## When a gate fails
 

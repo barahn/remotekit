@@ -44,9 +44,9 @@ trap 'rm -f "$body"' EXIT
     printf '|---|---|---|---|\n'
     while IFS= read -r pr; do
       num=$(jq -r .number <<<"$pr")
-      title=$(jq -r '.title | gsub("\\|"; "\\\\|")' <<<"$pr")
+      title=$(jq -r '.title | gsub("[\\r\\n]+"; " ") | gsub("\\|"; "\\\\|")' <<<"$pr")
       url=$(jq -r .url <<<"$pr")
-      branch=$(jq -r .headRefName <<<"$pr")
+      branch=$(jq -r '.headRefName | gsub("[\\r\\n]+"; " ") | gsub("\\|"; "\\\\|")' <<<"$pr")
       oid=$(jq -r .headRefOid <<<"$pr")
       [ "$(jq -r .isDraft <<<"$pr")" = true ] && title="$title _(draft)_"
 
