@@ -17,7 +17,17 @@ var (
 	ErrServiceAlreadyInstalled = errors.New("service is already installed")
 	// ErrUnsupportedPlatform is returned on platforms where background service management is not implemented.
 	ErrUnsupportedPlatform = errors.New("service management is not supported on this platform")
+	// ErrInvalidParameter is returned when service configuration parameters contain newlines or control characters.
+	ErrInvalidParameter = errors.New("service: configuration parameters must not contain newlines or control characters")
 )
+
+// CheckNoControlChars returns ErrInvalidParameter if s contains newlines or null bytes.
+func CheckNoControlChars(s string) error {
+	if strings.ContainsAny(s, "\r\n\x00") {
+		return ErrInvalidParameter
+	}
+	return nil
+}
 
 // State represents the runtime state of a background service.
 type State string

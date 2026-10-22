@@ -40,6 +40,21 @@ func (m *linuxServiceManager) unitPath() string {
 }
 
 func (m *linuxServiceManager) Install(cfg Config) error {
+	if err := CheckNoControlChars(m.name); err != nil {
+		return fmt.Errorf("service name contains invalid characters: %w", err)
+	}
+	if err := CheckNoControlChars(cfg.Description); err != nil {
+		return fmt.Errorf("description contains invalid characters: %w", err)
+	}
+	if err := CheckNoControlChars(cfg.WorkDir); err != nil {
+		return fmt.Errorf("working directory contains invalid characters: %w", err)
+	}
+	for _, a := range cfg.Args {
+		if err := CheckNoControlChars(a); err != nil {
+			return fmt.Errorf("argument contains invalid characters: %w", err)
+		}
+	}
+
 	exePath := cfg.ExecPath
 	if exePath == "" {
 		var err error
@@ -47,6 +62,9 @@ func (m *linuxServiceManager) Install(cfg Config) error {
 		if err != nil {
 			return fmt.Errorf("failed to get executable path: %w", err)
 		}
+	}
+	if err := CheckNoControlChars(exePath); err != nil {
+		return fmt.Errorf("executable path contains invalid characters: %w", err)
 	}
 	exePath, err := filepath.Abs(exePath)
 	if err != nil {

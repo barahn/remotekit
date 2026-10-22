@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -39,6 +40,21 @@ func IsWindowsService() bool {
 }
 
 func (m *windowsServiceManager) Install(cfg Config) error {
+	if err := CheckNoControlChars(m.name); err != nil {
+		return fmt.Errorf("service name contains invalid characters: %w", err)
+	}
+	if err := CheckNoControlChars(cfg.DisplayName); err != nil {
+		return fmt.Errorf("display name contains invalid characters: %w", err)
+	}
+	if err := CheckNoControlChars(cfg.Description); err != nil {
+		return fmt.Errorf("description contains invalid characters: %w", err)
+	}
+	for _, a := range cfg.Args {
+		if err := CheckNoControlChars(a); err != nil {
+			return fmt.Errorf("argument contains invalid characters: %w", err)
+		}
+	}
+
 	exePath := cfg.ExecPath
 	if exePath == "" {
 		var err error
@@ -46,6 +62,9 @@ func (m *windowsServiceManager) Install(cfg Config) error {
 		if err != nil {
 			return fmt.Errorf("failed to get executable path: %w", err)
 		}
+	}
+	if err := CheckNoControlChars(exePath); err != nil {
+		return fmt.Errorf("executable path contains invalid characters: %w", err)
 	}
 	exePath, err := filepath.Abs(exePath)
 	if err != nil {
@@ -88,7 +107,12 @@ func (m *windowsServiceManager) Install(cfg Config) error {
 	}
 
 	serviceArgs := cfg.Args
-	s, err = scManager.CreateService(m.name, exePath, mgrConfig, serviceArgs...)
+	binPath := exePath
+	// CWE-428: Enclose in quotes if the executable path contains spaces
+	if strings.Contains(binPath, " ") && !strings.HasPrefix(binPath, "\"") {
+		binPath = fmt.Sprintf("\"%s\"", binPath)
+	}
+	s, err = scManager.CreateService(m.name, binPath, mgrConfig, serviceArgs...)
 	if err != nil {
 		return fmt.Errorf("failed to create Windows service '%s': %w", m.name, err)
 	}
