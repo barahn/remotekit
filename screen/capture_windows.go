@@ -80,8 +80,17 @@ var (
 	enumDisplayMonitorsCallback uintptr
 )
 
+// winPtr converts a Win32 syscall uintptr address into an unsafe.Pointer.
+// It must only be called on valid memory pointers (such as from OS callbacks)
+// whose lifetime is guaranteed across the call site.
+func winPtr(p uintptr) unsafe.Pointer {
+	return *(*unsafe.Pointer)(unsafe.Pointer(&p))
+}
+
 func enumDisplayMonitorsProc(hMonitor, hdcMonitor, lprcMonitor, dwData uintptr) uintptr {
-	r := (*rect)(unsafe.Pointer(lprcMonitor)) // #nosec G103 -- Win32 callback struct
+	// winPtr is safe here because lprcMonitor is a valid LPRECT provided by the OS
+	// on the stack for the synchronous duration of EnumDisplayMonitorsProc.
+	r := (*rect)(winPtr(lprcMonitor)) // #nosec G103 -- Win32 callback struct
 	idx := len(enumDisplayMonitorsSlice)
 	name := fmt.Sprintf("Display %d (%dx%d)", idx+1, r.right-r.left, r.bottom-r.top)
 	primary := (r.left == 0 && r.top == 0)

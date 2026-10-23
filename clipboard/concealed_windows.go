@@ -47,7 +47,9 @@ func (wc *WindowsClipboard) Concealed(ctx context.Context) (bool, error) {
 			return 0, false
 		}
 		defer procGlobalUnlock.Call(h)
-		return *(*uint32)(unsafe.Pointer(ptr)), true // #nosec G103 -- a DWORD in clipboard memory
+		// winPtr is safe here because h is locked via GlobalLock, guaranteeing
+		// the 4-byte DWORD memory remains valid until procGlobalUnlock is called on return.
+		return *(*uint32)(winPtr(ptr)), true // #nosec G103 -- a DWORD in clipboard memory
 	}
 	return concealedByWindowsFormats(has, dword), nil
 }
