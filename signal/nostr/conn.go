@@ -20,6 +20,8 @@ const (
 	DefaultMessageTTL = 5 * time.Minute
 	// DefaultMaxViewers is used when Config.MaxViewers is zero.
 	DefaultMaxViewers = 8
+	// DefaultRelayGracePeriod is used when Config.RelayGracePeriod is zero.
+	DefaultRelayGracePeriod = 30 * time.Second
 )
 
 var (
@@ -57,23 +59,33 @@ type Config struct {
 	// bounds what a flood of new keys can make it publish. Zero means
 	// DefaultMaxViewers. Dial ignores it.
 	MaxViewers int
+	// RelayGracePeriod bounds how long the Conn will survive when all relays
+	// are unreachable. If at least one relay reconnects within this period,
+	// the session continues. Zero means DefaultRelayGracePeriod.
+	RelayGracePeriod time.Duration
 }
 
 // Conn is a signalling connection over Nostr relays. It satisfies
 // stream.SignalConn.
 type Conn struct {
-	key        *SecretKey
-	peer       string // Dial's peer; "" on a Listen conn
-	ttl        time.Duration
-	maxViewers int
-	relays     []*relay
-	in         chan []byte
+	key         *SecretKey
+	peer        string // Dial's peer; "" on a Listen conn
+	ttl         time.Duration
+	maxViewers  int
+	dialer      *websocket.Dialer
+	subID       string
+	gracePeriod time.Duration
 
-	mu      sync.Mutex
-	seen    map[string]time.Time
-	viewers map[string]struct{}
-	alive   int
+	mu           sync.Mutex
+	relayCond    *sync.Cond
+	activeRelays map[string]*relay
+	seen         map[string]time.Time
+	viewers      map[string]struct{}
+	alive        int
+	graceTimer   *time.Timer
+	closed       bool
 
+	in        chan []byte
 	done      chan struct{}
 	closeOnce sync.Once
 }
@@ -114,35 +126,50 @@ func open(ctx context.Context, cfg Config, peer string) (*Conn, error) {
 		dialer = websocket.DefaultDialer
 	}
 	c := &Conn{
-		key:        key,
-		peer:       peer,
-		ttl:        cfg.MessageTTL,
-		maxViewers: cfg.MaxViewers,
-		in:         make(chan []byte, 64),
-		seen:       map[string]time.Time{},
-		viewers:    map[string]struct{}{},
-		done:       make(chan struct{}),
+		key:          key,
+		peer:         peer,
+		ttl:          cfg.MessageTTL,
+		maxViewers:   cfg.MaxViewers,
+		dialer:       dialer,
+		gracePeriod:  cfg.RelayGracePeriod,
+		activeRelays: make(map[string]*relay),
+		in:           make(chan []byte, 64),
+		seen:         map[string]time.Time{},
+		viewers:      map[string]struct{}{},
+		done:         make(chan struct{}),
 	}
+	c.relayCond = sync.NewCond(&c.mu)
 	if c.ttl <= 0 {
 		c.ttl = DefaultMessageTTL
 	}
 	if c.maxViewers <= 0 {
 		c.maxViewers = DefaultMaxViewers
 	}
+	if c.gracePeriod <= 0 {
+		c.gracePeriod = DefaultRelayGracePeriod
+	}
 
 	subID, err := randomID()
 	if err != nil {
 		return nil, err
 	}
+	c.subID = subID
+
 	// Seals and wraps are backdated by up to wrapJitter, and a filter
 	// matches on the wrap's created_at, so the window reaches that far back.
 	// Older traffic still delivered is dropped by the rumor's own timestamp.
+	initialSince := time.Now().Add(-wrapJitter - time.Minute).Unix()
 	f := filter{
 		Kinds: []int{KindGiftWrap},
 		P:     []string{key.PublicKey()},
-		Since: time.Now().Add(-wrapJitter - time.Minute).Unix(),
+		Since: initialSince,
 	}
 
+	type initialDial struct {
+		url string
+		r   *relay
+	}
+	var dialed []initialDial
 	for _, url := range cfg.Relays {
 		r, err := dialRelay(ctx, dialer, url)
 		if err != nil {
@@ -152,15 +179,30 @@ func open(ctx context.Context, cfg Config, peer string) (*Conn, error) {
 			_ = r.close()
 			continue
 		}
-		c.relays = append(c.relays, r)
+		dialed = append(dialed, initialDial{url: url, r: r})
 	}
-	if len(c.relays) == 0 {
+	if len(dialed) == 0 {
 		return nil, ErrNoRelays
 	}
-	c.alive = len(c.relays)
-	for _, r := range c.relays {
-		go c.readRelay(r, subID)
+
+	c.mu.Lock()
+	for _, d := range dialed {
+		c.activeRelays[d.url] = d.r
 	}
+	c.alive = len(c.activeRelays)
+	c.mu.Unlock()
+
+	for _, url := range cfg.Relays {
+		var initR *relay
+		for _, d := range dialed {
+			if d.url == url {
+				initR = d.r
+				break
+			}
+		}
+		go c.relayWorker(url, initR, initialSince)
+	}
+
 	return c, nil
 }
 
@@ -176,15 +218,97 @@ func randomID() (string, error) {
 // to Dial an agent's Listen conn.
 func (c *Conn) PublicKey() string { return c.key.PublicKey() }
 
-func (c *Conn) readRelay(r *relay, subID string) {
-	_ = r.read(subID, c.receive)
-	_ = r.close()
+func (c *Conn) relayWorker(url string, initialR *relay, initialSince int64) {
+	lastActive := time.Now()
+	r := initialR
+	backoff := 50 * time.Millisecond
+	const maxBackoff = 3 * time.Second
+
+	for {
+		if r == nil {
+			select {
+			case <-c.done:
+				return
+			case <-time.After(backoff):
+				backoff = min(backoff*2, maxBackoff)
+			}
+
+			select {
+			case <-c.done:
+				return
+			default:
+			}
+
+			dialCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			newR, err := dialRelay(dialCtx, c.dialer, url)
+			cancel()
+			if err != nil {
+				continue
+			}
+
+			subSince := lastActive.Add(-wrapJitter - time.Minute).Unix()
+			f := filter{
+				Kinds: []int{KindGiftWrap},
+				P:     []string{c.key.PublicKey()},
+				Since: subSince,
+			}
+			if err := newR.subscribe(c.subID, f); err != nil {
+				_ = newR.close()
+				continue
+			}
+
+			r = newR
+			backoff = 50 * time.Millisecond
+			c.setRelayActive(url, r)
+		}
+
+		_ = r.read(c.subID, func(ev *Event) {
+			lastActive = time.Now()
+			c.receive(ev)
+		})
+
+		_ = r.close()
+		lastActive = time.Now()
+		c.setRelayInactive(url, r)
+		r = nil
+
+		select {
+		case <-c.done:
+			return
+		default:
+		}
+	}
+}
+
+func (c *Conn) setRelayActive(url string, r *relay) {
 	c.mu.Lock()
-	c.alive--
-	last := c.alive == 0
-	c.mu.Unlock()
-	if last {
-		_ = c.Close()
+	defer c.mu.Unlock()
+	if c.closed {
+		_ = r.close()
+		return
+	}
+	c.activeRelays[url] = r
+	c.alive = len(c.activeRelays)
+	if c.graceTimer != nil {
+		c.graceTimer.Stop()
+		c.graceTimer = nil
+	}
+	c.relayCond.Broadcast()
+}
+
+func (c *Conn) setRelayInactive(url string, oldR *relay) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.activeRelays[url] == oldR {
+		delete(c.activeRelays, url)
+		c.alive = len(c.activeRelays)
+	}
+	if c.alive <= 0 && !c.closed {
+		if c.graceTimer == nil {
+			c.graceTimer = time.AfterFunc(c.gracePeriod, func() {
+				_ = c.Close()
+			})
+		}
 	}
 }
 
@@ -327,29 +451,61 @@ func (c *Conn) recipients(data []byte) ([]string, error) {
 }
 
 func (c *Conn) publish(ev *Event) error {
-	sent := false
-	for _, r := range c.relays {
-		if err := r.publish(ev); err != nil {
-			// Closing it ends its read loop, which retires it.
-			_ = r.close()
-			continue
+	for {
+		c.mu.Lock()
+		if c.closed {
+			c.mu.Unlock()
+			return ErrClosed
 		}
-		sent = true
+		if len(c.activeRelays) == 0 {
+			c.relayCond.Wait()
+			if c.closed {
+				c.mu.Unlock()
+				return ErrClosed
+			}
+		}
+		relays := make([]*relay, 0, len(c.activeRelays))
+		for _, r := range c.activeRelays {
+			relays = append(relays, r)
+		}
+		c.mu.Unlock()
+
+		sent := false
+		for _, r := range relays {
+			if err := r.publish(ev); err != nil {
+				_ = r.close()
+				continue
+			}
+			sent = true
+		}
+		if sent {
+			return nil
+		}
+		select {
+		case <-c.done:
+			return ErrClosed
+		case <-time.After(20 * time.Millisecond):
+		}
 	}
-	if !sent {
-		return ErrClosed
-	}
-	return nil
 }
 
 // Close closes every relay connection and unblocks ReadMessage. It may be
 // called more than once.
 func (c *Conn) Close() error {
 	c.closeOnce.Do(func() {
-		close(c.done)
-		for _, r := range c.relays {
+		c.mu.Lock()
+		c.closed = true
+		if c.graceTimer != nil {
+			c.graceTimer.Stop()
+			c.graceTimer = nil
+		}
+		for _, r := range c.activeRelays {
 			_ = r.close()
 		}
+		c.activeRelays = nil
+		c.relayCond.Broadcast()
+		c.mu.Unlock()
+		close(c.done)
 	})
 	return nil
 }

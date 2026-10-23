@@ -27,6 +27,7 @@ type fakeRelay struct {
 	// published counts the EVENTs accepted, for tests that need to know
 	// what reached the relay.
 	published int
+	paused    bool
 }
 
 type fakeClient struct {
@@ -46,6 +47,14 @@ func newFakeRelay(t *testing.T) *fakeRelay {
 	fr := &fakeRelay{subs: map[*fakeClient]map[string]filter{}}
 	upgrader := websocket.Upgrader{}
 	fr.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fr.mu.Lock()
+		if fr.paused {
+			fr.mu.Unlock()
+			http.Error(w, "relay paused", http.StatusServiceUnavailable)
+			return
+		}
+		fr.mu.Unlock()
+
 		ws, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			return
@@ -73,6 +82,23 @@ func newFakeRelay(t *testing.T) *fakeRelay {
 }
 
 func (fr *fakeRelay) url() string { return "ws" + strings.TrimPrefix(fr.srv.URL, "http") }
+
+// pause drops every active client and rejects new connections until resume.
+func (fr *fakeRelay) pause() {
+	fr.mu.Lock()
+	defer fr.mu.Unlock()
+	fr.paused = true
+	for c := range fr.subs {
+		_ = c.ws.Close()
+	}
+}
+
+// resume re-enables accepting connections.
+func (fr *fakeRelay) resume() {
+	fr.mu.Lock()
+	defer fr.mu.Unlock()
+	fr.paused = false
+}
 
 // close drops every client connection and stops the server.
 func (fr *fakeRelay) close() {
