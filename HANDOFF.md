@@ -324,9 +324,10 @@ again.
    pull request comes before new work, and on a docs-only branch it is usually
    the one-line DCO fix.
 2. Refer to `docs/decentralised-signalling.md` and `docs/implementation-phases.md`.
-   The roadmap is structured into Phase 0a (defect remediation), Phase 0b (enrolment
-   identity & signing), Phase 1 (DataChannel data plane), Phase 2 (pluggable signalling),
-   and Phase 3 (relays & transports).
+   The roadmap is structured into Phase 0a (Defect Remediation), Phase 0
+   (Activate Cryptographic Identity & Consent), Phase 1 (Peer-to-Peer Data Plane
+   via WebRTC DataChannel), Phase 2 (Pluggable Signalling Abstraction: `SignalConn`
+   and `signal/nostr`), and Phase 3 (Fallback & Transport Hardening: STUN/TURN & Transports).
 3. Phases 0 and 1 are done in this module: device keys, the server
    verifying them, signing in both directions, consent for input, clipboard,
    file transfer, reverse streams and the screen, and the data plane on a
