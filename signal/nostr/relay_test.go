@@ -27,6 +27,11 @@ type fakeRelay struct {
 	// published counts the EVENTs accepted, for tests that need to know
 	// what reached the relay.
 	published int
+
+	requireAuth   bool
+	challenge     string
+	authValidator func(pubkey string) bool
+	authenticated map[*fakeClient]string
 }
 
 type fakeClient struct {
@@ -43,7 +48,10 @@ func (c *fakeClient) send(msg ...any) {
 
 func newFakeRelay(t *testing.T) *fakeRelay {
 	t.Helper()
-	fr := &fakeRelay{subs: map[*fakeClient]map[string]filter{}}
+	fr := &fakeRelay{
+		subs:          map[*fakeClient]map[string]filter{},
+		authenticated: map[*fakeClient]string{},
+	}
 	upgrader := websocket.Upgrader{}
 	fr.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ws, err := upgrader.Upgrade(w, r, nil)
@@ -53,10 +61,16 @@ func newFakeRelay(t *testing.T) *fakeRelay {
 		c := &fakeClient{ws: ws}
 		fr.mu.Lock()
 		fr.subs[c] = map[string]filter{}
+		reqAuth := fr.requireAuth
+		challenge := fr.challenge
 		fr.mu.Unlock()
+		if reqAuth && challenge != "" {
+			c.send("AUTH", challenge)
+		}
 		defer func() {
 			fr.mu.Lock()
 			delete(fr.subs, c)
+			delete(fr.authenticated, c)
 			fr.mu.Unlock()
 			_ = ws.Close()
 		}()
@@ -98,9 +112,50 @@ func (fr *fakeRelay) handle(c *fakeClient, data []byte) {
 	var label string
 	_ = json.Unmarshal(msg[0], &label)
 	switch label {
+	case "AUTH":
+		var ev Event
+		if json.Unmarshal(msg[1], &ev) != nil {
+			return
+		}
+		if ev.Kind != KindAuth {
+			c.send("OK", ev.ID, false, "error: kind must be 22242")
+			return
+		}
+		if err := ev.verify(); err != nil {
+			c.send("OK", ev.ID, false, "invalid: "+err.Error())
+			return
+		}
+		if ev.tag("relay") != fr.url() {
+			c.send("OK", ev.ID, false, "error: wrong relay tag")
+			return
+		}
+		fr.mu.Lock()
+		expectedChallenge := fr.challenge
+		validator := fr.authValidator
+		fr.mu.Unlock()
+		if ev.tag("challenge") != expectedChallenge {
+			c.send("OK", ev.ID, false, "error: wrong challenge tag")
+			return
+		}
+		if validator != nil && !validator(ev.PubKey) {
+			c.send("OK", ev.ID, false, "restricted: pubkey not authorized")
+			return
+		}
+		fr.mu.Lock()
+		fr.authenticated[c] = ev.PubKey
+		fr.mu.Unlock()
+		c.send("OK", ev.ID, true, "")
 	case "EVENT":
 		var ev Event
 		if json.Unmarshal(msg[1], &ev) != nil {
+			return
+		}
+		fr.mu.Lock()
+		reqAuth := fr.requireAuth
+		_, authed := fr.authenticated[c]
+		fr.mu.Unlock()
+		if reqAuth && !authed {
+			c.send("OK", ev.ID, false, "auth-required: authentication required")
 			return
 		}
 		if err := ev.verify(); err != nil {
@@ -113,6 +168,14 @@ func (fr *fakeRelay) handle(c *fakeClient, data []byte) {
 		var sub string
 		var f filter
 		if len(msg) < 3 || json.Unmarshal(msg[1], &sub) != nil || json.Unmarshal(msg[2], &f) != nil {
+			return
+		}
+		fr.mu.Lock()
+		reqAuth := fr.requireAuth
+		_, authed := fr.authenticated[c]
+		fr.mu.Unlock()
+		if reqAuth && !authed {
+			c.send("CLOSED", sub, "auth-required: authentication required")
 			return
 		}
 		fr.mu.Lock()
