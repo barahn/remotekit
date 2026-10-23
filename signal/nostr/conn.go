@@ -32,6 +32,8 @@ var (
 	// ErrUnknownViewer is returned for a message addressed to a viewer this
 	// Conn has not heard from.
 	ErrUnknownViewer = errors.New("nostr: message addressed to an unknown viewer")
+	// ErrAuthRefused is returned when a relay refuses NIP-42 authentication.
+	ErrAuthRefused = errors.New("nostr: relay authentication refused")
 
 	errNotObject = errors.New("nostr: signalling message is not a JSON object")
 )
@@ -45,6 +47,10 @@ type Config struct {
 	// generated, which is what a session should do; see the package
 	// documentation on keys.
 	Key *SecretKey
+	// RelayAuthKeys maps a relay URL to a specific SecretKey used to
+	// authenticate via NIP-42 when challenged by that relay. If a relay is
+	// not in this map or if it is nil, the session's own key is used.
+	RelayAuthKeys map[string]*SecretKey
 	// Dialer dials the relays; nil means websocket.DefaultDialer.
 	Dialer *websocket.Dialer
 	// MessageTTL bounds how long a message lives: each gift wrap asks
@@ -62,17 +68,19 @@ type Config struct {
 // Conn is a signalling connection over Nostr relays. It satisfies
 // stream.SignalConn.
 type Conn struct {
-	key        *SecretKey
-	peer       string // Dial's peer; "" on a Listen conn
-	ttl        time.Duration
-	maxViewers int
-	relays     []*relay
-	in         chan []byte
+	key           *SecretKey
+	peer          string // Dial's peer; "" on a Listen conn
+	ttl           time.Duration
+	maxViewers    int
+	relays        []*relay
+	in            chan []byte
+	relayAuthKeys map[string]*SecretKey
 
 	mu      sync.Mutex
 	seen    map[string]time.Time
 	viewers map[string]struct{}
 	alive   int
+	err     error
 
 	done      chan struct{}
 	closeOnce sync.Once
@@ -114,14 +122,15 @@ func open(ctx context.Context, cfg Config, peer string) (*Conn, error) {
 		dialer = websocket.DefaultDialer
 	}
 	c := &Conn{
-		key:        key,
-		peer:       peer,
-		ttl:        cfg.MessageTTL,
-		maxViewers: cfg.MaxViewers,
-		in:         make(chan []byte, 64),
-		seen:       map[string]time.Time{},
-		viewers:    map[string]struct{}{},
-		done:       make(chan struct{}),
+		key:           key,
+		peer:          peer,
+		ttl:           cfg.MessageTTL,
+		maxViewers:    cfg.MaxViewers,
+		in:            make(chan []byte, 64),
+		seen:          map[string]time.Time{},
+		viewers:       map[string]struct{}{},
+		relayAuthKeys: cfg.RelayAuthKeys,
+		done:          make(chan struct{}),
 	}
 	if c.ttl <= 0 {
 		c.ttl = DefaultMessageTTL
@@ -144,7 +153,7 @@ func open(ctx context.Context, cfg Config, peer string) (*Conn, error) {
 	}
 
 	for _, url := range cfg.Relays {
-		r, err := dialRelay(ctx, dialer, url)
+		r, err := dialRelay(ctx, dialer, url, c.authKeyFor(url))
 		if err != nil {
 			continue
 		}
@@ -176,10 +185,22 @@ func randomID() (string, error) {
 // to Dial an agent's Listen conn.
 func (c *Conn) PublicKey() string { return c.key.PublicKey() }
 
+func (c *Conn) authKeyFor(url string) *SecretKey {
+	if c.relayAuthKeys != nil {
+		if k, ok := c.relayAuthKeys[url]; ok && k != nil {
+			return k
+		}
+	}
+	return c.key
+}
+
 func (c *Conn) readRelay(r *relay, subID string) {
-	_ = r.read(subID, c.receive)
+	err := r.read(subID, c.receive)
 	_ = r.close()
 	c.mu.Lock()
+	if errors.Is(err, ErrAuthRefused) && c.err == nil {
+		c.err = err
+	}
 	c.alive--
 	last := c.alive == 0
 	c.mu.Unlock()
@@ -269,8 +290,21 @@ func (c *Conn) ReadMessage() ([]byte, error) {
 	case m := <-c.in:
 		return m, nil
 	case <-c.done:
+		c.mu.Lock()
+		err := c.err
+		c.mu.Unlock()
+		if err != nil {
+			return nil, err
+		}
 		return nil, ErrClosed
 	}
+}
+
+// Err returns the error that caused the Conn to close, if any, or nil.
+func (c *Conn) Err() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.err
 }
 
 // WriteMessage gift-wraps data for its recipients and publishes it to every
@@ -279,6 +313,12 @@ func (c *Conn) ReadMessage() ([]byte, error) {
 func (c *Conn) WriteMessage(data []byte) error {
 	select {
 	case <-c.done:
+		c.mu.Lock()
+		err := c.err
+		c.mu.Unlock()
+		if err != nil {
+			return err
+		}
 		return ErrClosed
 	default:
 	}
