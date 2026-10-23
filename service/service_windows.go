@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -39,6 +40,9 @@ func IsWindowsService() bool {
 }
 
 func (m *windowsServiceManager) Install(cfg Config) error {
+	if err := ValidateConfig(cfg); err != nil {
+		return err
+	}
 	exePath := cfg.ExecPath
 	if exePath == "" {
 		var err error
@@ -87,8 +91,12 @@ func (m *windowsServiceManager) Install(cfg Config) error {
 		Description:  description,
 	}
 
+	binaryPath := exePath
+	if strings.Contains(binaryPath, " ") && !strings.HasPrefix(binaryPath, `"`) {
+		binaryPath = fmt.Sprintf(`"%s"`, binaryPath)
+	}
 	serviceArgs := cfg.Args
-	s, err = scManager.CreateService(m.name, exePath, mgrConfig, serviceArgs...)
+	s, err = scManager.CreateService(m.name, binaryPath, mgrConfig, serviceArgs...)
 	if err != nil {
 		return fmt.Errorf("failed to create Windows service '%s': %w", m.name, err)
 	}

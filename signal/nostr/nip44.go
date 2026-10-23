@@ -61,9 +61,15 @@ func paddedLen(n int) int {
 	if n <= 32 {
 		return 32
 	}
+	if n > nip44MaxPlaintext {
+		return 65536
+	}
 	nextPower := 1
-	for nextPower < n {
+	for nextPower < n && nextPower > 0 {
 		nextPower <<= 1
+	}
+	if nextPower <= 0 {
+		return 65536
 	}
 	chunk := 32
 	if nextPower > 256 {
@@ -77,7 +83,12 @@ func pad(plaintext []byte) ([]byte, error) {
 	if n < nip44MinPlaintext || n > nip44MaxPlaintext {
 		return nil, ErrMessageTooLarge
 	}
-	out := make([]byte, 2+paddedLen(n))
+	plen := paddedLen(n)
+	total := 2 + plen
+	if total < 2 || total > 2+65536 {
+		return nil, ErrMessageTooLarge
+	}
+	out := make([]byte, total)
 	binary.BigEndian.PutUint16(out, uint16(n)) //nolint:gosec // n <= 65535, checked above
 	copy(out[2:], plaintext)
 	return out, nil

@@ -80,3 +80,86 @@ func TestNewServiceManager(t *testing.T) {
 		t.Fatal("Expected NewServiceManager to return non-nil manager")
 	}
 }
+
+func TestValidateConfig(t *testing.T) {
+	tests := []struct {
+		name      string
+		cfg       Config
+		wantError bool
+	}{
+		{
+			name: "Valid standard config",
+			cfg: Config{
+				Name:        "barahn-agent",
+				DisplayName: "Barahn Remote Agent",
+				Description: "Barahn Agent Daemon",
+				ExecPath:    "/usr/local/bin/barahn-agent",
+				WorkDir:     "/etc/barahn",
+				Args:        []string{"start", "--config", "/etc/barahn/agent.pem"},
+			},
+			wantError: false,
+		},
+		{
+			name: "Injection in Description via newline",
+			cfg: Config{
+				Name:        "barahn-agent",
+				Description: "Barahn Agent\nExecStartPre=/usr/bin/evil",
+				ExecPath:    "/usr/local/bin/barahn-agent",
+			},
+			wantError: true,
+		},
+		{
+			name: "Injection in ExecPath via carriage return newline",
+			cfg: Config{
+				Name:     "barahn-agent",
+				ExecPath: "/usr/local/bin/agent\r\nExecStartPost=/usr/bin/evil",
+			},
+			wantError: true,
+		},
+		{
+			name: "Injection in WorkDir via newline",
+			cfg: Config{
+				Name:     "barahn-agent",
+				WorkDir:  "/etc/barahn\nRestart=no",
+				ExecPath: "/usr/local/bin/barahn-agent",
+			},
+			wantError: true,
+		},
+		{
+			name: "Injection in Args via newline",
+			cfg: Config{
+				Name:     "barahn-agent",
+				ExecPath: "/usr/local/bin/barahn-agent",
+				Args:     []string{"start", "--opt\nExecStartPre=/tmp/malicious"},
+			},
+			wantError: true,
+		},
+		{
+			name: "Injection in Name with path traversal",
+			cfg: Config{
+				Name:     "../../etc/cron.d/evil",
+				ExecPath: "/usr/local/bin/barahn-agent",
+			},
+			wantError: true,
+		},
+		{
+			name: "Null byte injection in Description",
+			cfg: Config{
+				Name:        "barahn-agent",
+				Description: "Agent\x00Injection",
+				ExecPath:    "/usr/local/bin/barahn-agent",
+			},
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateConfig(tt.cfg)
+			if (err != nil) != tt.wantError {
+				t.Fatalf("ValidateConfig() error = %v, wantError %v", err, tt.wantError)
+			}
+		})
+	}
+}
+

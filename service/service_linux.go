@@ -40,6 +40,9 @@ func (m *linuxServiceManager) unitPath() string {
 }
 
 func (m *linuxServiceManager) Install(cfg Config) error {
+	if err := ValidateConfig(cfg); err != nil {
+		return err
+	}
 	exePath := cfg.ExecPath
 	if exePath == "" {
 		var err error

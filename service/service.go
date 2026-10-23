@@ -17,6 +17,8 @@ var (
 	ErrServiceAlreadyInstalled = errors.New("service is already installed")
 	// ErrUnsupportedPlatform is returned on platforms where background service management is not implemented.
 	ErrUnsupportedPlatform = errors.New("service management is not supported on this platform")
+	// ErrInvalidConfig is returned when a service configuration contains illegal characters or paths.
+	ErrInvalidConfig = errors.New("service: invalid configuration")
 )
 
 // State represents the runtime state of a background service.
@@ -101,3 +103,38 @@ func ParseArgsString(args []string) string {
 	}
 	return strings.Join(quoted, " ")
 }
+
+// ValidateConfig checks that the configuration does not contain control characters
+// or illegal values that could compromise service installation or cause command/directive injection.
+func ValidateConfig(cfg Config) error {
+	if cfg.Name != "" {
+		if strings.ContainsAny(cfg.Name, "\r\n\x00") || strings.Contains(cfg.Name, "/") || strings.Contains(cfg.Name, "\\") || strings.Contains(cfg.Name, "..") {
+			return fmt.Errorf("%w: invalid service name %q", ErrInvalidConfig, cfg.Name)
+		}
+	}
+	checkField := func(field, val string) error {
+		if strings.ContainsAny(val, "\r\n\x00") {
+			return fmt.Errorf("%w: field %s contains control characters", ErrInvalidConfig, field)
+		}
+		return nil
+	}
+	if err := checkField("DisplayName", cfg.DisplayName); err != nil {
+		return err
+	}
+	if err := checkField("Description", cfg.Description); err != nil {
+		return err
+	}
+	if err := checkField("ExecPath", cfg.ExecPath); err != nil {
+		return err
+	}
+	if err := checkField("WorkDir", cfg.WorkDir); err != nil {
+		return err
+	}
+	for i, arg := range cfg.Args {
+		if strings.ContainsAny(arg, "\r\n\x00") {
+			return fmt.Errorf("%w: argument %d contains control characters", ErrInvalidConfig, i)
+		}
+	}
+	return nil
+}
+
