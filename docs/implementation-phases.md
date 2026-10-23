@@ -1,8 +1,8 @@
 # Implementation Roadmap: Untrusted Control Plane & Swappable Signalling
 
-**Status:** Draft / Proposed Roadmap  
+**Status:** Active — Phases 0a, 0, 1, and 2 Complete; Phase 3 in progress.  
 **Companion RFC:** [Decentralised Signalling & Untrusted Control Plane](decentralised-signalling.md)  
-**Target Packages:** `webrtc`, `tunnel`, `bark`, `input`, `clipboard`, `transfer`
+**Target Packages:** `webrtc`, `stream`, `tunnel`, `signal/nostr`, `bark`, `input`, `clipboard`, `transfer`
 
 ---
 
@@ -12,9 +12,19 @@ The objective of this roadmap is to transition `remotekit` from an architecture 
 
 1. Endpoints authenticate cryptographically directly to each other (Ed25519 signatures over signalling messages).
 2. Content (screen, input, clipboard, file transfer) is transferred peer-to-peer over WebRTC `DataChannel`s rather than transiting the central signalling server.
-3. The signalling path is decoupled into an unopinionated `Signaler` interface, making transports (WebSocket, Nostr relays, local rendezvous) pluggable without altering the core.
+3. The signalling path is decoupled into an unopinionated `SignalConn` interface, making transports (WebSocket, Nostr relays, local rendezvous) pluggable without altering the core.
 
 This document details the engineering work across **Phase 0a (Defect Remediation)** through **Phase 3 (Self-Hosted Relays & Transports)**.
+
+### Milestone & Delivery Tracking
+
+| Phase | Milestone | Scope | Status |
+|---|---|---|---|
+| **Phase 0a** | [Milestone 1 (Phase 0a)](https://github.com/barahn/remotekit/milestone/1) | Defect Remediation (agent token fallback, TLS pinning, port allowlist) | **Completed** |
+| **Phase 0** | [Milestone 2 (Phase 0)](https://github.com/barahn/remotekit/milestone/2) | Activate Cryptographic Identity & Consent (Ed25519 signing, anti-replay, consent enforcement) | **Completed** |
+| **Phase 1** | [Milestone 3 (Phase 1)](https://github.com/barahn/remotekit/milestone/3) | Peer-to-Peer Data Plane (`bark-control`, `bark-transfer` DataChannels, announced JPEG fallback) | **Completed** |
+| **Phase 2** | [Milestone 4 (Phase 2)](https://github.com/barahn/remotekit/milestone/4) | Pluggable Signalling Abstraction (`stream.SignalConn`, `stream.Runner`, standalone `signal/nostr` module) | **Completed** |
+| **Phase 3** | [Milestone 5 (Phase 3)](https://github.com/barahn/remotekit/milestone/5) | Fallback & Transport Hardening (Google STUN deprecation, ephemeral HMAC TURN credentials) | **In Progress** |
 
 ---
 
@@ -239,7 +249,7 @@ These fixes address immediate security issues present in the current codebase, i
     that session.
 
 #### 3. Explicit Degraded Mode for JPEG Fallback
-* **File:** [`tunnel/relaymode.go`](../tunnel/relaymode.go)
+* **File:** [`stream/relaymode.go`](../stream/relaymode.go) (with `tunnel/relaymode.go` alias)
 * **Details:**
   - The JPEG fallback used to run silently whenever WebRTC was not confirmed
     (`video_ok`). It is now always announced: entering it sends the viewer
@@ -356,8 +366,9 @@ A Listen conn sets each message's `viewer_id` to the key that sealed it,
 overwriting whatever the message claimed, and routes replies by it; it caps
 how many viewers it will talk to. NIP-44 is checked against the published
 test vectors, and the whole path, including a signed WebRTC negotiation
-through `Serve`, is tested against an in-process relay. Not built: relay
-redialling (a Conn ends with its last relay) and NIP-42 relay auth.
+through `Serve`, is tested against an in-process relay. Built in follow-ups:
+relay redialling with exponential backoff and grace period (#70), and NIP-42 relay
+authentication (#71).
 
 * **Package:** `signal/nostr` (isolated subpackage)
 * **Principles:**
@@ -409,8 +420,8 @@ redialling (a Conn ends with its last relay) and NIP-42 relay auth.
 | **0** | Nonce replay prevention | Unit test confirming duplicate nonce within window is rejected. |
 | **0** | Consent checks | Integration test ensuring input events are dropped without `remote_control` permission. |
 | **1** | WebRTC DataChannel | Loopback integration test with two `PeerSession` instances transmitting `bark.Envelope` payloads over DataChannel. |
-| **1** | Degraded mode indicator | Verification that JPEG fallback emits degraded status events and requires explicit opt-in. |
-| **2** | `Signaler` abstraction | Test verifying WebRTC negotiation between peers using an in-memory channel `Signaler`. |
+| **1** | Degraded mode indicator | Verification that JPEG fallback emits `relay_mode` status events and can be explicitly refused via `DisableRelayFallback`. |
+| **2** | `SignalConn` abstraction | Test verifying WebRTC negotiation between peers using `stream.SignalConn` implementations (WebSocket or `signal/nostr` relays). |
 | **3** | Ephemeral TURN | Test generating and verifying time-bounded HMAC credentials with `pion/turn/v5`. |
 
 ---
