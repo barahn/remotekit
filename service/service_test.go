@@ -151,6 +151,14 @@ func TestValidateConfig(t *testing.T) {
 			},
 			wantError: true,
 		},
+		{
+			name: "Injection in ServiceAccount via newline",
+			cfg: Config{
+				Name:           "barahn-agent",
+				ServiceAccount: "svc\nUser=root",
+			},
+			wantError: true,
+		},
 	}
 
 	for _, tt := range tests {

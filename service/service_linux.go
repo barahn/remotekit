@@ -201,6 +201,11 @@ func BuildSystemdUnit(cfg Config, exePath string) string {
 		workDir = "/etc/barahn"
 	}
 
+	userDirectives := ""
+	if cfg.ServiceAccount != "" {
+		userDirectives = fmt.Sprintf("User=%s\nGroup=%s\n", cfg.ServiceAccount, cfg.ServiceAccount)
+	}
+
 	return fmt.Sprintf(`[Unit]
 Description=%s
 After=network-online.target
@@ -210,7 +215,7 @@ Wants=network-online.target
 Type=simple
 ExecStart=%s
 WorkingDirectory=%s
-Restart=always
+%sRestart=always
 RestartSec=5s
 LimitNOFILE=65535
 ProtectSystem=full
@@ -220,6 +225,6 @@ PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
-`, description, execCommand, workDir)
+`, description, execCommand, workDir, userDirectives)
 }
 

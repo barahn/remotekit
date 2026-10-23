@@ -31,3 +31,20 @@ func TestBuildSystemdUnit_HardeningDirectives(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildSystemdUnit_ServiceAccount(t *testing.T) {
+	cfg := Config{
+		Description:    "Barahn Agent Daemon",
+		WorkDir:        "/var/lib/barahn",
+		ServiceAccount: "barahn-svc",
+	}
+	unit := BuildSystemdUnit(cfg, "/usr/local/bin/barahn-agent")
+
+	if !strings.Contains(unit, "User=barahn-svc\n") {
+		t.Errorf("BuildSystemdUnit() missing User directive\nUnit content:\n%s", unit)
+	}
+	if !strings.Contains(unit, "Group=barahn-svc\n") {
+		t.Errorf("BuildSystemdUnit() missing Group directive\nUnit content:\n%s", unit)
+	}
+}
+

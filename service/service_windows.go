@@ -69,27 +69,7 @@ func (m *windowsServiceManager) Install(cfg Config) error {
 		return ErrServiceAlreadyInstalled
 	}
 
-	displayName := cfg.DisplayName
-	if displayName == "" {
-		displayName = "Barahn Remote Access Agent"
-	}
-	description := cfg.Description
-	if description == "" {
-		description = "Barahn persistent unattended remote support and management agent daemon."
-	}
-
-	startType := mgr.StartAutomatic
-	if !cfg.AutoStart {
-		startType = mgr.StartManual
-	}
-
-	mgrConfig := mgr.Config{
-		ServiceType:  windows.SERVICE_WIN32_OWN_PROCESS,
-		StartType:    uint32(startType),
-		ErrorControl: mgr.ErrorNormal,
-		DisplayName:  displayName,
-		Description:  description,
-	}
+	mgrConfig := buildWindowsServiceConfig(cfg)
 
 	binaryPath := exePath
 	if strings.Contains(binaryPath, " ") && !strings.HasPrefix(binaryPath, `"`) {
@@ -292,3 +272,31 @@ func (m *windowsServiceManager) Run(ctx context.Context, runner func(ctx context
 	}
 	return nil
 }
+
+// buildWindowsServiceConfig constructs mgr.Config enforcing configured least-privilege service account.
+func buildWindowsServiceConfig(cfg Config) mgr.Config {
+	displayName := cfg.DisplayName
+	if displayName == "" {
+		displayName = "Barahn Remote Access Agent"
+	}
+	description := cfg.Description
+	if description == "" {
+		description = "Barahn persistent unattended remote support and management agent daemon."
+	}
+
+	startType := mgr.StartAutomatic
+	if !cfg.AutoStart {
+		startType = mgr.StartManual
+	}
+
+	return mgr.Config{
+		ServiceType:      windows.SERVICE_WIN32_OWN_PROCESS,
+		StartType:        uint32(startType),
+		ErrorControl:     mgr.ErrorNormal,
+		DisplayName:      displayName,
+		Description:      description,
+		ServiceStartName: cfg.ServiceAccount,
+		Password:         cfg.Password,
+	}
+}
+

@@ -58,6 +58,12 @@ type Config struct {
 	Args        []string
 	AutoStart   bool
 	WorkDir     string
+	// ServiceAccount specifies the user account or service account to run the service
+	// under (e.g. "NT AUTHORITY\NetworkService" on Windows or a non-root username on Linux).
+	// If empty, the default platform system account is used (LocalSystem on Windows, root on Linux).
+	ServiceAccount string
+	// Password is the password for ServiceAccount, if required (Windows SCM).
+	Password string
 }
 
 // ServiceManager defines the lifecycle interface for managing OS-level background services.
@@ -128,6 +134,12 @@ func ValidateConfig(cfg Config) error {
 		return err
 	}
 	if err := checkField("WorkDir", cfg.WorkDir); err != nil {
+		return err
+	}
+	if err := checkField("ServiceAccount", cfg.ServiceAccount); err != nil {
+		return err
+	}
+	if err := checkField("Password", cfg.Password); err != nil {
 		return err
 	}
 	for i, arg := range cfg.Args {
