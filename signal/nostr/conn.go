@@ -34,6 +34,8 @@ var (
 	// ErrUnknownViewer is returned for a message addressed to a viewer this
 	// Conn has not heard from.
 	ErrUnknownViewer = errors.New("nostr: message addressed to an unknown viewer")
+	// ErrAuthRefused is returned when a relay refuses NIP-42 authentication.
+	ErrAuthRefused = errors.New("nostr: relay authentication refused")
 
 	errNotObject = errors.New("nostr: signalling message is not a JSON object")
 )
@@ -47,6 +49,10 @@ type Config struct {
 	// generated, which is what a session should do; see the package
 	// documentation on keys.
 	Key *SecretKey
+	// RelayAuthKeys maps a relay URL to a specific SecretKey used to
+	// authenticate via NIP-42 when challenged by that relay. If a relay is
+	// not in this map or if it is nil, the session's own key is used.
+	RelayAuthKeys map[string]*SecretKey
 	// Dialer dials the relays; nil means websocket.DefaultDialer.
 	Dialer *websocket.Dialer
 	// MessageTTL bounds how long a message lives: each gift wrap asks
@@ -68,13 +74,14 @@ type Config struct {
 // Conn is a signalling connection over Nostr relays. It satisfies
 // stream.SignalConn.
 type Conn struct {
-	key         *SecretKey
-	peer        string // Dial's peer; "" on a Listen conn
-	ttl         time.Duration
-	maxViewers  int
-	dialer      *websocket.Dialer
-	subID       string
-	gracePeriod time.Duration
+	key           *SecretKey
+	peer          string // Dial's peer; "" on a Listen conn
+	ttl           time.Duration
+	maxViewers    int
+	dialer        *websocket.Dialer
+	subID         string
+	gracePeriod   time.Duration
+	relayAuthKeys map[string]*SecretKey
 
 	mu           sync.Mutex
 	relayCond    *sync.Cond
@@ -84,6 +91,7 @@ type Conn struct {
 	alive        int
 	graceTimer   *time.Timer
 	closed       bool
+	err          error
 
 	in        chan []byte
 	done      chan struct{}
@@ -126,17 +134,18 @@ func open(ctx context.Context, cfg Config, peer string) (*Conn, error) {
 		dialer = websocket.DefaultDialer
 	}
 	c := &Conn{
-		key:          key,
-		peer:         peer,
-		ttl:          cfg.MessageTTL,
-		maxViewers:   cfg.MaxViewers,
-		dialer:       dialer,
-		gracePeriod:  cfg.RelayGracePeriod,
-		activeRelays: make(map[string]*relay),
-		in:           make(chan []byte, 64),
-		seen:         map[string]time.Time{},
-		viewers:      map[string]struct{}{},
-		done:         make(chan struct{}),
+		key:           key,
+		peer:          peer,
+		ttl:           cfg.MessageTTL,
+		maxViewers:    cfg.MaxViewers,
+		dialer:        dialer,
+		gracePeriod:   cfg.RelayGracePeriod,
+		activeRelays:  make(map[string]*relay),
+		in:            make(chan []byte, 64),
+		seen:          map[string]time.Time{},
+		viewers:       map[string]struct{}{},
+		relayAuthKeys: cfg.RelayAuthKeys,
+		done:          make(chan struct{}),
 	}
 	c.relayCond = sync.NewCond(&c.mu)
 	if c.ttl <= 0 {
@@ -171,7 +180,7 @@ func open(ctx context.Context, cfg Config, peer string) (*Conn, error) {
 	}
 	var dialed []initialDial
 	for _, url := range cfg.Relays {
-		r, err := dialRelay(ctx, dialer, url)
+		r, err := dialRelay(ctx, dialer, url, c.authKeyFor(url))
 		if err != nil {
 			continue
 		}
@@ -240,9 +249,18 @@ func (c *Conn) relayWorker(url string, initialR *relay, initialSince int64) {
 			}
 
 			dialCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			newR, err := dialRelay(dialCtx, c.dialer, url)
+			newR, err := dialRelay(dialCtx, c.dialer, url, c.authKeyFor(url))
 			cancel()
 			if err != nil {
+				if errors.Is(err, ErrAuthRefused) {
+					c.mu.Lock()
+					if c.err == nil {
+						c.err = err
+					}
+					c.mu.Unlock()
+					_ = c.Close()
+					return
+				}
 				continue
 			}
 
@@ -262,10 +280,21 @@ func (c *Conn) relayWorker(url string, initialR *relay, initialSince int64) {
 			c.setRelayActive(url, r)
 		}
 
-		_ = r.read(c.subID, func(ev *Event) {
+		readErr := r.read(c.subID, func(ev *Event) {
 			lastActive = time.Now()
 			c.receive(ev)
 		})
+		if errors.Is(readErr, ErrAuthRefused) {
+			c.mu.Lock()
+			if c.err == nil {
+				c.err = readErr
+			}
+			c.mu.Unlock()
+			_ = r.close()
+			c.setRelayInactive(url, r)
+			_ = c.Close()
+			return
+		}
 
 		_ = r.close()
 		lastActive = time.Now()
@@ -310,6 +339,15 @@ func (c *Conn) setRelayInactive(url string, oldR *relay) {
 			})
 		}
 	}
+}
+
+func (c *Conn) authKeyFor(url string) *SecretKey {
+	if c.relayAuthKeys != nil {
+		if k, ok := c.relayAuthKeys[url]; ok && k != nil {
+			return k
+		}
+	}
+	return c.key
 }
 
 // firstSight records id and reports whether it is new. Entries are kept for
@@ -393,8 +431,21 @@ func (c *Conn) ReadMessage() ([]byte, error) {
 	case m := <-c.in:
 		return m, nil
 	case <-c.done:
+		c.mu.Lock()
+		err := c.err
+		c.mu.Unlock()
+		if err != nil {
+			return nil, err
+		}
 		return nil, ErrClosed
 	}
+}
+
+// Err returns the error that caused the Conn to close, if any, or nil.
+func (c *Conn) Err() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.err
 }
 
 // WriteMessage gift-wraps data for its recipients and publishes it to every
@@ -403,6 +454,12 @@ func (c *Conn) ReadMessage() ([]byte, error) {
 func (c *Conn) WriteMessage(data []byte) error {
 	select {
 	case <-c.done:
+		c.mu.Lock()
+		err := c.err
+		c.mu.Unlock()
+		if err != nil {
+			return err
+		}
 		return ErrClosed
 	default:
 	}
