@@ -40,6 +40,9 @@ func (m *linuxServiceManager) unitPath() string {
 }
 
 func (m *linuxServiceManager) Install(cfg Config) error {
+	if err := ValidateConfig(cfg); err != nil {
+		return err
+	}
 	exePath := cfg.ExecPath
 	if exePath == "" {
 		var err error
@@ -76,37 +79,7 @@ func (m *linuxServiceManager) Install(cfg Config) error {
 		}
 	}
 
-	description := cfg.Description
-	if description == "" {
-		description = "Barahn Remote Access Agent Daemon"
-	}
-
-	execCommand := exePath
-	if len(cfg.Args) > 0 {
-		execCommand = fmt.Sprintf("%s %s", exePath, ParseArgsString(cfg.Args))
-	}
-
-	workDir := cfg.WorkDir
-	if workDir == "" {
-		workDir = "/etc/barahn"
-	}
-
-	unitContent := fmt.Sprintf(`[Unit]
-Description=%s
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-ExecStart=%s
-WorkingDirectory=%s
-Restart=always
-RestartSec=5s
-LimitNOFILE=65535
-
-[Install]
-WantedBy=multi-user.target
-`, description, execCommand, workDir)
+	unitContent := BuildSystemdUnit(cfg, exePath)
 
 	if err := os.WriteFile(unitFile, []byte(unitContent), 0600); err != nil {
 		return fmt.Errorf("failed to write systemd unit file '%s': %w", unitFile, err)
@@ -209,3 +182,49 @@ func (m *linuxServiceManager) Status() (Status, error) {
 func (m *linuxServiceManager) Run(ctx context.Context, runner func(ctx context.Context) error) error {
 	return runner(ctx)
 }
+
+// BuildSystemdUnit generates a hardened systemd unit file configuration string
+// enforcing least-privilege sandboxing directives (ProtectSystem, ProtectHome, NoNewPrivileges, PrivateTmp).
+func BuildSystemdUnit(cfg Config, exePath string) string {
+	description := cfg.Description
+	if description == "" {
+		description = "Barahn Remote Access Agent Daemon"
+	}
+
+	execCommand := exePath
+	if len(cfg.Args) > 0 {
+		execCommand = fmt.Sprintf("%s %s", exePath, ParseArgsString(cfg.Args))
+	}
+
+	workDir := cfg.WorkDir
+	if workDir == "" {
+		workDir = "/etc/barahn"
+	}
+
+	userDirectives := ""
+	if cfg.ServiceAccount != "" {
+		userDirectives = fmt.Sprintf("User=%s\nGroup=%s\n", cfg.ServiceAccount, cfg.ServiceAccount)
+	}
+
+	return fmt.Sprintf(`[Unit]
+Description=%s
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%s
+WorkingDirectory=%s
+%sRestart=always
+RestartSec=5s
+LimitNOFILE=65535
+ProtectSystem=full
+ProtectHome=read-only
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+`, description, execCommand, workDir, userDirectives)
+}
+

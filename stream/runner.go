@@ -80,6 +80,10 @@ type Runner struct {
 	// socket; see RequireDataChannel.
 	requireDataChannel bool
 
+	// omitFilePathInReply, when set, returns only the base filename in file_saved
+	// replies across the network; see OmitFilePathInReply.
+	omitFilePathInReply bool
+
 	// downloadDir, onFileOffer and onFileSaved govern received files; see
 	// Config.DownloadDir and files.go.
 	downloadDir string
@@ -132,6 +136,16 @@ type Config struct {
 	// received file never replaces one already there: it gets a numbered
 	// name instead. See also OnFileOffer and OnFileSaved.
 	DownloadDir string
+
+	// RequireDataChannel, when set, refuses user data (input, clipboard, files)
+	// arriving over the signalling socket, enforcing that all user interactions
+	// travel strictly over end-to-end encrypted WebRTC DataChannels.
+	RequireDataChannel bool
+
+	// OmitFilePathInReply, when set, sends only the base filename in file_saved
+	// replies to remote viewers, preventing disclosure of internal host filesystem
+	// paths (CWE-200).
+	OmitFilePathInReply bool
 }
 
 // New returns a Runner for cfg, with input injection for this platform when
@@ -152,6 +166,8 @@ func (r *Runner) Init(cfg Config) {
 	r.id = cfg.ID
 	r.signKey = cfg.SigningKey
 	r.downloadDir = cfg.DownloadDir
+	r.requireDataChannel = cfg.RequireDataChannel
+	r.omitFilePathInReply = cfg.OmitFilePathInReply
 	r.peerConfig = webrtc.DefaultPeerConfig()
 	if cfg.PeerConfig != nil {
 		r.peerConfig = *cfg.PeerConfig

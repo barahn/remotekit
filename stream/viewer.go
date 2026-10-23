@@ -102,6 +102,10 @@ type ViewerConfig struct {
 	// empty means the system's temporary directory. The viewer takes files
 	// only with OnFileOffer registered.
 	DownloadDir string
+
+	// OmitFilePathInReply, when set, returns only the bare filename in file_saved
+	// replies to prevent exposing the local filesystem directory structure.
+	OmitFilePathInReply bool
 }
 
 // Notice is something the agent told the viewer instead of streaming: that
