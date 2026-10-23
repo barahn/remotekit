@@ -29,17 +29,6 @@ func filesSession(t *testing.T, cfg Config, setup func(*Runner)) *Viewer {
 	return v
 }
 
-// waitChannels waits until the viewer's data channels are open.
-func waitChannels(t *testing.T, v *Viewer) {
-	t.Helper()
-	deadline := time.Now().Add(20 * time.Second)
-	for !v.channelsOpen() {
-		if time.Now().After(deadline) {
-			t.Fatal("the viewer's data channels did not open within 20s")
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-}
 
 func readFile(path string) (string, error) {
 	b, err := os.ReadFile(path)

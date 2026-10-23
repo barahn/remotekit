@@ -162,6 +162,7 @@ func (v *Viewer) receiveFile(peer *webrtc.PeerSession, env bark.Envelope) {
 			return
 		}
 		v.inbox.transfer = m
+		v.inbox.omitPath = v.cfg.OmitFilePathInReply
 	})
 	agentID := v.cfg.AgentID
 	reply := func(replyType string, replyFields map[string]interface{}) {

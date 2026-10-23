@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"path/filepath"
 	"sync"
 
 	"github.com/barahn/remotekit/transfer"
@@ -22,6 +23,10 @@ import (
 type fileInbox struct {
 	// transfer stores the files; nil means this end cannot store any.
 	transfer *transfer.Manager
+
+	// omitPath, when set, returns only the base filename in file_saved replies
+	// to prevent leaking the host's directory structure across the network (CWE-200).
+	omitPath bool
 
 	// refused holds the transfers already told they were refused, by
 	// refusalKey; see refuseFile.
@@ -61,6 +66,10 @@ func (in *fileInbox) handle(from sender, msgType string, fields map[string]inter
 		}
 		// An empty name is saved under transfer's fallback name.
 		session := in.transfer.StartSession(id, name, int64(size), sha)
+		if session == nil {
+			in.refuseFile(from, id, "the "+self+" rejected the file: size limit or capacity reached", reply)
+			return
+		}
 		if offer != nil && !offer(FileOffer{ViewerID: from.id, Key: from.key, TransferID: id, Name: session.FileName, Size: int64(size)}) {
 			in.transfer.Discard(id)
 			in.refuseFile(from, id, "the "+self+" refused the file", reply)
@@ -114,9 +123,13 @@ func (in *fileInbox) handle(from sender, msgType string, fields map[string]inter
 				saved(ReceivedFile{ViewerID: from.id, Key: from.key, TransferID: id, Name: name, Path: destPath, SHA256: sha, Size: size})
 			}
 		}
+		replyPath := destPath
+		if in.omitPath && destPath != "" {
+			replyPath = filepath.Base(destPath)
+		}
 		reply("file_saved", map[string]interface{}{
 			"transfer_id": id,
-			"path":        destPath,
+			"path":        replyPath,
 			"sha256":      sha,
 			"error":       errStr,
 		})

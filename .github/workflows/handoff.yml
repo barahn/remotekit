@@ -6,10 +6,6 @@ name: Handoff
 on:
   push:
     branches: [ main, develop ]
-  # Open, close or retarget a pull request and the table is wrong until the next
-  # push to the default branch, which may be days away.
-  pull_request_target:
-    types: [ opened, closed, reopened, ready_for_review, converted_to_draft ]
   workflow_dispatch:
 
 # One writer at a time, and no cancelling a run mid-push: two concurrent runs

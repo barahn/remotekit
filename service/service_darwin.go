@@ -42,6 +42,9 @@ func (m *darwinServiceManager) plistPath() string {
 }
 
 func (m *darwinServiceManager) Install(cfg Config) error {
+	if err := ValidateConfig(cfg); err != nil {
+		return err
+	}
 	exePath := cfg.ExecPath
 	if exePath == "" {
 		var err error
