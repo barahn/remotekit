@@ -444,3 +444,24 @@ func TestRefusalKey(t *testing.T) {
 		t.Fatalf("refused holds %d transfers, want at most %d", n, maxRefused)
 	}
 }
+
+func TestConfig_RequireDataChannel(t *testing.T) {
+	inj := &countingInjector{}
+	r := New(Config{
+		ID:                 "agent-1",
+		RequireDataChannel: true,
+	})
+	r.injector = inj
+	r.Grant(PermissionRemoteControl)
+	h := startSignalHarness(t, r)
+
+	h.send(map[string]interface{}{"type": "input", "payload": map[string]interface{}{"type": "mouse_move", "x": 0.5, "y": 0.5}})
+	m := h.expect("data_channel_required", 5*time.Second)
+	if m["message_type"] != "input" {
+		t.Fatalf("expected data_channel_required for input, got %v", m)
+	}
+	if got := inj.moves.Load(); got != 0 {
+		t.Fatalf("expected 0 injected moves, got %d", got)
+	}
+}
+

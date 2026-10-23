@@ -15,12 +15,18 @@ import (
 	"sync"
 )
 
-const ChunkSize = 64 * 1024 // 64 KB per chunk
+const (
+	ChunkSize             = 64 * 1024         // 64 KB per chunk
+	MaxFileSize           = 250 * 1024 * 1024 // 250 MB maximum allowed file size
+	MaxConcurrentSessions = 50                // Maximum concurrent active sessions
+)
 
 var (
-	ErrTransferNotFound = errors.New("file transfer session not found")
-	ErrChecksumMismatch = errors.New("file integrity verification failed: SHA-256 checksum mismatch")
-	ErrIncomplete       = errors.New("file transfer is incomplete: not every announced byte arrived")
+	ErrTransferNotFound  = errors.New("file transfer session not found")
+	ErrChecksumMismatch  = errors.New("file integrity verification failed: SHA-256 checksum mismatch")
+	ErrIncomplete        = errors.New("file transfer is incomplete: not every announced byte arrived")
+	ErrFileTooLarge      = errors.New("file transfer exceeds maximum allowed size")
+	ErrInvalidChunkIndex = errors.New("invalid chunk index")
 )
 
 type FileSession struct {
@@ -62,6 +68,13 @@ func NewManager(downloadDir string) (*Manager, error) {
 func (m *Manager) StartSession(id, fileName string, totalSize int64, expectedSHA256 string) *FileSession {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	if totalSize < 0 || totalSize > MaxFileSize {
+		return nil
+	}
+	if len(m.sessions) >= MaxConcurrentSessions {
+		return nil
+	}
 
 	// Normalize Windows backslashes and strip directory components
 	normalized := strings.ReplaceAll(fileName, "\\", "/")
@@ -112,9 +125,24 @@ func (m *Manager) AddChunk(id string, index int, data []byte) (float64, bool, er
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if index < 0 {
+		return 0, false, ErrInvalidChunkIndex
+	}
+
 	session, exists := m.sessions[id]
 	if !exists {
 		return 0, false, ErrTransferNotFound
+	}
+
+	if session.TotalSize > 0 {
+		if int64(index) >= session.TotalSize {
+			return 0, false, ErrInvalidChunkIndex
+		}
+		if _, exists := session.Chunks[index]; !exists {
+			if session.ReceivedBytes+int64(len(data)) > session.TotalSize {
+				return 0, false, fmt.Errorf("chunk data exceeds announced total size")
+			}
+		}
 	}
 
 	if _, exists := session.Chunks[index]; !exists {

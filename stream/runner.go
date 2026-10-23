@@ -132,6 +132,11 @@ type Config struct {
 	// received file never replaces one already there: it gets a numbered
 	// name instead. See also OnFileOffer and OnFileSaved.
 	DownloadDir string
+
+	// RequireDataChannel, when set, refuses user data (input, clipboard, files)
+	// arriving over the signalling socket, enforcing that all user interactions
+	// travel strictly over end-to-end encrypted WebRTC DataChannels.
+	RequireDataChannel bool
 }
 
 // New returns a Runner for cfg, with input injection for this platform when
@@ -152,6 +157,7 @@ func (r *Runner) Init(cfg Config) {
 	r.id = cfg.ID
 	r.signKey = cfg.SigningKey
 	r.downloadDir = cfg.DownloadDir
+	r.requireDataChannel = cfg.RequireDataChannel
 	r.peerConfig = webrtc.DefaultPeerConfig()
 	if cfg.PeerConfig != nil {
 		r.peerConfig = *cfg.PeerConfig

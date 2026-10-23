@@ -61,6 +61,10 @@ func (in *fileInbox) handle(from sender, msgType string, fields map[string]inter
 		}
 		// An empty name is saved under transfer's fallback name.
 		session := in.transfer.StartSession(id, name, int64(size), sha)
+		if session == nil {
+			in.refuseFile(from, id, "the "+self+" rejected the file: size limit or capacity reached", reply)
+			return
+		}
 		if offer != nil && !offer(FileOffer{ViewerID: from.id, Key: from.key, TransferID: id, Name: session.FileName, Size: int64(size)}) {
 			in.transfer.Discard(id)
 			in.refuseFile(from, id, "the "+self+" refused the file", reply)

@@ -202,3 +202,48 @@ func TestAssembleFileRefusesIncomplete(t *testing.T) {
 		}
 	}
 }
+
+func TestFileTransfer_DoSProtection(t *testing.T) {
+	dir := t.TempDir()
+	mgr, err := NewManager(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Rejects files exceeding MaxFileSize
+	oversized := mgr.StartSession("sess-oversized", "huge.iso", MaxFileSize+1, "")
+	if oversized != nil {
+		t.Errorf("StartSession allowed file exceeding MaxFileSize (%d bytes)", MaxFileSize+1)
+	}
+
+	// 2. Rejects negative file size
+	negative := mgr.StartSession("sess-negative", "negative.bin", -10, "")
+	if negative != nil {
+		t.Errorf("StartSession allowed negative file size")
+	}
+
+	// 3. Normal session rejects invalid chunk indices
+	sess := mgr.StartSession("sess-valid", "test.txt", 100, "")
+	if sess == nil {
+		t.Fatal("StartSession failed for valid session")
+	}
+
+	// Negative chunk index
+	_, _, err = mgr.AddChunk("sess-valid", -1, []byte("data"))
+	if !errors.Is(err, ErrInvalidChunkIndex) {
+		t.Errorf("AddChunk allowed negative index: got %v, want ErrInvalidChunkIndex", err)
+	}
+
+	// Far out-of-bounds chunk index
+	_, _, err = mgr.AddChunk("sess-valid", 10000, []byte("data"))
+	if !errors.Is(err, ErrInvalidChunkIndex) {
+		t.Errorf("AddChunk allowed out-of-bounds index: got %v, want ErrInvalidChunkIndex", err)
+	}
+
+	// Chunk data exceeding totalSize
+	_, _, err = mgr.AddChunk("sess-valid", 0, make([]byte, 101))
+	if err == nil {
+		t.Errorf("AddChunk allowed chunk larger than totalSize")
+	}
+}
+
