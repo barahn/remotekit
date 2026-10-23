@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"path/filepath"
 	"sync"
 
 	"github.com/barahn/remotekit/transfer"
@@ -22,6 +23,10 @@ import (
 type fileInbox struct {
 	// transfer stores the files; nil means this end cannot store any.
 	transfer *transfer.Manager
+
+	// omitPath, when set, returns only the base filename in file_saved replies
+	// to prevent leaking the host's directory structure across the network (CWE-200).
+	omitPath bool
 
 	// refused holds the transfers already told they were refused, by
 	// refusalKey; see refuseFile.
@@ -118,9 +123,13 @@ func (in *fileInbox) handle(from sender, msgType string, fields map[string]inter
 				saved(ReceivedFile{ViewerID: from.id, Key: from.key, TransferID: id, Name: name, Path: destPath, SHA256: sha, Size: size})
 			}
 		}
+		replyPath := destPath
+		if in.omitPath && destPath != "" {
+			replyPath = filepath.Base(destPath)
+		}
 		reply("file_saved", map[string]interface{}{
 			"transfer_id": id,
-			"path":        destPath,
+			"path":        replyPath,
 			"sha256":      sha,
 			"error":       errStr,
 		})

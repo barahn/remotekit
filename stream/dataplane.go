@@ -75,6 +75,7 @@ func (d *dataPlane) handle(ctx context.Context, from sender, msgType string, fie
 		}
 
 	case "file_start", "file_chunk", "file_complete":
+		d.files.omitPath = r.omitFilePathInReply
 		d.files.handle(from, msgType, fields, "agent", func(stage string) string {
 			if !r.allow(PermissionFileTransfer, stage) {
 				return PermissionFileTransfer + " has not been granted"
@@ -145,6 +146,12 @@ func (d *dataPlane) handleChannelMessage(ctx context.Context, from sender, peer 
 // Call it before Serve.
 func (r *Runner) RequireDataChannel(required bool) {
 	r.requireDataChannel = required
+}
+
+// OmitFilePathInReply sets whether file_saved replies send only the base filename
+// over the wire instead of the host's full local filesystem path (CWE-200).
+func (r *Runner) OmitFilePathInReply(omit bool) {
+	r.omitFilePathInReply = omit
 }
 
 // relayRefusal tells a viewer, once per message type and connection, that its

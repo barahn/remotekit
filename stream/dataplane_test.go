@@ -5,10 +5,13 @@ package stream
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +22,7 @@ import (
 	"github.com/barahn/remotekit/clipboard"
 	"github.com/barahn/remotekit/input"
 	"github.com/barahn/remotekit/screen"
+	"github.com/barahn/remotekit/transfer"
 	"github.com/barahn/remotekit/webrtc"
 	"github.com/gorilla/websocket"
 )
@@ -462,6 +466,73 @@ func TestConfig_RequireDataChannel(t *testing.T) {
 	}
 	if got := inj.moves.Load(); got != 0 {
 		t.Fatalf("expected 0 injected moves, got %d", got)
+	}
+}
+
+func TestFileSaved_OmitHostPathInReply(t *testing.T) {
+	tmpDir := t.TempDir()
+	tm, err := transfer.NewManager(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	content := []byte("secret contents")
+	h := sha256.Sum256(content)
+	contentHash := hex.EncodeToString(h[:])
+
+	sess := tm.StartSession("sess-1", "secret.txt", int64(len(content)), contentHash)
+	if sess == nil {
+		t.Fatal("expected session")
+	}
+	_, _, err = tm.AddChunk(sess.ID, 0, content)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	in := fileInbox{
+		transfer: tm,
+		omitPath: true,
+	}
+
+	var savedReceived ReceivedFile
+	var replyType string
+	var replyFields map[string]interface{}
+
+	in.handle(
+		sender{id: "viewer-1"},
+		"file_complete",
+		map[string]interface{}{"transfer_id": sess.ID},
+		"agent",
+		func(stage string) string { return "" },
+		func(FileOffer) bool { return true },
+		true,
+		func(rf ReceivedFile) { savedReceived = rf },
+		func(rt string, rf map[string]interface{}) {
+			replyType = rt
+			replyFields = rf
+		},
+	)
+
+	if replyType != "file_saved" {
+		t.Fatalf("expected reply file_saved, got %q", replyType)
+	}
+
+	pathInReply, ok := replyFields["path"].(string)
+	if !ok {
+		t.Fatalf("expected path in replyFields, got %v", replyFields)
+	}
+
+	// When omitPath is true, path must only be the bare filename, NOT containing directory separators or tmpDir.
+	if pathInReply != "secret.txt" {
+		t.Fatalf("expected path in reply to be bare filename %q, got %q", "secret.txt", pathInReply)
+	}
+	if strings.Contains(pathInReply, "/") || strings.Contains(pathInReply, "\\") {
+		t.Fatalf("path in reply %q contains directory separators", pathInReply)
+	}
+
+	// On the host side, savedReceived MUST have the full path.
+	if savedReceived.Path != filepath.Join(tmpDir, "secret.txt") {
+		t.Fatalf("expected local OnFileSaved callback to have full path %q, got %q", filepath.Join(tmpDir, "secret.txt"), savedReceived.Path)
 	}
 }
 
