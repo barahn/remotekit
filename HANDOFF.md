@@ -148,14 +148,15 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `4096ddd`** — docs: refresh the handoff status block
+**`develop` is at `1daff64`** — docs: refresh the handoff status block
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#144](https://github.com/barahn/remotekit/pull/144) | chore(release): merge develop → main (4 commits) — test(stream): stabilize WebRTC session tests and prevent test leak... | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/119612626469)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39714293902/job/119612620092)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39714293902/job/119612620074)<br>Build, Test & SAST ✅<br>signal/nostr module ✅ |
+| [#144](https://github.com/barahn/remotekit/pull/144) | chore(release): merge develop → main (4 commits) — test(stream): stabilize WebRTC session tests and prevent test leak... | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/119621512101)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39717033668/job/119621507979)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39717033668/job/119621507766)<br>Build, Test & SAST ✅<br>signal/nostr module ✅ |
 | [#145](https://github.com/barahn/remotekit/pull/145) | feat(webrtc): drop Google STUN default and implement ephemeral TURN credentials (#63, #64) | `feat/phase3-stun-turn` | CodeQL ✅<br>[Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/119589116585)<br>gitleaks ✅<br>Aikido Security: check code ✅<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39706946845/job/119589110445)<br>Refresh the handoff status block ✅<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39706946813/job/119589110246)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39706946812/job/119589109536)<br>Build, Test & SAST ✅<br>DCO Sign-off ✅<br>Analyze (Go) ✅<br>signal/nostr module ✅<br>Review dependency changes ✅ |
+| [#147](https://github.com/barahn/remotekit/pull/147) | fix(security): remediate P0/P1 security findings, least privilege, and DoS protections | `fix/security-remediations-p0-p1` | [Aikido Security: Deep Review ❌ skipped](https://github.com/barahn/remotekit/runs/120536685992)<br>Aikido Security: check code ✅<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39989320821/job/120536672589)<br>Refresh the handoff status block ⏳ (in_progress)<br>DCO Sign-off ✅<br>Build, Test & SAST ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39989320603/job/120536670206)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/39989320752/job/120536669385)<br>gitleaks ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
