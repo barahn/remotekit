@@ -72,6 +72,16 @@ type CaptureConfig struct {
 	// the oldest frame is dropped. This prevents slow consumers from
 	// causing memory buildup. Zero defaults to 2.
 	FrameBufferSize int
+
+	// AppID identifies the requesting application to the desktop portal (e.g. Wayland).
+	// When provided on Wayland, it is registered with org.freedesktop.host.portal.Registry
+	// so that user consent dialogs display the application name and icon instead of
+	// an anonymous "Remote Desktop" prompt.
+	AppID string
+
+	// DesktopFile is the content of or path to a .desktop file describing the
+	// application, ensuring portals on Wayland can display its name and icon.
+	DesktopFile string
 }
 
 // DefaultConfig returns a CaptureConfig with sensible defaults.
