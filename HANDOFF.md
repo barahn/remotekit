@@ -263,8 +263,10 @@ work above.
   anything" into "trust this key". With CA verification on, the CA decides and
   the pin is not consulted — deliberately: enforcing it there would turn an
   ACME renewal onto a new key, or a load balancer with differing backend keys,
-  into a fleet-wide outage recoverable only by re-enrolling every agent. Do
-  not "tighten" this without solving key rotation first.
+  into a fleet-wide outage recoverable only by re-enrolling every agent. The
+  architectural solution that solves key rotation without re-enrolment by
+  decoupling server identity from TLS transport is specified in
+  `docs/server-key-pinning-and-rotation.md` (Issue #69).
 - **Signing primitive.** `webrtc/signed.go`: `SignalMessage`
   gains `PubKey`, `Nonce`, `IssuedAt`, `ExpiresAt`, `Sig` (Ed25519), with
   `Sign`, `Verify`, `VerifyFrom` and a `NonceCache`. Gate actions on
