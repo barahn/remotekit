@@ -84,6 +84,11 @@ type Runner struct {
 	// replies across the network; see OmitFilePathInReply.
 	omitFilePathInReply bool
 
+	// appID and desktopFile identify the requesting application to the
+	// desktop portal (e.g. Wayland); see Config.AppID and Config.DesktopFile.
+	appID       string
+	desktopFile string
+
 	// downloadDir, onFileOffer and onFileSaved govern received files; see
 	// Config.DownloadDir and files.go.
 	downloadDir string
@@ -146,6 +151,16 @@ type Config struct {
 	// replies to remote viewers, preventing disclosure of internal host filesystem
 	// paths (CWE-200).
 	OmitFilePathInReply bool
+
+	// AppID identifies the requesting application to desktop portals (e.g. Wayland),
+	// so consent prompts display the application name and icon instead of an anonymous
+	// title.
+	AppID string
+
+	// DesktopFile is the content of or filesystem path to a .desktop file, installed
+	// in the user's applications directory when necessary so portals can read its
+	// metadata.
+	DesktopFile string
 }
 
 // New returns a Runner for cfg, with input injection for this platform when
@@ -168,6 +183,8 @@ func (r *Runner) Init(cfg Config) {
 	r.downloadDir = cfg.DownloadDir
 	r.requireDataChannel = cfg.RequireDataChannel
 	r.omitFilePathInReply = cfg.OmitFilePathInReply
+	r.appID = cfg.AppID
+	r.desktopFile = cfg.DesktopFile
 	r.peerConfig = webrtc.DefaultPeerConfig()
 	if cfg.PeerConfig != nil {
 		r.peerConfig = *cfg.PeerConfig
@@ -178,6 +195,14 @@ func (r *Runner) Init(cfg Config) {
 
 // ID returns the session ID the runner was configured with.
 func (r *Runner) ID() string { return r.id }
+
+// captureConfig returns a screen.CaptureConfig pre-populated with runner settings.
+func (r *Runner) captureConfig() screen.CaptureConfig {
+	cfg := screen.DefaultConfig()
+	cfg.AppID = r.appID
+	cfg.DesktopFile = r.desktopFile
+	return cfg
+}
 
 // logSafe strips line breaks from a value that came off the wire before it
 // is logged. viewer_id is chosen by whoever is on the other end of the
@@ -675,7 +700,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 				if newCapturer == nil {
 					newCapturer = screen.NewCapturer
 				}
-				cap, err := newCapturer(screen.DefaultConfig())
+				cap, err := newCapturer(r.captureConfig())
 				var framesChan <-chan *screen.Frame
 
 				if err == nil {

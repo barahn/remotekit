@@ -7,6 +7,9 @@ package screen
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/godbus/dbus/v5"
@@ -104,3 +107,174 @@ func TestFallbackToX11ReportsFailureUnderWayland(t *testing.T) {
 		t.Fatal("the frame channel was left open, so a consumer would block forever instead of seeing capture end")
 	}
 }
+
+func TestEnsureDesktopFile_Content(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tempDir)
+
+	content := "[Desktop Entry]\nName=Chirp\nType=Application\nExec=chirp\n"
+	err := ensureDesktopFile("org.barahn.Chirp", content)
+	if err != nil {
+		t.Fatalf("ensureDesktopFile failed: %v", err)
+	}
+
+	dest := filepath.Join(tempDir, "applications", "org.barahn.Chirp.desktop")
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("failed to read written desktop file: %v", err)
+	}
+	if string(got) != content {
+		t.Fatalf("content = %q, want %q", string(got), content)
+	}
+}
+
+func TestEnsureDesktopFile_Path(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tempDir)
+
+	srcDir := t.TempDir()
+	srcFile := filepath.Join(srcDir, "barahn-custom.desktop")
+	content := "[Desktop Entry]\nName=Barahn\nType=Application\n"
+	if err := os.WriteFile(srcFile, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := ensureDesktopFile("barahn", srcFile)
+	if err != nil {
+		t.Fatalf("ensureDesktopFile failed: %v", err)
+	}
+
+	dest := filepath.Join(tempDir, "applications", "barahn.desktop")
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("failed to read copied desktop file: %v", err)
+	}
+	if string(got) != content {
+		t.Fatalf("content = %q, want %q", string(got), content)
+	}
+}
+
+func TestEnsureDesktopFile_NoOpWhenEmpty(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tempDir)
+
+	if err := ensureDesktopFile("", "content"); err != nil {
+		t.Errorf("empty appID returned error: %v", err)
+	}
+	if err := ensureDesktopFile("app", ""); err != nil {
+		t.Errorf("empty desktopFile returned error: %v", err)
+	}
+
+	// Verify no files were created
+	entries, _ := os.ReadDir(filepath.Join(tempDir, "applications"))
+	if len(entries) > 0 {
+		t.Fatalf("expected no files created, got %d", len(entries))
+	}
+}
+
+func TestEnsureDesktopFile_NormalizesSuffix(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", tempDir)
+
+	content := "[Desktop Entry]\nName=Chirp\n"
+	if err := ensureDesktopFile("chirp.desktop", content); err != nil {
+		t.Fatal(err)
+	}
+
+	dest := filepath.Join(tempDir, "applications", "chirp.desktop")
+	if _, err := os.Stat(dest); err != nil {
+		t.Fatalf("expected file at %s: %v", dest, err)
+	}
+	badDest := filepath.Join(tempDir, "applications", "chirp.desktop.desktop")
+	if _, err := os.Stat(badDest); !os.IsNotExist(err) {
+		t.Fatalf("unexpected duplicate suffix file: %s", badDest)
+	}
+}
+
+func TestSanitizeTokenPrefix(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"", "barahn"},
+		{"com.barahn.agent", "com_barahn_agent"},
+		{"org.barahn.Chirp-App", "org_barahn_Chirp_App"},
+		{"app123_test", "app123_test"},
+		{"invalid!@#$chars", "invalid____chars"},
+	}
+
+	for _, tc := range cases {
+		got := sanitizeTokenPrefix(tc.input)
+		if got != tc.want {
+			t.Errorf("sanitizeTokenPrefix(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+type fakeDBusObject struct {
+	calledMethod string
+	calledArgs   []interface{}
+	errToReturn  error
+}
+
+func (f *fakeDBusObject) CallWithContext(ctx context.Context, method string, flags dbus.Flags, args ...interface{}) *dbus.Call {
+	f.calledMethod = method
+	f.calledArgs = args
+	c := &dbus.Call{
+		Err: f.errToReturn,
+	}
+	return c
+}
+
+func TestRegisterHostPortal_Success(t *testing.T) {
+	fakeObj := &fakeDBusObject{}
+	var logged []string
+	logf := func(format string, args ...interface{}) {
+		logged = append(logged, format)
+	}
+
+	err := registerHostPortal(context.Background(), fakeObj, "org.barahn.Chirp", logf)
+	if err != nil {
+		t.Fatalf("registerHostPortal failed: %v", err)
+	}
+
+	if fakeObj.calledMethod != "org.freedesktop.host.portal.Registry.Register" {
+		t.Fatalf("calledMethod = %q, want org.freedesktop.host.portal.Registry.Register", fakeObj.calledMethod)
+	}
+	if len(fakeObj.calledArgs) != 2 || fakeObj.calledArgs[0] != "org.barahn.Chirp" {
+		t.Fatalf("calledArgs = %#v, want app_id = %q", fakeObj.calledArgs, "org.barahn.Chirp")
+	}
+}
+
+func TestRegisterHostPortal_GracefulFallback(t *testing.T) {
+	fakeObj := &fakeDBusObject{
+		errToReturn: dbus.Error{Name: "org.freedesktop.DBus.Error.UnknownMethod"},
+	}
+	var logged []string
+	logf := func(format string, args ...interface{}) {
+		logged = append(logged, format)
+	}
+
+	// When portal does not support Registry.Register, it should not fail the capture process
+	err := registerHostPortal(context.Background(), fakeObj, "org.barahn.Chirp", logf)
+	if err != nil {
+		t.Fatalf("expected nil error on graceful fallback, got: %v", err)
+	}
+	if len(logged) == 0 || !strings.Contains(logged[0], "continuing") {
+		t.Fatalf("expected fallback log message, got: %v", logged)
+	}
+}
+
+func TestRegisterHostPortal_NoOpWhenEmpty(t *testing.T) {
+	fakeObj := &fakeDBusObject{}
+	logf := func(format string, args ...interface{}) {}
+
+	err := registerHostPortal(context.Background(), fakeObj, "", logf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fakeObj.calledMethod != "" {
+		t.Fatalf("expected no D-Bus call for empty appID, got: %q", fakeObj.calledMethod)
+	}
+}
+
