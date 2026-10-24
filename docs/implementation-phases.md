@@ -404,10 +404,12 @@ authentication (#71).
   - Eliminates static shared secrets that risk turning TURN servers into open relays.
 
 #### 3. Pluggable Transport Seam (QUIC / WireGuard)
-* **Package:** `tunnel`, `webrtc`
+* **Package:** `stream`, `webrtc`
+* **Design Note:** [`docs/pluggable-transports.md`](pluggable-transports.md) (barahn/remotekit#65)
 * **Details:**
   - Decouple frame streaming from WebRTC by establishing an abstract `DataTransport` interface, separating *what to send* (`bark`) from *how to send it* (`webrtc.PeerSession`).
   - Paves the way for lightweight QUIC/UDP streams on native Linux installations where WebRTC browser compatibility is not required.
+  - Answers key architectural questions on peer authentication, transport-independent consent, and modular subpackage distribution (`transport/quic`, `transport/wireguard`).
 
 ---
 
