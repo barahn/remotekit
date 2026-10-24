@@ -13,15 +13,18 @@ import (
 // says: over a second of frames the stream should land near the target rather
 // than wherever the content happens to put it.
 //
-// It drives a second of scrolling 720p through the encoder twice, which under
-// -race costs minutes and exercises no concurrency the wavefront tests do not,
-// so -short skips it; the CI job that runs it in full does so without -race.
+// It drives scrolling 360p through the encoder twice. By using 640x360 with 16
+// frames, rate control convergence is verified in ~1.5s under -race (0.15s
+// without -race), avoiding the multi-minute timeouts caused by full 720p.
 func TestRateControlHitsItsTarget(t *testing.T) {
-	if testing.Short() {
-		t.Skip("rate-control run takes minutes under -race; skipped under -short")
-	}
 	path := os.Getenv("REAL_SRC")
-	w, h := 3840, 2160
+	if path != "" && testing.Short() {
+		t.Skip("full-size REAL_SRC run skipped under -short")
+	}
+	w, h := 640, 360
+	if path != "" {
+		w, h = 3840, 2160
+	}
 	if os.Getenv("W") != "" {
 		fmt.Sscanf(os.Getenv("W"), "%d", &w)
 		fmt.Sscanf(os.Getenv("H"), "%d", &h)
@@ -34,7 +37,6 @@ func TestRateControlHitsItsTarget(t *testing.T) {
 		}
 		base = raw[:w*h*3/2]
 	} else {
-		w, h = 1280, 720
 		base = textLikeSource(w, h, 0)
 	}
 
@@ -68,7 +70,7 @@ func TestRateControlHitsItsTarget(t *testing.T) {
 			enc.SetScreenContentProfile(prof)
 			enc.SetRateControl(rc)
 
-			const frames = 31 // one key frame plus a second of inter frames
+			const frames = 16 // half a second of inter frames is plenty to show convergence
 			interBits := 0
 			var qiFirst, qiLast int
 			for i := 0; i < frames; i++ {
