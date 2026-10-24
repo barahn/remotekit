@@ -14,6 +14,8 @@ import (
 	"image"
 	"image/jpeg"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -91,6 +93,8 @@ type Runner struct {
 	onFileSaved func(ReceivedFile)
 	// onClipboardEvent hears every clipboard sync; see OnClipboardEvent.
 	onClipboardEvent func(ClipboardEvent)
+	clipStagingDir   string
+	clipStagingMu    sync.RWMutex
 	// outgoing holds SendFile's waiters by transfer ID, with the viewer
 	// each file goes to; see agentfiles.go.
 	outgoingMu sync.Mutex
@@ -231,6 +235,14 @@ func encodeSignal(m webrtc.SignalMessage, viewerID, offerID string, key ed25519.
 	return json.Marshal(fields)
 }
 
+// ClipStagingDir returns the path to the temporary staging directory
+// used for clipboard file transfers during this session, if any.
+func (r *Runner) ClipStagingDir() string {
+	r.clipStagingMu.RLock()
+	defer r.clipStagingMu.RUnlock()
+	return r.clipStagingDir
+}
+
 func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 	signKey := r.signKey
 	var stateMu sync.RWMutex
@@ -267,6 +279,33 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 		log.Printf("[AgentStream] cannot receive files: %v\n", err)
 	}
 	dp := &dataPlane{r: r, clipMgr: clipMgr, clipWatcher: clipWatcher, files: fileInbox{transfer: transferMgr}}
+
+	stagingDir, err := os.MkdirTemp("", "remotekit-clip-staging-runner-*")
+	if err == nil {
+		r.clipStagingMu.Lock()
+		r.clipStagingDir = stagingDir
+		r.clipStagingMu.Unlock()
+		defer func() {
+			_ = os.RemoveAll(stagingDir)
+			r.clipStagingMu.Lock()
+			r.clipStagingDir = ""
+			r.clipStagingMu.Unlock()
+		}()
+		if clipTm, err := transfer.NewManager(stagingDir); err == nil {
+			dp.files.clipTransfer = clipTm
+		}
+	}
+	dp.files.clipMgr = clipMgr
+	dp.files.clipWatcher = clipWatcher
+	dp.files.onClipFiles = func(from sender, list clipboard.FileList, size int64, names []string) {
+		r.clipboardEvent(ClipboardEvent{
+			Direction: ClipboardToHost,
+			ViewerID:  from.id,
+			Key:       from.key,
+			Size:      int(size),
+			Files:     names,
+		})
+	}
 
 	// The monitor being streamed, as the frames report it; -1 until the
 	// first one of the current capture. See displays.go.
@@ -395,6 +434,43 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 			r.clipboardEvent(ClipboardEvent{Direction: ClipboardFromHost, Concealed: true})
 		}
 	})
+
+	clipWatcher.OnFiles(func(files clipboard.FileList) {
+		if !r.allow(PermissionClipboard, "host clipboard files") || !r.allow(PermissionFileTransfer, "host clipboard files") {
+			return
+		}
+		var totalSize int64
+		var names []string
+		for _, p := range files.Files {
+			st, err := os.Stat(p)
+			if err != nil {
+				return
+			}
+			totalSize += st.Size()
+			names = append(names, filepath.Base(p))
+		}
+
+		if totalSize > MaxClipboardFileSize {
+			log.Printf("[AgentStream] Copied files exceed 25 MB limit (%d bytes), not sending\n", totalSize)
+			r.clipboardEvent(ClipboardEvent{
+				Direction: ClipboardFromHost,
+				Size:      int(totalSize),
+				Files:     names,
+				TooLarge:  true,
+			})
+			return
+		}
+
+		r.clipboardEvent(ClipboardEvent{
+			Direction: ClipboardFromHost,
+			Size:      int(totalSize),
+			Files:     names,
+			TooLarge:  false,
+		})
+
+		go r.broadcastClipboardFiles(clipCtx, files)
+	})
+
 	go clipWatcher.Start(clipCtx, func(newText string) {
 		if !r.allow(PermissionClipboard, "host clipboard sync") {
 			return
@@ -497,6 +573,14 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 		stateMu.RLock()
 		defer stateMu.RUnlock()
 		return peers[id]
+	}, func() []string {
+		stateMu.RLock()
+		defer stateMu.RUnlock()
+		res := make([]string, 0, len(peers))
+		for id := range peers {
+			res = append(res, id)
+		}
+		return res
 	})
 	defer unregister()
 

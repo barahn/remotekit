@@ -22,24 +22,28 @@ import (
 type LinuxClipboard struct {
 	mu             sync.RWMutex
 	memoryFallback string
+	filesFallback  FileList
 	x11Driver      *x11Driver
 }
 
 type x11Driver struct {
-	mu            sync.RWMutex
-	conn          *xgb.Conn
-	win           xproto.Window
-	clipAtom      xproto.Atom
-	primaryAtom   xproto.Atom
-	utf8Atom      xproto.Atom
-	stringAtom    xproto.Atom
-	textAtom      xproto.Atom
-	plainAtom     xproto.Atom
-	plainUtf8Atom xproto.Atom
-	targetsAtom   xproto.Atom
-	propAtom      xproto.Atom
-	text          string
-	stopChan      chan struct{}
+	mu             sync.RWMutex
+	conn           *xgb.Conn
+	win            xproto.Window
+	clipAtom       xproto.Atom
+	primaryAtom    xproto.Atom
+	utf8Atom       xproto.Atom
+	stringAtom     xproto.Atom
+	textAtom       xproto.Atom
+	plainAtom      xproto.Atom
+	plainUtf8Atom  xproto.Atom
+	targetsAtom    xproto.Atom
+	propAtom       xproto.Atom
+	uriListAtom    xproto.Atom
+	gnomeFilesAtom xproto.Atom
+	text           string
+	files          FileList
+	stopChan       chan struct{}
 
 	// Dedicated reader connection and window for ConvertSelection requests.
 	// Using a separate connection avoids racing with the event loop that handles
@@ -112,12 +116,14 @@ func initX11Driver() *x11Driver {
 		stringAtom:    internAtom(conn, "STRING"),
 		textAtom:      internAtom(conn, "TEXT"),
 		plainAtom:     internAtom(conn, "text/plain"),
-		plainUtf8Atom: internAtom(conn, "text/plain;charset=utf-8"),
-		targetsAtom:   internAtom(conn, "TARGETS"),
-		propAtom:      internAtom(conn, "BARAHN_CLIPBOARD_PROP"),
-		stopChan:      make(chan struct{}),
-		readerConn:    readerConn,
-		readerWin:     readerWin,
+		plainUtf8Atom:  internAtom(conn, "text/plain;charset=utf-8"),
+		targetsAtom:    internAtom(conn, "TARGETS"),
+		propAtom:       internAtom(conn, "BARAHN_CLIPBOARD_PROP"),
+		uriListAtom:    internAtom(conn, "text/uri-list"),
+		gnomeFilesAtom: internAtom(conn, "x-special/gnome-copied-files"),
+		stopChan:       make(chan struct{}),
+		readerConn:     readerConn,
+		readerWin:      readerWin,
 	}
 
 	go d.eventLoop()
@@ -144,6 +150,7 @@ func (d *x11Driver) eventLoop() {
 func (d *x11Driver) handleSelectionRequest(req xproto.SelectionRequestEvent) {
 	d.mu.RLock()
 	currentText := d.text
+	currentFiles := d.files
 	d.mu.RUnlock()
 
 	respProperty := req.Property
@@ -161,6 +168,9 @@ func (d *x11Driver) handleSelectionRequest(req xproto.SelectionRequestEvent) {
 			uint32(d.stringAtom),
 			uint32(d.textAtom),
 		}
+		if len(currentFiles.Files) > 0 {
+			targets = append(targets, uint32(d.gnomeFilesAtom), uint32(d.uriListAtom))
+		}
 		raw := make([]byte, len(targets)*4)
 		for i, t := range targets {
 			raw[i*4] = byte(t)
@@ -171,6 +181,12 @@ func (d *x11Driver) handleSelectionRequest(req xproto.SelectionRequestEvent) {
 		_ = xproto.ChangePropertyChecked(d.conn, xproto.PropModeReplace, req.Requestor, respProperty, xproto.AtomAtom, 32, uint32(len(targets)), raw).Check() // #nosec G115
 	case d.utf8Atom, d.stringAtom, d.textAtom, d.plainUtf8Atom, d.plainAtom:
 		data := []byte(currentText)
+		_ = xproto.ChangePropertyChecked(d.conn, xproto.PropModeReplace, req.Requestor, respProperty, req.Target, 8, uint32(len(data)), data).Check() // #nosec G115
+	case d.uriListAtom:
+		data := []byte(EncodeURIList(currentFiles.Files))
+		_ = xproto.ChangePropertyChecked(d.conn, xproto.PropModeReplace, req.Requestor, respProperty, req.Target, 8, uint32(len(data)), data).Check() // #nosec G115
+	case d.gnomeFilesAtom:
+		data := []byte(EncodeGnomeCopiedFiles(currentFiles))
 		_ = xproto.ChangePropertyChecked(d.conn, xproto.PropModeReplace, req.Requestor, respProperty, req.Target, 8, uint32(len(data)), data).Check() // #nosec G115
 	default:
 		respProperty = 0
@@ -198,10 +214,38 @@ func (d *x11Driver) SetText(text string) error {
 	return nil
 }
 
+func (d *x11Driver) convertAndReadProperty(clipAtom, targetAtom, propAtom xproto.Atom) (string, error) {
+	xproto.ConvertSelection(d.readerConn, d.readerWin, clipAtom, targetAtom, propAtom, xproto.TimeCurrentTime)
+
+	timeout := time.After(200 * time.Millisecond)
+	for {
+		select {
+		case <-timeout:
+			return "", nil
+		default:
+			ev, err := d.readerConn.PollForEvent()
+			if err != nil {
+				return "", err
+			}
+			if ev == nil {
+				time.Sleep(5 * time.Millisecond)
+				continue
+			}
+			if selNotify, ok := ev.(xproto.SelectionNotifyEvent); ok {
+				if selNotify.Property == 0 {
+					return "", nil
+				}
+				prop, err := xproto.GetProperty(d.readerConn, true, d.readerWin, selNotify.Property, xproto.GetPropertyTypeAny, 0, 1024*1024).Reply()
+				if err != nil {
+					return "", err
+				}
+				return string(prop.Value), nil
+			}
+		}
+	}
+}
+
 // GetText retrieves the current clipboard text.
-// Fast-path: if we own the selection, return our cached text immediately.
-// Slow-path: use the dedicated reader connection (readerConn) to request the
-// selection from whoever owns it, avoiding any re-creation of X11 connections.
 func (d *x11Driver) GetText() (string, error) {
 	// 1. Fast path: check if we are the current clipboard owner.
 	if d.conn != nil {
@@ -213,19 +257,16 @@ func (d *x11Driver) GetText() (string, error) {
 				return d.text, nil
 			}
 			if ownerReply.Owner == 0 {
-				// No clipboard owner — clipboard is empty.
 				return "", nil
 			}
 		}
 	}
 
-	// 2. Slow path: request the selection from the external owner using the
-	//    pre-allocated dedicated reader connection.
+	// 2. Slow path: request the selection from external owner
 	d.readerMu.Lock()
 	defer d.readerMu.Unlock()
 
 	if d.readerConn == nil {
-		// No reader connection available; fall through to CLI tools.
 		d.mu.RLock()
 		defer d.mu.RUnlock()
 		return d.text, nil
@@ -235,43 +276,76 @@ func (d *x11Driver) GetText() (string, error) {
 	clipAtom := internAtom(d.readerConn, "CLIPBOARD")
 	utf8Atom := internAtom(d.readerConn, "UTF8_STRING")
 
-	xproto.ConvertSelection(d.readerConn, d.readerWin, clipAtom, utf8Atom, propAtom, xproto.TimeCurrentTime)
+	res, err := d.convertAndReadProperty(clipAtom, utf8Atom, propAtom)
+	if err == nil && res != "" {
+		return res, nil
+	}
 
-	timeout := time.After(200 * time.Millisecond)
-	for {
-		select {
-		case <-timeout:
-			d.mu.RLock()
-			defer d.mu.RUnlock()
-			return d.text, nil
-		default:
-			ev, err := d.readerConn.PollForEvent()
-			if err != nil {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.text, nil
+}
+
+// SetFiles sets the file list on X11 clipboard.
+func (d *x11Driver) SetFiles(list FileList) error {
+	d.mu.Lock()
+	d.files = list
+	d.mu.Unlock()
+
+	now := xproto.Timestamp(xproto.TimeCurrentTime)
+	_ = xproto.SetSelectionOwnerChecked(d.conn, d.win, d.clipAtom, now).Check()
+	_ = xproto.SetSelectionOwnerChecked(d.conn, d.win, d.primaryAtom, now).Check()
+	return nil
+}
+
+// GetFiles retrieves file list from X11 clipboard.
+func (d *x11Driver) GetFiles() (FileList, error) {
+	if d.conn != nil {
+		ownerReply, err := xproto.GetSelectionOwner(d.conn, d.clipAtom).Reply()
+		if err == nil {
+			if ownerReply.Owner == d.win {
 				d.mu.RLock()
 				defer d.mu.RUnlock()
-				return d.text, nil
+				return d.files, nil
 			}
-			if ev == nil {
-				time.Sleep(5 * time.Millisecond)
-				continue
-			}
-			if selNotify, ok := ev.(xproto.SelectionNotifyEvent); ok {
-				if selNotify.Property == 0 {
-					// Owner refused or does not support the requested format.
-					d.mu.RLock()
-					defer d.mu.RUnlock()
-					return d.text, nil
-				}
-				prop, err := xproto.GetProperty(d.readerConn, true, d.readerWin, selNotify.Property, xproto.GetPropertyTypeAny, 0, 1024*1024).Reply()
-				if err != nil {
-					d.mu.RLock()
-					defer d.mu.RUnlock()
-					return d.text, nil
-				}
-				return string(prop.Value), nil
+			if ownerReply.Owner == 0 {
+				return FileList{}, nil
 			}
 		}
 	}
+
+	d.readerMu.Lock()
+	defer d.readerMu.Unlock()
+
+	if d.readerConn == nil {
+		d.mu.RLock()
+		defer d.mu.RUnlock()
+		return d.files, nil
+	}
+
+	propAtom := internAtom(d.readerConn, "BARAHN_TEMP_READ_PROP")
+	clipAtom := internAtom(d.readerConn, "CLIPBOARD")
+	gnomeAtom := internAtom(d.readerConn, "x-special/gnome-copied-files")
+
+	res, err := d.convertAndReadProperty(clipAtom, gnomeAtom, propAtom)
+	if err == nil && len(res) > 0 {
+		if fl, parseErr := DecodeGnomeCopiedFiles(res); parseErr == nil && len(fl.Files) > 0 {
+			return fl, nil
+		}
+	}
+
+	uriAtom := internAtom(d.readerConn, "text/uri-list")
+	res, err = d.convertAndReadProperty(clipAtom, uriAtom, propAtom)
+	if err == nil && len(res) > 0 {
+		files := DecodeURIList(res)
+		if len(files) > 0 {
+			return FileList{Files: files, Cut: false}, nil
+		}
+	}
+
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.files, nil
 }
 
 // NewManager returns the cross-platform Linux clipboard manager.
@@ -365,5 +439,31 @@ func (lc *LinuxClipboard) SetText(ctx context.Context, text string) error {
 		}
 	}
 
+	return nil
+}
+
+// GetFiles retrieves the file list from the Linux clipboard.
+func (lc *LinuxClipboard) GetFiles(ctx context.Context) (FileList, error) {
+	if lc.x11Driver != nil {
+		if fl, err := lc.x11Driver.GetFiles(); err == nil && len(fl.Files) > 0 {
+			return fl, nil
+		}
+	}
+	lc.mu.RLock()
+	defer lc.mu.RUnlock()
+	return lc.filesFallback, nil
+}
+
+// SetFiles sets the file list on the Linux clipboard.
+func (lc *LinuxClipboard) SetFiles(ctx context.Context, list FileList) error {
+	lc.mu.Lock()
+	lc.filesFallback = list
+	lc.mu.Unlock()
+
+	if lc.x11Driver != nil {
+		if err := lc.x11Driver.SetFiles(list); err == nil {
+			return nil
+		}
+	}
 	return nil
 }

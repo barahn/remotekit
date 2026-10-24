@@ -93,3 +93,91 @@ func TestWatcherSuppressionWindow(t *testing.T) {
 		t.Fatalf("expected 1 callback for 'Local New Text', got %v", changes)
 	}
 }
+
+func TestWatcherFiles(t *testing.T) {
+	cb := NewMemoryClipboard()
+	watcher := NewWatcher(cb, 20*time.Millisecond)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var mu sync.Mutex
+	var fileChanges []FileList
+
+	watcher.OnFiles(func(files FileList) {
+		mu.Lock()
+		fileChanges = append(fileChanges, files)
+		mu.Unlock()
+	})
+
+	go watcher.Start(ctx, nil)
+
+	time.Sleep(50 * time.Millisecond)
+
+	// Set files on clipboard
+	list1 := FileList{Files: []string{"/tmp/file1.txt"}, Cut: false}
+	_ = cb.SetFiles(ctx, list1)
+	time.Sleep(60 * time.Millisecond)
+
+	// Set different files
+	list2 := FileList{Files: []string{"/tmp/file2.txt", "/tmp/file3.txt"}, Cut: true}
+	_ = cb.SetFiles(ctx, list2)
+	time.Sleep(60 * time.Millisecond)
+
+	mu.Lock()
+	if len(fileChanges) != 2 {
+		t.Fatalf("expected 2 file callbacks, got %d: %v", len(fileChanges), fileChanges)
+	}
+	if !fileChanges[0].Equal(list1) {
+		t.Errorf("expected list1, got %v", fileChanges[0])
+	}
+	if !fileChanges[1].Equal(list2) {
+		t.Errorf("expected list2, got %v", fileChanges[1])
+	}
+	mu.Unlock()
+}
+
+func TestWatcherFilesSuppressionWindow(t *testing.T) {
+	cb := NewMemoryClipboard()
+	watcher := NewWatcher(cb, 10*time.Millisecond)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var mu sync.Mutex
+	var fileChanges []FileList
+
+	watcher.OnFiles(func(files FileList) {
+		mu.Lock()
+		fileChanges = append(fileChanges, files)
+		mu.Unlock()
+	})
+
+	go watcher.Start(ctx, nil)
+
+	time.Sleep(30 * time.Millisecond)
+
+	// Remote files arrived: suppress echo
+	remoteFiles := FileList{Files: []string{"/tmp/remote.txt"}, Cut: false}
+	watcher.UpdateLastFiles(remoteFiles)
+	_ = cb.SetFiles(ctx, remoteFiles)
+
+	time.Sleep(80 * time.Millisecond)
+
+	mu.Lock()
+	if len(fileChanges) != 0 {
+		t.Fatalf("expected 0 callbacks due to suppression window, got %d: %v", len(fileChanges), fileChanges)
+	}
+	mu.Unlock()
+
+	// New local change should trigger callback
+	localFiles := FileList{Files: []string{"/tmp/local.txt"}, Cut: true}
+	_ = cb.SetFiles(ctx, localFiles)
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(fileChanges) != 1 || !fileChanges[0].Equal(localFiles) {
+		t.Fatalf("expected 1 callback for localFiles, got %v", fileChanges)
+	}
+}
