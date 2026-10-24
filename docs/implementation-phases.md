@@ -87,6 +87,7 @@ These fixes address immediate security issues present in the current codebase, i
 * **Implementation Plan:**
   - Restrict `InsecureSkipVerify` exclusively to test harnesses.
   - Implement Trust-On-First-Use (TOFU) or explicit server certificate / public key pinning based on enrollment data.
+* **Key Rotation Architecture:** See [`docs/server-key-pinning-and-rotation.md`](server-key-pinning-and-rotation.md) (Issue #69) for the architectural specification that decouples the server's long-lived identity key (Ed25519) from ephemeral ACME TLS keys, eliminating fleet lockouts during certificate rotation and defining the safe elimination of `InsecureSkipVerify` outside test harnesses.
 * **Testing Criteria:**
   - Verify that production builds reject non-CA-signed certs unless pinned public keys match.
 
