@@ -25,6 +25,8 @@ const (
 	// KindSignal is the rumor kind that carries one signalling message. It
 	// is our own, in the ephemeral range, and only the two ends ever see it.
 	KindSignal = 21059
+	// KindAuth is NIP-42's relay authentication event.
+	KindAuth = 22242
 )
 
 // Event is a NIP-01 event. For a rumor, Sig is empty.

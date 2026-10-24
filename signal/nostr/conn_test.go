@@ -354,3 +354,84 @@ func TestConnRedialOnSubscriptionClosed(t *testing.T) {
 	}
 }
 
+// A relay that requires NIP-42 AUTH authenticates with the session key and completes a session.
+func TestConnAuthenticatesWithSessionKey(t *testing.T) {
+	relay := newFakeRelay(t)
+	relay.requireAuth = true
+	relay.challenge = "challenge-session-key"
+
+	cfg := Config{Relays: []string{relay.url()}}
+	agent := listen(t, cfg)
+	viewer := dial(t, cfg, agent.PublicKey())
+
+	if err := viewer.WriteMessage([]byte(`{"test":"nip42-session"}`)); err != nil {
+		t.Fatalf("viewer write: %v", err)
+	}
+	msg := readWithin(t, agent, 2*time.Second)
+	if string(msg) != `{"test":"nip42-session","viewer_id":"`+viewer.PublicKey()+`"}` {
+		t.Fatalf("unexpected message: %s", msg)
+	}
+}
+
+// A relay that requires NIP-42 AUTH authenticates with a dedicated key from RelayAuthKeys.
+func TestConnAuthenticatesWithConfiguredRelayKey(t *testing.T) {
+	relay := newFakeRelay(t)
+	relay.requireAuth = true
+	relay.challenge = "challenge-dedicated-key"
+
+	dedicatedKey, err := GenerateKey()
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	relay.authValidator = func(pubkey string) bool {
+		return pubkey == dedicatedKey.PublicKey()
+	}
+
+	cfg := Config{
+		Relays: []string{relay.url()},
+		RelayAuthKeys: map[string]*SecretKey{
+			relay.url(): dedicatedKey,
+		},
+	}
+	agent := listen(t, cfg)
+	viewer := dial(t, cfg, agent.PublicKey())
+
+	if err := viewer.WriteMessage([]byte(`{"test":"nip42-dedicated"}`)); err != nil {
+		t.Fatalf("viewer write: %v", err)
+	}
+	msg := readWithin(t, agent, 2*time.Second)
+	if string(msg) != `{"test":"nip42-dedicated","viewer_id":"`+viewer.PublicKey()+`"}` {
+		t.Fatalf("unexpected message: %s", msg)
+	}
+}
+
+// A relay that refuses the key ends the Conn with ErrAuthRefused.
+func TestConnRefusedAuthEndsConn(t *testing.T) {
+	relay := newFakeRelay(t)
+	relay.requireAuth = true
+	relay.challenge = "challenge-refused"
+	relay.authValidator = func(pubkey string) bool {
+		return false // Refuse all keys
+	}
+
+	cfg := Config{Relays: []string{relay.url()}}
+	c, err := Dial(context.Background(), cfg, "0000000000000000000000000000000000000000000000000000000000000001")
+	if err != nil {
+		if !errors.Is(err, ErrAuthRefused) {
+			t.Fatalf("want ErrAuthRefused from Dial, got %v", err)
+		}
+		return
+	}
+	defer func() { _ = c.Close() }()
+
+	select {
+	case <-c.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("conn did not end after auth was refused")
+	}
+
+	_, readErr := c.ReadMessage()
+	if !errors.Is(readErr, ErrAuthRefused) {
+		t.Fatalf("want ErrAuthRefused from ReadMessage, got %v", readErr)
+	}
+}
