@@ -77,6 +77,15 @@ func (d *dataPlane) handle(ctx context.Context, from sender, msgType string, fie
 	case "file_start", "file_chunk", "file_complete":
 		d.files.omitPath = r.omitFilePathInReply
 		d.files.handle(from, msgType, fields, "agent", func(stage string) string {
+			if stage == "clipboard file transfer" {
+				if !r.allow(PermissionClipboard, stage) {
+					return PermissionClipboard + " has not been granted"
+				}
+				if !r.allow(PermissionFileTransfer, stage) {
+					return PermissionFileTransfer + " has not been granted"
+				}
+				return ""
+			}
 			if !r.allow(PermissionFileTransfer, stage) {
 				return PermissionFileTransfer + " has not been granted"
 			}

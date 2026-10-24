@@ -11,19 +11,31 @@ import (
 
 // Watcher continuously monitors host system clipboard for changes.
 type Watcher struct {
-	mgr             Manager
-	interval        time.Duration
-	mu              sync.RWMutex
-	lastText        string
-	suppressedText  string
-	suppressedUntil time.Time
-	onConcealed     func()
+	mgr                  Manager
+	interval             time.Duration
+	mu                   sync.RWMutex
+	lastText             string
+	suppressedText       string
+	suppressedUntil      time.Time
+	lastFiles            FileList
+	suppressedFiles      FileList
+	suppressedFilesUntil time.Time
+	onConcealed          func()
+	onFiles              func(FileList)
 }
 
 // OnConcealed registers fn to be called, instead of onChange, when the
 // clipboard changes to content marked as secret (Concealer). Call it before
 // Start.
 func (w *Watcher) OnConcealed(fn func()) { w.onConcealed = fn }
+
+// OnFiles registers fn to be called when the clipboard changes to a list of files
+// (FileManager). Call it before Start.
+func (w *Watcher) OnFiles(fn func(FileList)) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.onFiles = fn
+}
 
 // NewWatcher creates a new clipboard watcher instance.
 func NewWatcher(mgr Manager, interval time.Duration) *Watcher {
@@ -54,6 +66,23 @@ func (w *Watcher) GetLastText() string {
 	return w.lastText
 }
 
+// UpdateLastFiles updates the recorded last-seen file list without triggering callbacks.
+// A 2-second suppression window is also established for this exact payload.
+func (w *Watcher) UpdateLastFiles(files FileList) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.lastFiles = files
+	w.suppressedFiles = files
+	w.suppressedFilesUntil = time.Now().Add(2 * time.Second)
+}
+
+// GetLastFiles returns the most recent file list observed by the watcher.
+func (w *Watcher) GetLastFiles() FileList {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return w.lastFiles
+}
+
 // Start begins the polling loop, invoking onChange whenever the clipboard
 // content changes.
 //
@@ -65,13 +94,25 @@ func (w *Watcher) Start(ctx context.Context, onChange func(text string)) {
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
 
-	seeded := false
+	seededText := false
 	if initial, err := w.mgr.GetText(ctx); err == nil {
 		w.mu.Lock()
 		w.lastText = initial
 		w.mu.Unlock()
-		seeded = true
+		seededText = true
 	}
+
+	fileMgr, hasFiles := w.mgr.(FileManager)
+	seededFiles := false
+	if hasFiles {
+		if initialFiles, err := fileMgr.GetFiles(ctx); err == nil {
+			w.mu.Lock()
+			w.lastFiles = initialFiles
+			w.mu.Unlock()
+			seededFiles = true
+		}
+	}
+
 	concealer, _ := w.mgr.(Concealer)
 
 	for {
@@ -79,15 +120,58 @@ func (w *Watcher) Start(ctx context.Context, onChange func(text string)) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			// Poll files if manager supports it
+			if hasFiles {
+				currentFiles, err := fileMgr.GetFiles(ctx)
+				if err == nil {
+					if !seededFiles {
+						w.mu.Lock()
+						w.lastFiles = currentFiles
+						w.mu.Unlock()
+						seededFiles = true
+						continue
+					}
+					if len(currentFiles.Files) > 0 {
+						w.mu.Lock()
+						isSuppressed := currentFiles.Equal(w.suppressedFiles) && time.Now().Before(w.suppressedFilesUntil)
+						isSame := currentFiles.Equal(w.lastFiles)
+						if !isSuppressed && !isSame {
+							w.lastFiles = currentFiles
+						}
+						onFilesFn := w.onFiles
+						w.mu.Unlock()
+
+						if !isSuppressed && !isSame {
+							if concealer != nil {
+								if hidden, err := concealer.Concealed(ctx); err != nil || hidden {
+									if w.onConcealed != nil {
+										w.onConcealed()
+									}
+									continue
+								}
+							}
+							if onFilesFn != nil {
+								onFilesFn(currentFiles)
+							}
+						}
+					} else {
+						w.mu.Lock()
+						w.lastFiles = FileList{}
+						w.mu.Unlock()
+					}
+				}
+			}
+
+			// Poll text
 			current, err := w.mgr.GetText(ctx)
 			if err != nil {
 				continue
 			}
-			if !seeded {
+			if !seededText {
 				w.mu.Lock()
 				w.lastText = current
 				w.mu.Unlock()
-				seeded = true
+				seededText = true
 				continue
 			}
 			if current == "" {

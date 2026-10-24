@@ -24,6 +24,7 @@ type MemoryClipboard struct {
 	mu        sync.RWMutex
 	content   string
 	concealed bool
+	files     FileList
 }
 
 func NewMemoryClipboard() *MemoryClipboard {

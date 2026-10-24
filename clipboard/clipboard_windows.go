@@ -19,6 +19,7 @@ const (
 	cfText        = 1
 	cfOemText     = 7
 	cfUnicodeText = 13
+	cfHDrop       = 15
 	gmemMoveable  = 0x0002
 	gmemZeroInit  = 0x0040
 	ghnd          = gmemMoveable | gmemZeroInit
@@ -39,12 +40,14 @@ var (
 	procGlobalLock   = modKernel32.NewProc("GlobalLock")
 	procGlobalUnlock = modKernel32.NewProc("GlobalUnlock")
 	procGlobalFree   = modKernel32.NewProc("GlobalFree")
+	procGlobalSize   = modKernel32.NewProc("GlobalSize")
 )
 
 // WindowsClipboard implements system clipboard operations on Windows via Win32 API.
 type WindowsClipboard struct {
 	mu             sync.RWMutex
 	memoryFallback string
+	filesFallback  FileList
 }
 
 // NewManager returns a new Windows clipboard manager.
@@ -194,6 +197,144 @@ func (wc *WindowsClipboard) SetText(ctx context.Context, text string) error {
 	}
 
 	// System takes ownership of hGlobal upon successful SetClipboardData
+	return nil
+}
+
+// GetFiles retrieves file paths from the Windows clipboard using CF_HDROP and Preferred DropEffect.
+func (wc *WindowsClipboard) GetFiles(ctx context.Context) (FileList, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	if err := openClipboardWithRetry(); err != nil {
+		wc.mu.RLock()
+		defer wc.mu.RUnlock()
+		return wc.filesFallback, nil
+	}
+	defer procCloseClipboard.Call()
+
+	r, _, _ := procIsClipboardFormatAvailable.Call(uintptr(cfHDrop))
+	if r == 0 {
+		wc.mu.RLock()
+		defer wc.mu.RUnlock()
+		return wc.filesFallback, nil
+	}
+
+	hData, _, _ := procGetClipboardData.Call(uintptr(cfHDrop))
+	if hData == 0 {
+		return FileList{}, nil
+	}
+	ptr, _, _ := procGlobalLock.Call(hData)
+	if ptr == 0 {
+		return FileList{}, nil
+	}
+	defer procGlobalUnlock.Call(hData)
+
+	sz, _, _ := procGlobalSize.Call(hData)
+	if sz == 0 {
+		return FileList{}, nil
+	}
+
+	buf := unsafe.Slice((*byte)(winPtr(ptr)), sz) // #nosec G103 -- Win32 memory copy
+	copied := make([]byte, sz)
+	copy(copied, buf)
+
+	// Check Preferred DropEffect
+	var dropEffect uint32 = DropEffectCopy
+	dropEffectName, _ := syscall.UTF16PtrFromString("Preferred DropEffect")
+	cfDropEffect, _, _ := procRegisterClipboardFormatW.Call(uintptr(unsafe.Pointer(dropEffectName))) // #nosec G103
+	if cfDropEffect != 0 {
+		rEffect, _, _ := procIsClipboardFormatAvailable.Call(cfDropEffect)
+		if rEffect != 0 {
+			hEffect, _, _ := procGetClipboardData.Call(cfDropEffect)
+			if hEffect != 0 {
+				ptrEffect, _, _ := procGlobalLock.Call(hEffect)
+				if ptrEffect != 0 {
+					dropEffect = *(*uint32)(winPtr(ptrEffect)) // #nosec G103
+					_, _, _ = procGlobalUnlock.Call(hEffect)
+				}
+			}
+		}
+	}
+
+	fl, err := DecodeDropFiles(copied, dropEffect)
+	if err != nil {
+		wc.mu.RLock()
+		defer wc.mu.RUnlock()
+		return wc.filesFallback, nil
+	}
+	wc.mu.Lock()
+	wc.filesFallback = fl
+	wc.mu.Unlock()
+	return fl, nil
+}
+
+// SetFiles sets file paths on the Windows clipboard using CF_HDROP and Preferred DropEffect.
+func (wc *WindowsClipboard) SetFiles(ctx context.Context, list FileList) error {
+	wc.mu.Lock()
+	wc.filesFallback = list
+	wc.mu.Unlock()
+
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	data, dropEffect, err := EncodeDropFiles(list)
+	if err != nil {
+		return err
+	}
+
+	hGlobal, _, _ := procGlobalAlloc.Call(uintptr(ghnd), uintptr(len(data)))
+	if hGlobal == 0 {
+		return fmt.Errorf("GlobalAlloc failed")
+	}
+
+	ptr, _, _ := procGlobalLock.Call(hGlobal)
+	if ptr == 0 {
+		_, _, _ = procGlobalFree.Call(hGlobal)
+		return fmt.Errorf("GlobalLock failed")
+	}
+	destSlice := unsafe.Slice((*byte)(winPtr(ptr)), len(data)) // #nosec G103 -- Win32 memory copy
+	copy(destSlice, data)
+	_, _, _ = procGlobalUnlock.Call(hGlobal)
+
+	// Also allocate DropEffect
+	dropEffectName, _ := syscall.UTF16PtrFromString("Preferred DropEffect")
+	cfDropEffect, _, _ := procRegisterClipboardFormatW.Call(uintptr(unsafe.Pointer(dropEffectName))) // #nosec G103
+	var hEffect uintptr
+	if cfDropEffect != 0 {
+		hEffect, _, _ = procGlobalAlloc.Call(uintptr(ghnd), 4)
+		if hEffect != 0 {
+			ptrEffect, _, _ := procGlobalLock.Call(hEffect)
+			if ptrEffect != 0 {
+				*(*uint32)(winPtr(ptrEffect)) = dropEffect // #nosec G103
+				_, _, _ = procGlobalUnlock.Call(hEffect)
+			}
+		}
+	}
+
+	if err := openClipboardWithRetry(); err != nil {
+		_, _, _ = procGlobalFree.Call(hGlobal)
+		if hEffect != 0 {
+			_, _, _ = procGlobalFree.Call(hEffect)
+		}
+		return err
+	}
+	defer procCloseClipboard.Call()
+
+	_, _, _ = procEmptyClipboard.Call()
+
+	r, _, _ := procSetClipboardData.Call(uintptr(cfHDrop), hGlobal)
+	if r == 0 {
+		_, _, _ = procGlobalFree.Call(hGlobal)
+		if hEffect != 0 {
+			_, _, _ = procGlobalFree.Call(hEffect)
+		}
+		return fmt.Errorf("SetClipboardData CF_HDROP failed")
+	}
+
+	if cfDropEffect != 0 && hEffect != 0 {
+		_, _, _ = procSetClipboardData.Call(cfDropEffect, hEffect)
+	}
+
 	return nil
 }
 
