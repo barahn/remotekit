@@ -320,13 +320,22 @@ func TestDataChannel_FileTransferRepliesOnTheChannel(t *testing.T) {
 		}
 	}
 
-	select {
-	case got := <-replies:
-		if want := webrtc.DataChannelTransfer + ":file_progress"; got != want {
-			t.Fatalf("reply %q, want %q", got, want)
+	deadline := time.After(10 * time.Second)
+	found := false
+	for !found {
+		select {
+		case got := <-replies:
+			if got == webrtc.DataChannelTransfer+":file_progress" {
+				found = true
+				break
+			}
+			// Unrelated control channel broadcasts (such as bark-control:displays) can arrive concurrently.
+			if strings.HasPrefix(got, webrtc.DataChannelTransfer+":") {
+				t.Fatalf("reply %q, want %q", got, webrtc.DataChannelTransfer+":file_progress")
+			}
+		case <-deadline:
+			t.Fatal("no file_progress on the data channel within 10s")
 		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("no file_progress on the data channel within 10s")
 	}
 	h.expectNothing(200 * time.Millisecond)
 }
