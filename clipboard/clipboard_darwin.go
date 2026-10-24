@@ -22,6 +22,7 @@ type DarwinClipboard struct {
 }
 
 var _ Concealer = (*DarwinClipboard)(nil)
+var _ FileManager = (*DarwinClipboard)(nil)
 
 // NewManager returns a new macOS clipboard manager.
 func NewManager() Manager {
@@ -49,6 +50,16 @@ func (dc *DarwinClipboard) SetText(ctx context.Context, text string) error {
 	cmd := exec.CommandContext(ctx, "pbcopy")
 	cmd.Stdin = strings.NewReader(text)
 	_ = cmd.Run()
+	return nil
+}
+
+// GetFiles retrieves the file list from the macOS clipboard (stubbed until native macOS lands).
+func (dc *DarwinClipboard) GetFiles(ctx context.Context) (FileList, error) {
+	return FileList{}, nil
+}
+
+// SetFiles writes the file list to the macOS clipboard (stubbed until native macOS lands).
+func (dc *DarwinClipboard) SetFiles(ctx context.Context, list FileList) error {
 	return nil
 }
 

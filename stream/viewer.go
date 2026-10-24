@@ -9,12 +9,15 @@ import (
 	"encoding/json"
 	"errors"
 	"image"
+	"os"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/barahn/remotekit/bark"
+	"github.com/barahn/remotekit/clipboard"
 	"github.com/barahn/remotekit/screen/codec/vp8"
+	"github.com/barahn/remotekit/transfer"
 	"github.com/barahn/remotekit/webrtc"
 )
 
@@ -46,6 +49,14 @@ type Viewer struct {
 	onClipboard func(text string)
 	onDisplays  func(bark.DisplaysPayload)
 	onGranted   func(granted []string)
+
+	// clip replaces the system clipboard when set; tests use it so they do
+	// not touch the clipboard of whoever runs them.
+	clip             clipboard.Manager
+	clipStagingDir   string
+	clipWatcher      *clipboard.Watcher
+	onClipboardFiles func(clipboard.FileList)
+
 	// onFileOffer, onFileSaved and inbox receive files from the agent;
 	// see agentfiles.go.
 	onFileOffer func(FileOffer) bool
@@ -159,6 +170,17 @@ func (v *Viewer) SendInput(ev bark.InputEvent) error {
 	return peer.SendData(webrtc.DataChannelControl, data)
 }
 
+// ClipStagingDir returns the path to the temporary staging directory
+// used for clipboard file transfers during this session, if any.
+func (v *Viewer) ClipStagingDir() string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.clipStagingDir
+}
+
+// OnClipboardFiles registers fn for the agent's clipboard files.
+func (v *Viewer) OnClipboardFiles(fn func(clipboard.FileList)) { v.onClipboardFiles = fn }
+
 // Serve runs the viewer's side of one session over conn until conn fails or
 // ctx is cancelled, and closes conn either way. Cancelling ctx tells the agent
 // the session is over first, which revokes what was granted.
@@ -178,6 +200,52 @@ func (v *Viewer) Serve(ctx context.Context, conn SignalConn) error {
 	})
 	defer stop()
 	defer v.closePeer()
+
+	stagingDir, err := os.MkdirTemp("", "remotekit-clip-staging-viewer-*")
+	if err == nil {
+		v.mu.Lock()
+		v.clipStagingDir = stagingDir
+		v.mu.Unlock()
+		defer func() {
+			_ = os.RemoveAll(stagingDir)
+			v.mu.Lock()
+			v.clipStagingDir = ""
+			v.mu.Unlock()
+		}()
+		if clipTm, err := transfer.NewManager(stagingDir); err == nil {
+			v.inbox.clipTransfer = clipTm
+		}
+	}
+	v.inbox.clipMgr = v.clip
+	v.inbox.onClipFiles = func(from sender, list clipboard.FileList, size int64, names []string) {
+		if v.onClipboardFiles != nil {
+			v.onClipboardFiles(list)
+		}
+	}
+
+	if v.clip != nil {
+		clipCtx, clipCancel := context.WithCancel(ctx)
+		defer clipCancel()
+		v.clipWatcher = clipboard.NewWatcher(v.clip, 200*time.Millisecond)
+		v.inbox.clipWatcher = v.clipWatcher
+		v.clipWatcher.OnFiles(func(files clipboard.FileList) {
+			var totalSize int64
+			for _, p := range files.Files {
+				st, err := os.Stat(p)
+				if err != nil {
+					return
+				}
+				totalSize += st.Size()
+			}
+			if totalSize > MaxClipboardFileSize {
+				return
+			}
+			_ = v.sendClipboardFiles(clipCtx, files)
+		})
+		go v.clipWatcher.Start(clipCtx, func(newText string) {
+			_ = v.SendClipboard(newText)
+		})
+	}
 
 	if err := v.offer(); err != nil {
 		_ = conn.Close()

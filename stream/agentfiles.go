@@ -9,8 +9,11 @@ import (
 	"errors"
 	"io"
 	"log"
+	"os"
+	"path/filepath"
 
 	"github.com/barahn/remotekit/bark"
+	"github.com/barahn/remotekit/clipboard"
 	"github.com/barahn/remotekit/transfer"
 	"github.com/barahn/remotekit/webrtc"
 )
@@ -174,4 +177,77 @@ func (v *Viewer) receiveFile(peer *webrtc.PeerSession, env bark.Envelope) {
 	}
 	v.inbox.handle(sender{id: agentID, key: v.cfg.AgentKey}, string(env.Type), fields, "viewer",
 		func(string) string { return "" }, v.onFileOffer, false, v.onFileSaved, reply)
+}
+
+func (r *Runner) broadcastClipboardFiles(ctx context.Context, list clipboard.FileList) {
+	for _, viewerID := range r.connectedViewers() {
+		p := r.viewerPeer(viewerID)
+		if p == nil || !p.DataChannelOpen(webrtc.DataChannelTransfer) {
+			continue
+		}
+		go func(vID string) {
+			_ = r.sendClipboardFilesTo(ctx, vID, list)
+		}(viewerID)
+	}
+}
+
+func (r *Runner) sendClipboardFilesTo(ctx context.Context, viewerID string, list clipboard.FileList) error {
+	p := r.viewerPeer(viewerID)
+	if p == nil || !p.DataChannelOpen(webrtc.DataChannelTransfer) {
+		return ErrNotConnected
+	}
+	batchID, err := transferID()
+	if err != nil {
+		return err
+	}
+	for _, path := range list.Files {
+		cleanPath := filepath.Clean(path)
+		f, err := os.Open(cleanPath) // #nosec G304 -- local file path from user clipboard
+		if err != nil {
+			return err
+		}
+		name := filepath.Base(path)
+		id, err := transferID()
+		if err != nil {
+			_ = f.Close()
+			return err
+		}
+		events := make(chan fileEvent, fileWindow+2)
+		r.outgoingMu.Lock()
+		if r.outgoing == nil {
+			r.outgoing = make(map[string]outgoingFile)
+		}
+		r.outgoing[id] = outgoingFile{viewerID: viewerID, events: events}
+		r.outgoingMu.Unlock()
+
+		send := func(t bark.MessageType, payload interface{}) error {
+			if !r.allow(PermissionClipboard, "clipboard file send") || !r.allow(PermissionFileTransfer, "clipboard file send") {
+				return ErrNotGranted
+			}
+			data, err := bark.EncodeEnvelope(t, r.id, payload)
+			if err != nil {
+				return err
+			}
+			if !p.DataChannelOpen(webrtc.DataChannelTransfer) {
+				return ErrNotConnected
+			}
+			return p.SendData(webrtc.DataChannelTransfer, data)
+		}
+
+		extra := map[string]interface{}{
+			"clipboard":   true,
+			"batch_id":    batchID,
+			"batch_count": len(list.Files),
+			"cut":         list.Cut,
+		}
+		_, sendErr := sendFileOverWithExtra(ctx, id, name, f, nil, send, events, extra)
+		_ = f.Close()
+		r.outgoingMu.Lock()
+		delete(r.outgoing, id)
+		r.outgoingMu.Unlock()
+		if sendErr != nil {
+			return sendErr
+		}
+	}
+	return nil
 }

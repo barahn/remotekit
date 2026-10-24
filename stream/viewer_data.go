@@ -13,8 +13,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 
 	"github.com/barahn/remotekit/bark"
+	"github.com/barahn/remotekit/clipboard"
 	"github.com/barahn/remotekit/webrtc"
 )
 
@@ -75,6 +78,80 @@ func (v *Viewer) SendClipboard(text string) error {
 	return v.sendData(webrtc.DataChannelControl, data)
 }
 
+// SendClipboardFiles sends files to the agent's clipboard over the transfer data
+// channel. The files must not exceed MaxClipboardFileSize (25 MB).
+func (v *Viewer) SendClipboardFiles(ctx context.Context, list clipboard.FileList) error {
+	var totalSize int64
+	for _, p := range list.Files {
+		st, err := os.Stat(p)
+		if err != nil {
+			return err
+		}
+		totalSize += st.Size()
+	}
+	if totalSize > MaxClipboardFileSize {
+		return errors.New("stream: copied files exceed 25 MB limit")
+	}
+	return v.sendClipboardFiles(ctx, list)
+}
+
+func (v *Viewer) sendClipboardFiles(ctx context.Context, list clipboard.FileList) error {
+	v.mu.Lock()
+	peer := v.peer
+	v.mu.Unlock()
+	if peer == nil || !peer.DataChannelOpen(webrtc.DataChannelTransfer) {
+		return ErrNotConnected
+	}
+	batchID, err := transferID()
+	if err != nil {
+		return err
+	}
+	for _, path := range list.Files {
+		cleanPath := filepath.Clean(path)
+		f, err := os.Open(cleanPath) // #nosec G304 -- local file path from user clipboard
+		if err != nil {
+			return err
+		}
+		name := filepath.Base(path)
+		id, err := transferID()
+		if err != nil {
+			_ = f.Close()
+			return err
+		}
+		events := make(chan fileEvent, fileWindow+2)
+		v.mu.Lock()
+		if v.transfers == nil {
+			v.transfers = make(map[string]chan fileEvent)
+		}
+		v.transfers[id] = events
+		v.mu.Unlock()
+
+		send := func(t bark.MessageType, payload interface{}) error {
+			data, err := bark.EncodeEnvelope(t, v.cfg.AgentID, payload)
+			if err != nil {
+				return err
+			}
+			return v.sendData(webrtc.DataChannelTransfer, data)
+		}
+
+		extra := map[string]interface{}{
+			"clipboard":   true,
+			"batch_id":    batchID,
+			"batch_count": len(list.Files),
+			"cut":         list.Cut,
+		}
+		_, sendErr := sendFileOverWithExtra(ctx, id, name, f, nil, send, events, extra)
+		_ = f.Close()
+		v.mu.Lock()
+		delete(v.transfers, id)
+		v.mu.Unlock()
+		if sendErr != nil {
+			return sendErr
+		}
+	}
+	return nil
+}
+
 // SendFile sends the contents of r to the agent as a file named name, over the
 // transfer data channel, and returns once the agent has saved it -- or refused
 // it, or ctx ends. name is only a name: the agent drops any directory part.
@@ -123,6 +200,10 @@ func (v *Viewer) SendFile(ctx context.Context, name string, r io.ReadSeeker, pro
 // receiving half). It returns once the receiver has saved the file or
 // refused it, or ctx ends.
 func sendFileOver(ctx context.Context, id, name string, r io.ReadSeeker, progress func(sent, total int64), send func(bark.MessageType, interface{}) error, events <-chan fileEvent) (SavedFile, error) {
+	return sendFileOverWithExtra(ctx, id, name, r, progress, send, events, nil)
+}
+
+func sendFileOverWithExtra(ctx context.Context, id, name string, r io.ReadSeeker, progress func(sent, total int64), send func(bark.MessageType, interface{}) error, events <-chan fileEvent, extra map[string]interface{}) (SavedFile, error) {
 	// What is sent is what is left of r, from where it stands now.
 	offset, err := r.Seek(0, io.SeekCurrent)
 	if err != nil {
@@ -138,12 +219,16 @@ func sendFileOver(ctx context.Context, id, name string, r io.ReadSeeker, progres
 		return SavedFile{}, err
 	}
 
-	if err := send(bark.TypeFileStart, map[string]interface{}{
+	payload := map[string]interface{}{
 		"transfer_id": id,
 		"name":        name,
 		"size":        size,
 		"sha256":      sum,
-	}); err != nil {
+	}
+	for k, v := range extra {
+		payload[k] = v
+	}
+	if err := send(bark.TypeFileStart, payload); err != nil {
 		return SavedFile{}, err
 	}
 
@@ -279,8 +364,16 @@ func (v *Viewer) handleData(peer *webrtc.PeerSession, msg []byte) {
 		var p struct {
 			Text string `json:"text"`
 		}
-		if json.Unmarshal(env.Payload, &p) == nil && v.onClipboard != nil {
-			v.onClipboard(p.Text)
+		if json.Unmarshal(env.Payload, &p) == nil {
+			if v.clip != nil {
+				if v.clipWatcher != nil {
+					v.clipWatcher.UpdateLastText(p.Text)
+				}
+				_ = v.clip.SetText(context.Background(), p.Text)
+			}
+			if v.onClipboard != nil {
+				v.onClipboard(p.Text)
+			}
 		}
 	case bark.TypeDisplays:
 		var p bark.DisplaysPayload
