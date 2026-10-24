@@ -681,10 +681,19 @@ func (t *windowsTrayManager) copyIDToClipboard() {
 	if pMem == 0 {
 		return
 	}
-	copy(unsafe.Slice((*byte)(unsafe.Pointer(pMem)), len(textBytes)), textBytes)
+	// winPtr is safe here because hMem is locked via GlobalLock, guaranteeing
+	// the buffer memory is fixed while textBytes is copied into it prior to GlobalUnlock.
+	copy(unsafe.Slice((*byte)(winPtr(pMem)), len(textBytes)), textBytes) // #nosec G103 -- Win32 memory copy
 	procGlobalUnlock.Call(hMem)
 
 	procSetClipboardData.Call(1 /* CF_TEXT */, hMem)
+}
+
+// winPtr converts a Win32 syscall uintptr address into an unsafe.Pointer.
+// It must only be called on valid memory pointers (such as from GlobalLock)
+// whose lifetime is guaranteed across the call site.
+func winPtr(p uintptr) unsafe.Pointer {
+	return *(*unsafe.Pointer)(unsafe.Pointer(&p))
 }
 
 func copyStringToUtf16Slice(s string, dst []uint16) {

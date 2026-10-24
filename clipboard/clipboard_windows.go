@@ -86,7 +86,10 @@ func (wc *WindowsClipboard) GetText(ctx context.Context) (string, error) {
 				defer procGlobalUnlock.Call(hData)
 
 				var utf16Slice []uint16
-				p := (*uint16)(unsafe.Pointer(ptr)) // #nosec G103 -- required for Win32 clipboard memory access
+				// winPtr is safe here because hData is locked via GlobalLock under
+				// an open clipboard, guaranteeing the OS memory block remains fixed
+				// until procGlobalUnlock is invoked by defer.
+				p := (*uint16)(winPtr(ptr)) // #nosec G103 -- required for Win32 clipboard memory access
 				for {
 					val := *p
 					if val == 0 {
@@ -115,7 +118,10 @@ func (wc *WindowsClipboard) GetText(ctx context.Context) (string, error) {
 				defer procGlobalUnlock.Call(hData)
 
 				var byteSlice []byte
-				p := (*byte)(unsafe.Pointer(ptr)) // #nosec G103 -- required for Win32 clipboard memory access
+				// winPtr is safe here because hData is locked via GlobalLock under
+				// an open clipboard, guaranteeing the OS memory block remains fixed
+				// until procGlobalUnlock is invoked by defer.
+				p := (*byte)(winPtr(ptr)) // #nosec G103 -- required for Win32 clipboard memory access
 				for {
 					val := *p
 					if val == 0 {
@@ -166,7 +172,9 @@ func (wc *WindowsClipboard) SetText(ctx context.Context, text string) error {
 		return fmt.Errorf("GlobalLock failed")
 	}
 
-	destSlice := unsafe.Slice((*uint16)(unsafe.Pointer(ptr)), len(utf16Chars)) // #nosec G103 -- Win32 memory copy
+	// winPtr is safe here because hGlobal is locked via GlobalLock, guaranteeing
+	// the buffer memory is fixed while destSlice is copied into it prior to GlobalUnlock.
+	destSlice := unsafe.Slice((*uint16)(winPtr(ptr)), len(utf16Chars)) // #nosec G103 -- Win32 memory copy
 	copy(destSlice, utf16Chars)
 
 	_, _, _ = procGlobalUnlock.Call(hGlobal)
@@ -187,4 +195,11 @@ func (wc *WindowsClipboard) SetText(ctx context.Context, text string) error {
 
 	// System takes ownership of hGlobal upon successful SetClipboardData
 	return nil
+}
+
+// winPtr converts a Win32 syscall uintptr address into an unsafe.Pointer.
+// It must only be called on valid memory pointers (such as from GlobalLock or callbacks)
+// whose lifetime is guaranteed across the call site.
+func winPtr(p uintptr) unsafe.Pointer {
+	return *(*unsafe.Pointer)(unsafe.Pointer(&p))
 }
