@@ -148,13 +148,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `55fd647`** — Merge pull request #157 from barahn/docs/pluggable-transport-seam-65
+**`develop` is at `2efa1f2`** — Merge pull request #158 from barahn/test/flaky-datachannel-file-transfer-test
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#144](https://github.com/barahn/remotekit/pull/144) | chore(release): merge develop → main (50 commits) — Merge pull request #157 from barahn/docs/pluggable-transport-seam-65 | `develop` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40141447286/job/121013862491)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40141447220/job/121013862393)<br>Release source ⏳ (in_progress)<br>DCO Sign-off ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/121013855832)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40141443456/job/121013851110)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40141443521/job/121013851099)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40141443456/job/121013851023)<br>Analyze (Go) ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>open-pr ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress)<br>gitleaks ⏳ (in_progress) |
+| [#144](https://github.com/barahn/remotekit/pull/144) | chore(release): merge develop → main (53 commits) — Merge pull request #158 from barahn/test/flaky-datachannel-file-t... | `develop` | [CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40144564707/job/121023041013)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40144564723/job/121023040497)<br>gitleaks ⏳ (in_progress)<br>DCO Sign-off ⏳ (in_progress)<br>Build, Test & SAST ⏳ (queued)<br>signal/nostr module ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Release source ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/121023032876)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40144561062/job/121023028743)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40144561015/job/121023028350)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40144561015/job/121023028155)<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>open-pr ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>Refresh the handoff status block ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
