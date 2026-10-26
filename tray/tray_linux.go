@@ -6,7 +6,9 @@
 package tray
 
 import (
+	"bytes"
 	"context"
+	_ "embed"
 	"fmt"
 	"image"
 	_ "image/png"
@@ -268,41 +270,92 @@ type dbusIconPixmap struct {
 	Data   []byte
 }
 
+// embeddedSymbolicIcon is the tray artwork compiled into the binary: the
+// full-colour logo flattened to white with its alpha kept, which is what a
+// panel needs, since the colour icon is dark navy and disappears against a
+// dark top bar.
+//
+// It is embedded rather than read from disk because the tray has to render on
+// a host where nothing has been installed into an icon theme, and in a process
+// whose working directory is not the source tree -- an OS service runs with
+// the working directory set to /. A pixmap built from this asset is the floor:
+// the indicator is always drawable, whatever the host looks like.
+//
+//go:embed icon-symbolic.png
+var embeddedSymbolicIcon []byte
+
+// iconFileCandidates returns the installed icon files to prefer over the
+// embedded asset, most specific first. Every path is absolute: a relative
+// candidate would resolve against the process working directory, which makes
+// the indicator depend on where the binary was launched from and would let a
+// writable working directory decide what the tray displays.
+func iconFileCandidates() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	return []string{
+		fmt.Sprintf("%s/.local/share/icons/hicolor/24x24/apps/barahn-symbolic.png", home),
+		fmt.Sprintf("%s/.local/share/icons/barahn-symbolic.png", home),
+		fmt.Sprintf("%s/.local/share/icons/hicolor/512x512/apps/barahn.png", home),
+		fmt.Sprintf("%s/.local/share/icons/hicolor/24x24/apps/barahn.png", home),
+		fmt.Sprintf("%s/.local/share/icons/barahn.png", home),
+		fmt.Sprintf("%s/.local/share/pixmaps/barahn.png", home),
+	}
+}
+
+// resolveIconName reports the icon name and theme path to advertise over
+// StatusNotifierItem. Both are empty when no installed icon backs them.
+//
+// An IconName is only honoured by a panel that can resolve it in a theme. When
+// nothing is installed, advertising "barahn-symbolic" together with a theme
+// directory that does not contain it asks the panel to render an icon that
+// cannot be found, and some panels then draw nothing at all rather than
+// falling back to IconPixmap. In that case both are left empty, which states
+// the truth -- this item has no themed icon -- and leaves IconPixmap as the
+// only thing the panel can use.
+func resolveIconName() (iconName, iconThemePath string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", ""
+	}
+
+	for _, candidate := range []struct {
+		dir  string
+		name string
+	}{
+		{fmt.Sprintf("%s/.local/share/icons/hicolor/24x24/apps", home), "barahn-symbolic"},
+		{fmt.Sprintf("%s/.local/share/icons", home), "barahn-symbolic"},
+		{fmt.Sprintf("%s/.local/share/icons/hicolor/24x24/apps", home), "barahn"},
+		{fmt.Sprintf("%s/.local/share/icons", home), "barahn"},
+	} {
+		for _, ext := range []string{".svg", ".png"} {
+			if _, err := os.Stat(filepath.Join(candidate.dir, candidate.name+ext)); err == nil {
+				return candidate.name, candidate.dir
+			}
+		}
+	}
+
+	return "", ""
+}
+
 func loadLinuxIconPixmaps() []dbusIconPixmap {
-	// The symbolic variant comes first. It is the full-colour artwork flattened
-	// to white with its alpha kept, which is what a panel needs: the colour
-	// icon is dark navy and disappears against a dark top bar, which is what
-	// GNOME and most panels use. This pixmap is only the fallback - shells that
-	// honour IconName get the symbolic SVG and recolour it per theme.
-	candidatePaths := []string{
-		"icons/barahn-symbolic.png",
-		"assets/icon-symbolic.png",
-		"icons/barahn.png",
-		"icons/512x512/barahn.png",
-		"assets/icon.png",
-	}
-
-	if home, err := os.UserHomeDir(); err == nil {
-		candidatePaths = append([]string{
-			fmt.Sprintf("%s/.local/share/icons/hicolor/24x24/apps/barahn-symbolic.png", home),
-			fmt.Sprintf("%s/.local/share/icons/barahn-symbolic.png", home),
-			fmt.Sprintf("%s/.local/share/icons/hicolor/512x512/apps/barahn.png", home),
-			fmt.Sprintf("%s/.local/share/icons/hicolor/24x24/apps/barahn.png", home),
-			fmt.Sprintf("%s/.local/share/icons/barahn.png", home),
-			fmt.Sprintf("%s/.local/share/pixmaps/barahn.png", home),
-		}, candidatePaths...)
-	}
-
 	var srcImg image.Image
-	for _, p := range candidatePaths {
+	for _, p := range iconFileCandidates() {
 		cleanP := filepath.Clean(p)
-		if f, err := os.Open(cleanP); err == nil { // #nosec G304 -- local candidate icon paths
+		if f, err := os.Open(cleanP); err == nil { // #nosec G304 -- absolute candidate icon paths under the user's icon directories
 			if img, _, err := image.Decode(f); err == nil {
 				_ = f.Close()
 				srcImg = img
 				break
 			}
 			_ = f.Close()
+		}
+	}
+
+	if srcImg == nil {
+		if img, _, err := image.Decode(bytes.NewReader(embeddedSymbolicIcon)); err == nil {
+			srcImg = img
 		}
 	}
 
@@ -364,24 +417,8 @@ func (t *linuxTrayManager) run(ctx context.Context) {
 		_ = err
 	}
 
-	iconThemePath := ""
-	if home, err := os.UserHomeDir(); err == nil {
-		localIconDir := fmt.Sprintf("%s/.local/share/icons/hicolor/24x24/apps", home)
-		if _, err := os.Stat(localIconDir); err == nil {
-			iconThemePath = localIconDir
-		} else {
-			fallbackDir := fmt.Sprintf("%s/.local/share/icons", home)
-			if _, err := os.Stat(fallbackDir); err == nil {
-				iconThemePath = fallbackDir
-			}
-		}
-	}
+	iconName, iconThemePath := resolveIconName()
 
-	// barahn-symbolic, not barahn: symbolic icons are recoloured by the shell to
-	// the panel foreground, so the same asset stays legible on light and dark
-	// themes. Pointing at the colour icon is why the indicator was invisible
-	// against GNOME's dark top bar.
-	iconName := "barahn-symbolic"
 	pixmaps := loadLinuxIconPixmaps()
 
 	// 2. Export StatusNotifierItem Properties on /StatusNotifierItem
