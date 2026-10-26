@@ -116,7 +116,7 @@ func (in *fileInbox) handle(from sender, msgType string, fields map[string]inter
 			b.fileNames = append(b.fileNames, session.FileName)
 			in.clipTrans[id] = batchID
 			in.batchMu.Unlock()
-			log.Printf("[AgentStream] Started clipboard file transfer session %s (%s, %.0f bytes)\n", logSafe(id), logSafe(name), size)
+			log.Printf("[AgentStream] Started clipboard file transfer session %s (%s, %s bytes)\n", logSafe(id), logSafe(name), logSafe(fmt.Sprintf("%.0f", size)))
 			return
 		}
 
