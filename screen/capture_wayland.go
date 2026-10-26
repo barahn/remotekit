@@ -41,6 +41,7 @@ const (
 	portalPath            = "/org/freedesktop/portal/desktop"
 	portalScreenCast      = "org.freedesktop.portal.ScreenCast"
 	portalRequestIface    = "org.freedesktop.portal.Request"
+	portalRegistryIface   = "org.freedesktop.host.portal.Registry"
 	restoreSessionFileRel = ".config/barahn/wayland_screencast_session" // #nosec G101
 )
 
@@ -255,6 +256,116 @@ func SaveRestoreToken(token string) {
 	_ = os.WriteFile(cleanPath, []byte(token), 0600)
 }
 
+// sanitizeTokenPrefix converts an application ID into a safe token prefix
+// containing only ASCII alphanumerics and underscores.
+func sanitizeTokenPrefix(appID string) string {
+	if appID == "" {
+		return "barahn"
+	}
+	clean := strings.TrimSuffix(appID, ".desktop")
+	var b strings.Builder
+	b.Grow(len(clean))
+	for _, r := range clean {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('_')
+		}
+	}
+	res := b.String()
+	if res == "" {
+		return "barahn"
+	}
+	return res
+}
+
+// ensureDesktopFile ensures that a .desktop file corresponding to cleanAppID
+// exists in the user's applications directory ($XDG_DATA_HOME/applications or
+// ~/.local/share/applications), enabling xdg-desktop-portal to locate application
+// metadata (display name, icon).
+func ensureDesktopFile(appID, desktopFile string) error {
+	if appID == "" || desktopFile == "" {
+		return nil
+	}
+	cleanAppID := strings.TrimSuffix(appID, ".desktop")
+	if cleanAppID == "" {
+		return nil
+	}
+
+	dataHome := os.Getenv("XDG_DATA_HOME")
+	if dataHome == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("resolving user home for desktop file: %w", err)
+		}
+		dataHome = filepath.Join(home, ".local", "share")
+	}
+
+	appsDir := filepath.Join(dataHome, "applications")
+	destPath := filepath.Join(appsDir, cleanAppID+".desktop")
+
+	var content []byte
+	cleanDesktop := filepath.Clean(desktopFile)
+	if fi, err := os.Stat(cleanDesktop); err == nil && !fi.IsDir() {
+		data, err := os.ReadFile(cleanDesktop) // #nosec G304 -- desktop file path supplied by application
+		if err != nil {
+			return fmt.Errorf("reading source desktop file %q: %w", desktopFile, err)
+		}
+		content = data
+	} else {
+		content = []byte(desktopFile)
+	}
+
+	// Avoid rewriting if identical content is already present
+	cleanDest := filepath.Clean(destPath)
+	if existing, err := os.ReadFile(cleanDest); err == nil && string(existing) == string(content) { // #nosec G304
+		return nil
+	}
+
+	if err := os.MkdirAll(appsDir, 0o700); err != nil {
+		return fmt.Errorf("creating applications directory %q: %w", appsDir, err)
+	}
+
+	// #nosec G306 -- desktop file needs standard 0644 permissions for desktop portal
+	if err := os.WriteFile(cleanDest, content, 0o644); err != nil {
+		return fmt.Errorf("writing desktop file %q: %w", destPath, err)
+	}
+	return nil
+}
+
+// dbusCaller is a minimal interface implemented by *dbus.Object for CallWithContext.
+type dbusCaller interface {
+	CallWithContext(ctx context.Context, method string, flags dbus.Flags, args ...interface{}) *dbus.Call
+}
+
+// registerHostPortal registers an unsandboxed application's ID with xdg-desktop-portal
+// via org.freedesktop.host.portal.Registry.Register before any portal sessions are created.
+//
+// If the portal implementation or version (< 1.20) does not support the Registry interface,
+// the error is logged and ignored so screen capture can proceed.
+func registerHostPortal(ctx context.Context, obj dbusCaller, appID string, logf func(string, ...interface{})) error {
+	if appID == "" || obj == nil {
+		return nil
+	}
+	cleanAppID := strings.TrimSuffix(appID, ".desktop")
+	if cleanAppID == "" {
+		return nil
+	}
+
+	call := obj.CallWithContext(ctx, portalRegistryIface+".Register", 0, cleanAppID, map[string]dbus.Variant{})
+	if call.Err != nil {
+		if logf != nil {
+			logf("host portal registry: %v (continuing)", call.Err)
+		}
+		return nil
+	}
+	if logf != nil {
+		logf("registered app ID %q with host portal", cleanAppID)
+	}
+	return nil
+}
+
+
 // awaitPortalResponse blocks until the portal answers the given Request with a
 // Response signal and returns its results.
 //
@@ -314,6 +425,16 @@ func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
 	// 2. XDG Desktop Portal ScreenCast.
 	obj := c.bus.Object(portalDest, dbus.ObjectPath(portalPath))
 
+	if c.config.AppID != "" {
+		cleanAppID := strings.TrimSuffix(c.config.AppID, ".desktop")
+		if c.config.DesktopFile != "" {
+			if err := ensureDesktopFile(cleanAppID, c.config.DesktopFile); err != nil {
+				c.logf("installing desktop file for %q: %v", cleanAppID, err)
+			}
+		}
+		_ = registerHostPortal(ctx, obj, cleanAppID, c.logf)
+	}
+
 	// Subscribe before the first call: the portal may answer before we would
 	// otherwise be listening.
 	if err := c.bus.AddMatchSignal(
@@ -333,8 +454,9 @@ func (c *waylandCapturer) initPortalSession(ctx context.Context) error {
 	c.bus.Signal(sigChan)
 	defer c.bus.RemoveSignal(sigChan)
 
+	tokenPrefix := sanitizeTokenPrefix(c.config.AppID)
 	token := func(prefix string) string {
-		return fmt.Sprintf("barahn_%s_%d", prefix, time.Now().UnixNano())
+		return fmt.Sprintf("%s_%s_%d", tokenPrefix, prefix, time.Now().UnixNano())
 	}
 
 	// 2a. CreateSession. The session handle comes back in the Response results.

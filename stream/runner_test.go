@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/barahn/remotekit/clipboard"
+	"github.com/barahn/remotekit/screen"
 	"github.com/barahn/remotekit/webrtc"
 )
 
@@ -26,6 +28,8 @@ func TestNew_ServesAnOnDemandSessionThroughConsent(t *testing.T) {
 	const id = "on-demand-1"
 
 	r := New(Config{ID: id, SigningKey: agentPriv})
+	r.clip = clipboard.NewMemoryClipboard()
+	r.newCapturer = func(screen.CaptureConfig) (screen.Capturer, error) { return &fakeCapturer{}, nil }
 	r.RequireScreenViewConsent(true)
 	r.RequireSignedViewers(trustOnly(viewerPub))
 	r.DisableRelayFallback(true)
@@ -51,8 +55,17 @@ func TestNew_ServesAnOnDemandSessionThroughConsent(t *testing.T) {
 
 	agent, viewer := memPipe()
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = r.Serve(ctx, agent) }()
+	done := make(chan struct{})
+	go func() {
+		_ = r.Serve(ctx, agent)
+		close(done)
+	}()
+	defer func() {
+		cancel()
+		_ = agent.Close()
+		_ = viewer.Close()
+		<-done
+	}()
 
 	// Before consent: the viewer is told why, and nothing is negotiated.
 	if err := viewer.WriteMessage(offer()); err != nil {
@@ -127,3 +140,25 @@ func TestNew_PeerConfig(t *testing.T) {
 		t.Errorf("empty PeerConfig = %+v, want no servers at all", got)
 	}
 }
+
+// A consumer that sets AppID and DesktopFile in Config has them passed
+// down to the screen.Capturer creation via screen.CaptureConfig.
+func TestNew_PropagatesAppIDAndDesktopFile(t *testing.T) {
+	const appID = "org.barahn.Chirp"
+	const desktopFile = "[Desktop Entry]\nName=Chirp\nType=Application\n"
+
+	r := New(Config{
+		ID:          "test-agent",
+		AppID:       appID,
+		DesktopFile: desktopFile,
+	})
+
+	cfg := r.captureConfig()
+	if cfg.AppID != appID {
+		t.Errorf("CaptureConfig.AppID = %q, want %q", cfg.AppID, appID)
+	}
+	if cfg.DesktopFile != desktopFile {
+		t.Errorf("CaptureConfig.DesktopFile = %q, want %q", cfg.DesktopFile, desktopFile)
+	}
+}
+

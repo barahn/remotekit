@@ -115,13 +115,41 @@ type ConsentRequestPayload struct {
 	Timestamp            time.Time `json:"timestamp"`
 }
 
-// ConsentResponsePayload represents the end-user authorization decision (Issue #12).
+// ConsentResponsePayload represents the end-user authorization decision (Issue #12, #95).
 type ConsentResponsePayload struct {
-	SessionID string    `json:"session_id"`
-	Code      string    `json:"code"`
-	Granted   bool      `json:"granted"`
-	Reason    string    `json:"reason,omitempty"`
-	Timestamp time.Time `json:"timestamp"`
+	SessionID          string    `json:"session_id"`
+	Code               string    `json:"code"`
+	Granted            bool      `json:"granted"`
+	GrantedPermissions []string  `json:"granted_permissions,omitempty"`
+	Reason             string    `json:"reason,omitempty"`
+	Timestamp          time.Time `json:"timestamp"`
+}
+
+// Permissions returns the list of granted permissions resolved against requested.
+// If GrantedPermissions is present (non-nil), it is taken as the exact grant and
+// filtered to ensure it is a subset of requested (unrequested permissions are dropped).
+// If GrantedPermissions is absent (nil, legacy payload), Granted determines the result:
+// all requested permissions when true, or nil when false.
+func (p ConsentResponsePayload) Permissions(requested []string) []string {
+	if p.GrantedPermissions != nil {
+		reqSet := make(map[string]bool, len(requested))
+		for _, r := range requested {
+			reqSet[r] = true
+		}
+		var granted []string
+		seen := make(map[string]bool, len(p.GrantedPermissions))
+		for _, g := range p.GrantedPermissions {
+			if reqSet[g] && !seen[g] {
+				seen[g] = true
+				granted = append(granted, g)
+			}
+		}
+		return granted
+	}
+	if p.Granted {
+		return append([]string(nil), requested...)
+	}
+	return nil
 }
 
 // DisplayInfo describes one monitor of the agent's machine. X, Y, Width and

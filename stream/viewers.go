@@ -80,12 +80,13 @@ type sessionHook struct {
 	disconnect  func(viewerID string) bool
 	permissions func()
 	peer        func(viewerID string) *webrtc.PeerSession
+	viewers     func() []string
 }
 
 // registerSession makes a running Serve reachable by Disconnect,
 // announcePermissions and SendFile until the returned function is called.
-func (r *Runner) registerSession(disconnect func(string) bool, permissions func(), peer func(string) *webrtc.PeerSession) func() {
-	h := &sessionHook{disconnect: disconnect, permissions: permissions, peer: peer}
+func (r *Runner) registerSession(disconnect func(string) bool, permissions func(), peer func(string) *webrtc.PeerSession, viewers func() []string) func() {
+	h := &sessionHook{disconnect: disconnect, permissions: permissions, peer: peer, viewers: viewers}
 	r.sessionsMu.Lock()
 	if r.sessions == nil {
 		r.sessions = make(map[*sessionHook]struct{})
@@ -97,6 +98,22 @@ func (r *Runner) registerSession(disconnect func(string) bool, permissions func(
 		delete(r.sessions, h)
 		r.sessionsMu.Unlock()
 	}
+}
+
+func (r *Runner) connectedViewers() []string {
+	r.sessionsMu.Lock()
+	hooks := make([]*sessionHook, 0, len(r.sessions))
+	for h := range r.sessions {
+		hooks = append(hooks, h)
+	}
+	r.sessionsMu.Unlock()
+	var all []string
+	for _, h := range hooks {
+		if h.viewers != nil {
+			all = append(all, h.viewers()...)
+		}
+	}
+	return all
 }
 
 // announcePermissions tells the viewers of every running Serve what is

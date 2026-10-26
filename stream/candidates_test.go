@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/barahn/remotekit/clipboard"
 	"github.com/barahn/remotekit/screen"
 	"github.com/barahn/remotekit/webrtc"
 )
@@ -104,6 +105,7 @@ func (tp *tap) carry(from, to *memConn, dir string, done <-chan struct{}) {
 // peer and be refused for their ICE credentials (barahn/chirp#109).
 func TestEveryCandidateNamesItsOffer(t *testing.T) {
 	r := New(Config{ID: "agent-1"})
+	r.clip = clipboard.NewMemoryClipboard()
 	r.newCapturer = func(screen.CaptureConfig) (screen.Capturer, error) { return &fakeCapturer{}, nil }
 	v := NewViewer(ViewerConfig{ID: "viewer-1", AgentID: "agent-1"})
 

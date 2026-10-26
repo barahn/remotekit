@@ -24,19 +24,28 @@ const (
 	ClipboardFromHost
 )
 
+// MaxClipboardFileSize is the maximum total size of files (25 MB) transferred
+// automatically through the clipboard (barahn/remotekit#131).
+const MaxClipboardFileSize = 25 * 1024 * 1024
+
 // ClipboardEvent is one clipboard sync, or one held back.
 type ClipboardEvent struct {
 	Direction ClipboardDirection
-	// ViewerID and Key are the viewer whose text was applied, for
+	// ViewerID and Key are the viewer whose text or files were applied, for
 	// ClipboardToHost, as in FileOffer. Empty for ClipboardFromHost, which
 	// goes to every viewer.
 	ViewerID string
 	Key      ed25519.PublicKey
-	// Size is the text's length in bytes.
+	// Size is the text's length or total files size in bytes.
 	Size int
 	// Concealed is a host copy a password manager marked as secret, which
 	// was not sent (clipboard.Concealer).
 	Concealed bool
+	// Files is the list of filenames copied in a file clipboard event.
+	Files []string
+	// TooLarge is set when copied files total more than MaxClipboardFileSize
+	// and are reported locally without being sent across the wire.
+	TooLarge bool
 }
 
 // OnClipboardEvent registers fn for every clipboard sync the runner makes

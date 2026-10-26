@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/sys/windows"
@@ -39,6 +40,9 @@ func IsWindowsService() bool {
 }
 
 func (m *windowsServiceManager) Install(cfg Config) error {
+	if err := ValidateConfig(cfg); err != nil {
+		return err
+	}
 	exePath := cfg.ExecPath
 	if exePath == "" {
 		var err error
@@ -65,30 +69,14 @@ func (m *windowsServiceManager) Install(cfg Config) error {
 		return ErrServiceAlreadyInstalled
 	}
 
-	displayName := cfg.DisplayName
-	if displayName == "" {
-		displayName = "Barahn Remote Access Agent"
-	}
-	description := cfg.Description
-	if description == "" {
-		description = "Barahn persistent unattended remote support and management agent daemon."
-	}
+	mgrConfig := buildWindowsServiceConfig(cfg)
 
-	startType := mgr.StartAutomatic
-	if !cfg.AutoStart {
-		startType = mgr.StartManual
+	binaryPath := exePath
+	if strings.Contains(binaryPath, " ") && !strings.HasPrefix(binaryPath, `"`) {
+		binaryPath = fmt.Sprintf(`"%s"`, binaryPath)
 	}
-
-	mgrConfig := mgr.Config{
-		ServiceType:  windows.SERVICE_WIN32_OWN_PROCESS,
-		StartType:    uint32(startType),
-		ErrorControl: mgr.ErrorNormal,
-		DisplayName:  displayName,
-		Description:  description,
-	}
-
 	serviceArgs := cfg.Args
-	s, err = scManager.CreateService(m.name, exePath, mgrConfig, serviceArgs...)
+	s, err = scManager.CreateService(m.name, binaryPath, mgrConfig, serviceArgs...)
 	if err != nil {
 		return fmt.Errorf("failed to create Windows service '%s': %w", m.name, err)
 	}
@@ -284,3 +272,31 @@ func (m *windowsServiceManager) Run(ctx context.Context, runner func(ctx context
 	}
 	return nil
 }
+
+// buildWindowsServiceConfig constructs mgr.Config enforcing configured least-privilege service account.
+func buildWindowsServiceConfig(cfg Config) mgr.Config {
+	displayName := cfg.DisplayName
+	if displayName == "" {
+		displayName = "Barahn Remote Access Agent"
+	}
+	description := cfg.Description
+	if description == "" {
+		description = "Barahn persistent unattended remote support and management agent daemon."
+	}
+
+	startType := mgr.StartAutomatic
+	if !cfg.AutoStart {
+		startType = mgr.StartManual
+	}
+
+	return mgr.Config{
+		ServiceType:      windows.SERVICE_WIN32_OWN_PROCESS,
+		StartType:        uint32(startType),
+		ErrorControl:     mgr.ErrorNormal,
+		DisplayName:      displayName,
+		Description:      description,
+		ServiceStartName: cfg.ServiceAccount,
+		Password:         cfg.Password,
+	}
+}
+

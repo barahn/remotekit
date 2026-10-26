@@ -148,13 +148,13 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `16baa77`** — docs: refresh the handoff status block
+**`develop` is at `adc32a9`** — Merge pull request #159 from barahn/fix/codeql-log-injection-fileinbox
 
 ### Open pull requests
 
 | PR | Title | Branch | CI on head |
 |---|---|---|---|
-| [#142](https://github.com/barahn/remotekit/pull/142) | chore(release): merge develop → main (6 commits) — feat: macOS capture, input and permission checks (#72) (#140) | `develop` | [Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/119422868227) |
+| [#144](https://github.com/barahn/remotekit/pull/144) | chore(release): merge develop → main (56 commits) — Merge pull request #159 from barahn/fix/codeql-log-injection-file... | `develop` | signal/nostr module ⏳ (queued)<br>Release source ⏳ (queued)<br>Build, Test & SAST ⏳ (queued)<br>DCO Sign-off ⏳ (queued)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40262099440/job/121376469471)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/121376469463)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40262099466/job/121376468766)<br>gitleaks ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40262095999/job/121376458385)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40262095999/job/121376458294)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40262095955/job/121376458154)<br>Refresh the handoff status block ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>open-pr ⏳ (in_progress) |
 
 <!-- END GENERATED: handoff status -->
 
@@ -223,12 +223,13 @@ Ordered work, as proposed:
   relays wants `DisableRelayFallback` and `RequireDataChannel` on. How the
   viewer learns the agent's session key and relays (support code, QR, link) is
   the product's rendezvous to design.
-- **Phase 3 — fallback without a central TURN.** Drop the Google STUN default
-  (`webrtc/peer.go:44`); every deployment currently contacts Google on every
-  session, and `pion/turn/v5` is already an indirect dependency. Use ephemeral
-  HMAC-derived per-session TURN credentials rather than the static shared
-  secret the current `PeerConfig.TURNUsername`/`TURNPassword` invites. For
-  native Linux clients QUIC or WireGuard beats WebRTC, which needs the
+- **Phase 3 — fallback without a central TURN.** Dropped the Google STUN default
+  (#63); `DefaultPeerConfig()` returns empty ICE servers (host candidates only),
+  requiring explicit STUN/TURN configuration where needed. Ephemeral HMAC-derived
+  per-session TURN credentials (`GenerateEphemeralTURNCredentials`, #64) generate
+  short-lived user/pass pairs following RFC 5766 / draft-uberti-behave-turn-rest-00
+  conventions verified against `pion/turn/v5`, eliminating static shared secrets on
+  clients. For native Linux clients QUIC or WireGuard beats WebRTC, which needs the
   *transport* to be pluggable too — `agent_stream.go` hardcodes WebRTC; the
   seam is *what to send* (`bark`) versus *how to send it* (`peer`).
 - **Explicitly out of scope for relays:** fleet presence. `heartbeat` fires
@@ -258,8 +259,10 @@ work above.
   anything" into "trust this key". With CA verification on, the CA decides and
   the pin is not consulted — deliberately: enforcing it there would turn an
   ACME renewal onto a new key, or a load balancer with differing backend keys,
-  into a fleet-wide outage recoverable only by re-enrolling every agent. Do
-  not "tighten" this without solving key rotation first.
+  into a fleet-wide outage recoverable only by re-enrolling every agent. The
+  architectural solution that solves key rotation without re-enrolment by
+  decoupling server identity from TLS transport is specified in
+  `docs/server-key-pinning-and-rotation.md` (Issue #69).
 - **Signing primitive.** `webrtc/signed.go`: `SignalMessage`
   gains `PubKey`, `Nonce`, `IssuedAt`, `ExpiresAt`, `Sig` (Ed25519), with
   `Sign`, `Verify`, `VerifyFrom` and a `NonceCache`. Gate actions on
@@ -323,9 +326,10 @@ again.
    pull request comes before new work, and on a docs-only branch it is usually
    the one-line DCO fix.
 2. Refer to `docs/decentralised-signalling.md` and `docs/implementation-phases.md`.
-   The roadmap is structured into Phase 0a (defect remediation), Phase 0b (enrolment
-   identity & signing), Phase 1 (DataChannel data plane), Phase 2 (pluggable signalling),
-   and Phase 3 (relays & transports).
+   The roadmap is structured into Phase 0a (Defect Remediation), Phase 0
+   (Activate Cryptographic Identity & Consent), Phase 1 (Peer-to-Peer Data Plane
+   via WebRTC DataChannel), Phase 2 (Pluggable Signalling Abstraction: `SignalConn`
+   and `signal/nostr`), and Phase 3 (Fallback & Transport Hardening: STUN/TURN & Transports).
 3. Phases 0 and 1 are done in this module: device keys, the server
    verifying them, signing in both directions, consent for input, clipboard,
    file transfer, reverse streams and the screen, and the data plane on a

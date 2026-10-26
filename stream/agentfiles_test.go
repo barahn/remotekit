@@ -30,13 +30,7 @@ func agentFileSession(t *testing.T, setup func(*Runner, *Viewer), permissions ..
 		setup(r, v)
 	}
 	session(t, r, v)
-	deadline := time.Now().Add(20 * time.Second)
-	for !v.channelsOpen() {
-		if time.Now().After(deadline) {
-			t.Fatal("the viewer's data channels did not open within 20s")
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	waitChannels(t, v)
 	return r, v, dir
 }
 

@@ -243,20 +243,23 @@ func TestCloseUnblocksRead(t *testing.T) {
 	}
 }
 
-// Losing one relay is survivable; losing the last ends the conn.
+// Losing one relay is survivable; losing all relays ends the conn after the grace period.
 func TestConnEndsWithItsLastRelay(t *testing.T) {
 	r1, r2 := newFakeRelay(t), newFakeRelay(t)
-	c := listen(t, Config{Relays: []string{r1.url(), r2.url()}})
+	c := listen(t, Config{
+		Relays:           []string{r1.url(), r2.url()},
+		RelayGracePeriod: 200 * time.Millisecond,
+	})
 
 	r1.close()
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 	select {
 	case <-c.done:
 		t.Fatal("conn ended with a relay still up")
 	default:
 	}
 
-	r2.closeSubscriptions()
+	r2.close()
 	select {
 	case <-c.done:
 	case <-time.After(2 * time.Second):
@@ -273,5 +276,162 @@ func TestOpenNeedsARelay(t *testing.T) {
 	}
 	if _, err := Dial(context.Background(), Config{}, "not-a-key"); !errors.Is(err, ErrInvalidKey) {
 		t.Fatalf("want ErrInvalidKey, got %v", err)
+	}
+}
+
+// A dropped relay is reconnected with backoff, resubscribes, and the session continues.
+func TestConnRedialAfterRelayRestart(t *testing.T) {
+	relay := newFakeRelay(t)
+	cfg := Config{
+		Relays:           []string{relay.url()},
+		RelayGracePeriod: 5 * time.Second,
+	}
+	agent := listen(t, cfg)
+	viewer := dial(t, cfg, agent.PublicKey())
+
+	// Initial message roundtrip before relay drop
+	if err := viewer.WriteMessage([]byte(`{"hello":"world1"}`)); err != nil {
+		t.Fatalf("viewer write 1: %v", err)
+	}
+	msg1 := readWithin(t, agent, 2*time.Second)
+	if string(msg1) != `{"hello":"world1","viewer_id":"`+viewer.PublicKey()+`"}` {
+		t.Fatalf("unexpected msg1: %s", msg1)
+	}
+
+	// Drop the relay mid-session
+	relay.pause()
+	time.Sleep(150 * time.Millisecond)
+
+	// Neither end should have given up during the grace period
+	select {
+	case <-agent.done:
+		t.Fatal("agent ended during grace period")
+	case <-viewer.done:
+		t.Fatal("viewer ended during grace period")
+	default:
+	}
+
+	// Restart the relay
+	relay.resume()
+
+	// Subsequent message roundtrip should succeed once reconnected
+	if err := viewer.WriteMessage([]byte(`{"hello":"world2"}`)); err != nil {
+		t.Fatalf("viewer write 2: %v", err)
+	}
+	msg2 := readWithin(t, agent, 5*time.Second)
+	if string(msg2) != `{"hello":"world2","viewer_id":"`+viewer.PublicKey()+`"}` {
+		t.Fatalf("unexpected msg2: %s", msg2)
+	}
+}
+
+// When a relay closes the subscription with a NIP-01 CLOSED frame, the conn redials.
+func TestConnRedialOnSubscriptionClosed(t *testing.T) {
+	relay := newFakeRelay(t)
+	cfg := Config{
+		Relays:           []string{relay.url()},
+		RelayGracePeriod: 5 * time.Second,
+	}
+	agent := listen(t, cfg)
+	viewer := dial(t, cfg, agent.PublicKey())
+
+	if err := viewer.WriteMessage([]byte(`{"hello":"world1"}`)); err != nil {
+		t.Fatalf("viewer write 1: %v", err)
+	}
+	msg1 := readWithin(t, agent, 2*time.Second)
+	if string(msg1) != `{"hello":"world1","viewer_id":"`+viewer.PublicKey()+`"}` {
+		t.Fatalf("unexpected msg1: %s", msg1)
+	}
+
+	// Relay sends CLOSED frame
+	relay.closeSubscriptions()
+
+	if err := viewer.WriteMessage([]byte(`{"hello":"world2"}`)); err != nil {
+		t.Fatalf("viewer write 2: %v", err)
+	}
+	msg2 := readWithin(t, agent, 5*time.Second)
+	if string(msg2) != `{"hello":"world2","viewer_id":"`+viewer.PublicKey()+`"}` {
+		t.Fatalf("unexpected msg2: %s", msg2)
+	}
+}
+
+// A relay that requires NIP-42 AUTH authenticates with the session key and completes a session.
+func TestConnAuthenticatesWithSessionKey(t *testing.T) {
+	relay := newFakeRelay(t)
+	relay.requireAuth = true
+	relay.challenge = "challenge-session-key"
+
+	cfg := Config{Relays: []string{relay.url()}}
+	agent := listen(t, cfg)
+	viewer := dial(t, cfg, agent.PublicKey())
+
+	if err := viewer.WriteMessage([]byte(`{"test":"nip42-session"}`)); err != nil {
+		t.Fatalf("viewer write: %v", err)
+	}
+	msg := readWithin(t, agent, 2*time.Second)
+	if string(msg) != `{"test":"nip42-session","viewer_id":"`+viewer.PublicKey()+`"}` {
+		t.Fatalf("unexpected message: %s", msg)
+	}
+}
+
+// A relay that requires NIP-42 AUTH authenticates with a dedicated key from RelayAuthKeys.
+func TestConnAuthenticatesWithConfiguredRelayKey(t *testing.T) {
+	relay := newFakeRelay(t)
+	relay.requireAuth = true
+	relay.challenge = "challenge-dedicated-key"
+
+	dedicatedKey, err := GenerateKey()
+	if err != nil {
+		t.Fatalf("GenerateKey: %v", err)
+	}
+	relay.authValidator = func(pubkey string) bool {
+		return pubkey == dedicatedKey.PublicKey()
+	}
+
+	cfg := Config{
+		Relays: []string{relay.url()},
+		RelayAuthKeys: map[string]*SecretKey{
+			relay.url(): dedicatedKey,
+		},
+	}
+	agent := listen(t, cfg)
+	viewer := dial(t, cfg, agent.PublicKey())
+
+	if err := viewer.WriteMessage([]byte(`{"test":"nip42-dedicated"}`)); err != nil {
+		t.Fatalf("viewer write: %v", err)
+	}
+	msg := readWithin(t, agent, 2*time.Second)
+	if string(msg) != `{"test":"nip42-dedicated","viewer_id":"`+viewer.PublicKey()+`"}` {
+		t.Fatalf("unexpected message: %s", msg)
+	}
+}
+
+// A relay that refuses the key ends the Conn with ErrAuthRefused.
+func TestConnRefusedAuthEndsConn(t *testing.T) {
+	relay := newFakeRelay(t)
+	relay.requireAuth = true
+	relay.challenge = "challenge-refused"
+	relay.authValidator = func(pubkey string) bool {
+		return false // Refuse all keys
+	}
+
+	cfg := Config{Relays: []string{relay.url()}}
+	c, err := Dial(context.Background(), cfg, "0000000000000000000000000000000000000000000000000000000000000001")
+	if err != nil {
+		if !errors.Is(err, ErrAuthRefused) {
+			t.Fatalf("want ErrAuthRefused from Dial, got %v", err)
+		}
+		return
+	}
+	defer func() { _ = c.Close() }()
+
+	select {
+	case <-c.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("conn did not end after auth was refused")
+	}
+
+	_, readErr := c.ReadMessage()
+	if !errors.Is(readErr, ErrAuthRefused) {
+		t.Fatalf("want ErrAuthRefused from ReadMessage, got %v", readErr)
 	}
 }

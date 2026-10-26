@@ -99,6 +99,42 @@ and turn on when the repository has code scanning available, and Aikido Security
 provides unified SAST, dependency and secret scanning. What each gate is
 for is in [docs/devsecops.md](docs/devsecops.md).
 
+## WebRTC and STUN/TURN Configuration
+
+`webrtc.DefaultPeerConfig()` configures no ICE servers by default (host candidates only). This allows peer-to-peer streaming over a local network without contacting third-party servers.
+
+Deployments operating across NATs or firewalls must configure explicit STUN or TURN servers in `webrtc.PeerConfig`:
+
+```go
+// 1. Explicit STUN/TURN configuration:
+config := webrtc.PeerConfig{
+	ICEServers: []string{
+		"stun:stun.example.org:3478",
+		"turn:turn.example.org:3478",
+	},
+	TURNUsername: "username",
+	TURNPassword: "password",
+}
+
+// 2. Ephemeral TURN credentials (RFC 5766 / draft-uberti-behave-turn-rest-00):
+// Use GenerateEphemeralTURNCredentials to mint short-lived HMAC-derived credentials
+// without distributing static shared secrets to clients.
+user, pass, _ := webrtc.GenerateEphemeralTURNCredentials(sharedSecret, "user-id", 15*time.Minute)
+
+config := webrtc.PeerConfig{
+	ICEServers:   []string{"turn:turn.example.org:3478"},
+	TURNUsername: user,
+	TURNPassword: pass,
+}
+
+// Pass to stream.Runner or stream.Viewer:
+runner := stream.New(stream.Config{
+	ID:         sessionID,
+	SigningKey: privateKey,
+	PeerConfig: &config,
+})
+```
+
 ## Licence
 
 Apache License 2.0 — see [LICENSE](LICENSE). Vendored third-party code retains

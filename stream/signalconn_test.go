@@ -10,6 +10,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/barahn/remotekit/clipboard"
+	"github.com/barahn/remotekit/screen"
 )
 
 // memConn is one end of an in-memory SignalConn pair: no network, no
@@ -73,7 +76,13 @@ func (c *memConn) next(wait time.Duration) []byte {
 }
 
 func newServeRunner() *Runner {
-	return &Runner{id: "agent-1"}
+	return &Runner{
+		id:   "agent-1",
+		clip: clipboard.NewMemoryClipboard(),
+		newCapturer: func(screen.CaptureConfig) (screen.Capturer, error) {
+			return &fakeCapturer{}, nil
+		},
+	}
 }
 
 // A whole session runs over a transport that is not a WebSocket: the agent
@@ -169,8 +178,15 @@ func TestServe_ChecksApplyOverAnyTransport(t *testing.T) {
 
 	agent, viewer := memPipe()
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = r.Serve(ctx, agent) }()
+	done := make(chan struct{})
+	go func() {
+		_ = r.Serve(ctx, agent)
+		close(done)
+	}()
+	defer func() {
+		cancel()
+		<-done
+	}()
 
 	if err := viewer.WriteMessage([]byte(`{"type":"session_start","viewer_id":"v"}`)); err != nil {
 		t.Fatal(err)
