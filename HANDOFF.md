@@ -148,13 +148,9 @@ a branch someone else owns.
 
 _Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
 
-**`develop` is at `adc32a9`** — Merge pull request #159 from barahn/fix/codeql-log-injection-fileinbox
+**`develop` is at `845f011`** — Merge pull request #144 from barahn/develop
 
-### Open pull requests
-
-| PR | Title | Branch | CI on head |
-|---|---|---|---|
-| [#144](https://github.com/barahn/remotekit/pull/144) | chore(release): merge develop → main (56 commits) — Merge pull request #159 from barahn/fix/codeql-log-injection-file... | `develop` | signal/nostr module ⏳ (queued)<br>Release source ⏳ (queued)<br>Build, Test & SAST ⏳ (queued)<br>DCO Sign-off ⏳ (queued)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40262099440/job/121376469471)<br>[Aikido Security: check code ❌ skipped](https://github.com/barahn/remotekit/runs/121376469463)<br>[Dependency review (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40262099466/job/121376468766)<br>gitleaks ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>Review dependency changes ⏳ (in_progress)<br>[Release source ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40262095999/job/121376458385)<br>[DCO Sign-off ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40262095999/job/121376458294)<br>[CodeQL (disabled) ❌ skipped](https://github.com/barahn/remotekit/actions/runs/40262095955/job/121376458154)<br>Refresh the handoff status block ⏳ (in_progress)<br>Build, Test & SAST ⏳ (in_progress)<br>gitleaks ⏳ (in_progress)<br>signal/nostr module ⏳ (in_progress)<br>Analyze (Go) ⏳ (in_progress)<br>open-pr ⏳ (in_progress) |
+No open pull requests.
 
 <!-- END GENERATED: handoff status -->
 
