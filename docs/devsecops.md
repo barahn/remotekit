@@ -132,13 +132,20 @@ half of DevSecOps a pull request cannot deliver:
 
 ## A note on `handoff.yml`
 
-It runs on `pull_request_target` with a write token, which is the trigger
-behind "pwn request" attacks when a workflow checks out and runs a pull
-request's code. This one does not: it checks out the default branch explicitly
-and runs only `scripts/gen-handoff-status.sh` from it. It does write pull
-request titles — text anyone who can open a pull request controls — into a
-committed file; that the script escapes them was not verified here. The
-repository does not allow forks, which limits who can open one.
+It no longer holds a write token, and that is the point of its present shape.
+It ran on a write token because it committed the regenerated brief to a branch,
+which worked only while that branch was `develop` — a ruleset with no
+pull-request rule. Against `main` every commit is refused, and the two ways out
+were to grant the workflow a ruleset bypass or to stop writing the file. A
+bypass lifts the *whole* ruleset for that actor, the design hold included, so
+the file stopped being written: the block is published as the run's job summary
+and the token is read-only.
+
+What remains worth knowing: the script interpolates pull request titles — text
+anyone who can open a pull request controls — into Markdown. It escapes `|` for
+the table, and nothing else was verified here. The blast radius is now a job
+summary rather than a committed file, and the repository does not allow forks,
+which limits who can open one.
 
 ## When a gate fails
 
