@@ -108,7 +108,10 @@ in `ci.yml` — the Firefox, geckodriver and libvpx downloads the tests need.
 ## Settings that are not in this repository
 
 Workflows cannot grant themselves these; they are repository settings, the
-half of DevSecOps a pull request cannot deliver:
+half of DevSecOps a pull request cannot deliver. Verify each against the API
+rather than trusting this list — a document cannot know what was applied after
+it was written, and three of the four below sat here as plans long after they
+had been done:
 
 1. **Branch protection on `main`** — applied: pull requests only, passing
    checks, no force push and no deletion. `docs/branching.md` records the
@@ -125,10 +128,14 @@ half of DevSecOps a pull request cannot deliver:
    catches a secret before merge; push protection catches it before it reaches
    GitHub at all), private vulnerability reporting so `SECURITY.md` has a
    mechanism behind it, and Dependabot alerts and security updates.
-3. **Actions** — workflow permissions read-only by default. The workflows that
-   write already ask for it explicitly.
-4. **Tag protection** for `v*.*.*`, so a release tag cannot move after an SBOM
-   has been published against it.
+3. **Actions** — applied: `default_workflow_permissions` is `read` and
+   `can_approve_pull_request_reviews` is false. The two workflows that write
+   (`cleanup-branches.yml`, `sbom.yml`) ask for it explicitly, per job, and
+   neither writes to the tree: one deletes merged branches, the other attaches
+   the SBOM to a release.
+4. **Tag protection** — applied, as the `tags` ruleset: `refs/tags/v*.*.*`
+   blocks deletion and non-fast-forward, so a release tag cannot move after an
+   SBOM has been published against it.
 
 ## A note on `handoff.yml`
 
