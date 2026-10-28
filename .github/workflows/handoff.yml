@@ -28,11 +28,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      # Always the default branch: on a pull_request_target event the ref is the
-      # base, but being explicit keeps the commit target unambiguous.
+      # main by name, not the repository's default branch: the two were the
+      # same only by coincidence, and while the default was still develop this
+      # workflow kept committing the regenerated brief to a branch on its way
+      # out. The trunk is main, so the brief is generated from main.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.repository.default_branch }}
+          ref: main
           # Full history, so a retry can move to whatever tip it lost the race to.
           fetch-depth: 0
 
@@ -49,7 +51,7 @@ jobs:
         id: commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TARGET_BRANCH: ${{ github.event.repository.default_branch }}
+          TARGET_BRANCH: main
           REPO: ${{ github.repository }}
         run: |
           if git diff --quiet -- HANDOFF.md; then
@@ -104,4 +106,4 @@ jobs:
         if: steps.commit.outputs.pushed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run ci.yml --ref "${{ github.event.repository.default_branch }}" --repo "${{ github.repository }}"
+        run: gh workflow run ci.yml --ref main --repo "${{ github.repository }}"
