@@ -7,9 +7,9 @@ name: CodeQL
 # analysis that matters most.
 on:
   push:
-    branches: [ develop, main ]
+    branches: [ main ]
   pull_request:
-    branches: [ develop, main ]
+    branches: [ main ]
   schedule:
     # Queries improve without the code changing. Wednesdays 04:17 UTC.
     - cron: '17 4 * * 3'

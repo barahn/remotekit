@@ -45,9 +45,9 @@ report affects them, the advisory is coordinated across all three.
 
 | Version | Supported |
 | --- | --- |
-| `develop` (tip) | ✅ |
-| `main` (last release) | ✅ |
-| `v0.1.0` | fixes land on `develop`; no backports |
+| `main` (tip) | ✅ |
+| Last release tag | ✅ |
+| Earlier tags | fixes land on `main`; no backports |
 
 ## What is in scope
 

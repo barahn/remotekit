@@ -5,7 +5,7 @@ name: Dependency Review
 # vulnerability is reachable from this code; this asks what is arriving.
 on:
   pull_request:
-    branches: [ develop, main ]
+    branches: [ main ]
 
 permissions:
   contents: read

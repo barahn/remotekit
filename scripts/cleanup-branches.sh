@@ -4,11 +4,11 @@
 #
 # Cleans up local and remote Git branches that are no longer needed:
 # - Local branches whose upstream tracking branch is gone ([gone]).
-# - Local branches already merged into the integration/release branch (develop/main).
+# - Local branches already merged into the trunk (main).
 # - Remote branches on origin whose pull requests have already been merged or
 #   whose commits are fully merged into the default branch.
 #
-# Always protects critical branches: main, develop, and the current branch.
+# Always protects critical branches: main, master, and the current branch.
 #
 # Usage:
 #   ./scripts/cleanup-branches.sh [options]
@@ -57,7 +57,7 @@ ${BOLD}Options:${RESET}
   --remote, -r       Clean remote branches on origin whose PRs are merged
   --all, -a          Clean both local and remote branches
   --force, -y        Skip confirmation prompts and delete immediately
-  --base <branch>    Override base branch (defaults to repo default branch, e.g. develop)
+  --base <branch>    Override base branch (defaults to repo default branch, e.g. main)
   --help, -h         Display this help message
 
 ${BOLD}Examples:${RESET}
@@ -124,9 +124,9 @@ cd "$REPO_ROOT"
 if [ -n "$CUSTOM_BASE" ]; then
   DEFAULT_BRANCH="$CUSTOM_BASE"
 elif command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-  DEFAULT_BRANCH="$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null || echo "develop")"
+  DEFAULT_BRANCH="$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/null || echo "main")"
 else
-  DEFAULT_BRANCH="develop"
+  DEFAULT_BRANCH="main"
 fi
 
 CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || echo "")"
@@ -134,7 +134,7 @@ CURRENT_BRANCH="$(git branch --show-current 2>/dev/null || echo "")"
 is_protected() {
   local b="$1"
   case "$b" in
-    main|master|develop|"$DEFAULT_BRANCH") return 0 ;;
+    main|master|"$DEFAULT_BRANCH") return 0 ;;
     *) return 1 ;;
   esac
 }

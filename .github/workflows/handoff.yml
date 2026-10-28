@@ -5,7 +5,7 @@ name: Handoff
 # regenerated here rather than maintained by hand.
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   workflow_dispatch:
 
 # One writer at a time, and no cancelling a run mid-push: two concurrent runs
@@ -41,8 +41,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: scripts/gen-handoff-status.sh
 
-      # The commit goes through the GraphQL API, not git push: develop and main
-      # require signed commits, and GitHub signs what createCommitOnBranch
+      # The commit goes through the GraphQL API, not git push: main
+      # requires signed commits, and GitHub signs what createCommitOnBranch
       # creates, while a commit made in the runner and pushed would carry no
       # signature at all.
       - name: Commit if anything changed

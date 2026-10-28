@@ -8,7 +8,7 @@
 
 ## Checklist
 
-- [ ] Targets `develop` (only a release targets `main`).
+- [ ] Targets `main`, and is branched from it.
 - [ ] Every commit carries a DCO sign-off (`git commit -s`) — CI checks it.
 - [ ] `go build ./... && go vet ./... && go test -race ./...` pass locally.
 - [ ] No secret, token or credential in the diff, including tests and fixtures.

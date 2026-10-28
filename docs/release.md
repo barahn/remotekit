@@ -1,8 +1,8 @@
 # Releasing remotekit
 
 remotekit is a Go module that others build on, Chirp first. A release is an
-annotated tag on `main`, reached through the release pull request from
-`develop` (HANDOFF §2), and a GitHub Release with its notes. Every repository
+annotated tag on `main`, the trunk every pull request lands on
+(`docs/branching.md`), and a GitHub Release with its notes. Every repository
 of the Barahn organisation versions the same way; Chirp's `docs/release.md`
 says the same for an application.
 
@@ -29,11 +29,11 @@ says the same for an application.
 
 ## When to release
 
-**A release validates a set of changes, not a pull request.** Merging into
-`develop`, or `develop` into `main`, does not make a version. remotekit is
-released when a Chirp milestone that needs it is ready:
+**A release validates a set of changes, not a pull request.** Merging a pull
+request into `main` does not make a version. remotekit is released when a
+Chirp milestone that needs it is ready:
 
-1. Chirp's branch pins the remotekit commit on `develop` it needs (a
+1. Chirp's branch pins the remotekit commit on `main` it needs (a
    pseudo-version) while the work goes on.
 2. For Chirp's release candidate, remotekit gets `vX.Y.Z-rc.N` at that
    commit, and Chirp's candidate pins it.
@@ -59,17 +59,14 @@ through the same steps.
 
    Then ask the maintainer: *"Posso criar e publicar a tag vX.Y.Z?"* Nothing
    is tagged without that yes.
-2. **Merge the release pull request** (`develop` into `main`, opened by
-   `release-pr.yml`) once its checks pass. Its runs wait in *action_required*
-   when a workflow pushed the head (HANDOFF §3); a maintainer approves them.
-3. **Check `main` at the commit to tag:** CI green there, and locally clean:
+2. **Check `main` at the commit to tag:** CI green there, and locally clean:
 
    ```sh
    go mod tidy && git diff --exit-code go.mod go.sum
    go build ./... && go vet ./... && go test ./...
    ```
 
-4. **Tag and push:**
+3. **Tag and push:**
 
    ```sh
    git tag -a vX.Y.Z <commit> -m "remotekit vX.Y.Z" -m "<summary>"
@@ -77,7 +74,7 @@ through the same steps.
    gh release create vX.Y.Z --verify-tag --notes-file notes.md   # add --prerelease for an rc
    ```
 
-5. **Check the module proxy has it:**
+4. **Check the module proxy has it:**
 
    ```sh
    GOPROXY=https://proxy.golang.org go list -m -versions github.com/barahn/remotekit

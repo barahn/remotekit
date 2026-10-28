@@ -9,7 +9,7 @@ built around those two facts.
 
 | Workflow | Runs on | Gate |
 | --- | --- | --- |
-| `ci.yml` | push and PR to `develop`/`main`, tags, dispatch | DCO, NOTICE for vendored code, dependency licences (linux, windows, darwin), build, vet, cross-compile, lint, `go test -race` with the VP8 conformance and browser-decode tests, gosec, govulncheck |
+| `ci.yml` | push and PR to `main`, tags, dispatch | DCO, NOTICE for vendored code, dependency licences (linux, windows, darwin), build, vet, cross-compile, lint, `go test -race` with the VP8 conformance and browser-decode tests, gosec, govulncheck |
 | `secret-scan.yml` | push and PR, weekly | gitleaks over the PR's commits, or the tree and full history |
 | Aikido Security | push and PR (via GitHub App) | SAST, dependency vulnerability scanning (SCA), secrets, auto-triage and PR gating |
 | `codeql.yml` | push and PR, weekly — **when `CODE_SCANNING` is set** | CodeQL `security-extended` for Go |
@@ -19,7 +19,7 @@ built around those two facts.
 Every workflow declares `permissions: contents: read` at the top and asks for
 more only in the job that needs it. Every action is pinned to a commit SHA and
 every Go tool to an exact version; Dependabot proposes updates to both, weekly,
-against `develop`.
+against `main`.
 
 Why the overlaps are not redundant:
 
@@ -110,21 +110,16 @@ in `ci.yml` — the Firefox, geckodriver and libvpx downloads the tests need.
 Workflows cannot grant themselves these; they are repository settings, the
 half of DevSecOps a pull request cannot deliver:
 
-1. **Branch protection on `develop` and `main`** — require pull requests,
-   review from code owners (which is what makes `.github/CODEOWNERS` a gate
-   rather than a suggestion), passing checks, and block force pushes. Signed
-   commits are already required on both, by the `main` and `develop`
-   rulesets; every workflow that writes to either commits through the API,
-   which GitHub signs.
+1. **Branch protection on `main`** — require pull requests, passing checks,
+   and block force pushes and deletion. `docs/branching.md` records the rules
+   and the approval policy behind them.
 
-   > **Three workflows here push directly, and branch protection would refuse
-   > them.** `handoff.yml` commits the regenerated status block straight to the
-   > default branch; `sync-develop.yml` fast-forwards `develop` to `main` after
-   > a release; `release-pr.yml` opens the release pull request (that one is
-   > compatible). Under a pull-request-only rule the first two fail on every
-   > run. Resolve that before protecting the branches — Chirp faced the same
-   > choice and replaced its bot commit with a CI check that the generated
-   > block is current.
+   > **One workflow here pushes directly, and branch protection would refuse
+   > it.** `handoff.yml` commits the regenerated status block straight to the
+   > default branch. Under a pull-request-only rule it fails on every run.
+   > Resolve that before protecting the branch — Chirp faced the same choice
+   > and replaced its bot commit with a CI check that the generated block is
+   > current.
 
 2. **Code security** — secret scanning with push protection (gitleaks in CI
    catches a secret before merge; push protection catches it before it reaches

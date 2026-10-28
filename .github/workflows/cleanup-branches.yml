@@ -52,7 +52,7 @@ jobs:
 
           # 2. Never touch protected branches
           case "$HEAD_REF" in
-            main|master|develop)
+            main|master)
               echo "Protected branch $HEAD_REF cannot be deleted; skipping."
               exit 0
               ;;
@@ -100,7 +100,7 @@ jobs:
           is_protected() {
             local b="$1"
             case "$b" in
-              main|master|develop|"$DEFAULT_BRANCH") return 0 ;;
+              main|master|"$DEFAULT_BRANCH") return 0 ;;
               *) return 1 ;;
             esac
           }
