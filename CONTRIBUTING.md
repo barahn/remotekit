@@ -96,9 +96,9 @@ deliberate: each one extends the obligations above.
 
 ## Branch management and cleanup
 
-remotekit uses `develop` as the default integration branch and `main` as the
-release branch. New contributions should be branched off `develop` and targeted
-at `develop` via pull request.
+remotekit follows trunk-based development: `main` is the trunk and the default
+branch. Branch off `main`, target `main` with the pull request, and release by
+tagging `main`. [docs/branching.md](docs/branching.md) has the rules.
 
 - **Automated branch deletion on merge:** GitHub is configured to automatically
   delete head branches upon merge (`delete_branch_on_merge`). A workflow

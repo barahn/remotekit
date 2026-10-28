@@ -1,12 +1,11 @@
 # Every action here is pinned to a commit SHA and every Go tool to an exact
 # version. Pinning without updating only trades a moving target for a stale
-# one, so Dependabot proposes the updates -- against develop, the integration
-# branch, where CI checks them like any other change.
+# one, so Dependabot proposes the updates -- against main, the trunk, where CI
+# checks them like any other change.
 version: 2
 updates:
   - package-ecosystem: gomod
     directory: /
-    target-branch: develop
     schedule:
       interval: weekly
       day: monday
@@ -24,7 +23,6 @@ updates:
   # the tree, so only its third-party dependencies are proposed here.
   - package-ecosystem: gomod
     directory: /signal/nostr
-    target-branch: develop
     schedule:
       interval: weekly
       day: monday
@@ -39,7 +37,6 @@ updates:
 
   - package-ecosystem: github-actions
     directory: /
-    target-branch: develop
     schedule:
       interval: weekly
       day: monday

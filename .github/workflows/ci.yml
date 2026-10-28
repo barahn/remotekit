@@ -1,18 +1,17 @@
 name: CI
 
 on:
-  # develop is the integration branch and main the release branch, so both
-  # have to be covered: work lands on develop through pull requests long before
-  # it reaches main.
+  # main is the trunk: every pull request targets it and every release is a
+  # tag on it, so covering main and the v*.*.* tags covers everything.
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
     tags: [ 'v*.*.*' ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
   # A push made with GITHUB_TOKEN triggers no workflow, so a commit a workflow
-  # writes -- the handoff refresh and the develop sync on develop -- would
-  # otherwise carry no checks. Those workflows dispatch this one explicitly;
-  # the exemption for workflow_dispatch is what makes that possible.
+  # writes -- the handoff refresh on main -- would otherwise carry no checks.
+  # That workflow dispatches this one explicitly; the exemption for
+  # workflow_dispatch is what makes that possible.
   workflow_dispatch:
 
 concurrency:
@@ -26,26 +25,6 @@ permissions:
   contents: read
 
 jobs:
-  # main takes develop and nothing else. This is a required check on main, so
-  # a pull request from any other branch cannot be merged there.
-  release-source:
-    name: Release source
-    if: github.event_name == 'pull_request' && github.base_ref == 'main'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Head is this repository's develop
-        env:
-          HEAD_REF: ${{ github.head_ref }}
-          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-          REPO: ${{ github.repository }}
-        run: |
-          if [ "$HEAD_REF" != develop ] || [ "$HEAD_REPO" != "$REPO" ]; then
-            echo "::error::main only accepts pull requests from develop; this one is from $HEAD_REPO:$HEAD_REF. Open it against develop."
-            exit 1
-          fi
-          echo "Head is $REPO:develop."
-
   # CONTRIBUTING.md requires a DCO Signed-off-by trailer on every commit. It is
   # a job of its own so a missing sign-off reads as a policy failure, not a
   # broken build, and so it can be made required independently of the build.

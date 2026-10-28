@@ -51,23 +51,13 @@ Packages (each usable on its own):
 
 ## 2. Ground rules you must follow
 
-- **Branch model.** `develop` is the default and integration branch; `main`
-  is the release branch. Branch from `origin/develop`, open pull requests
-  against `develop`, and never push directly to either. Push with
-  `git push -u origin <branch-name>`. You never open the release pull request
-  yourself: `.github/workflows/release-pr.yml` opens or updates a single
-  release pull request, `develop` into `main`, on every push to `develop`.
-  `main` takes pull requests from `develop` only (the required `Release
-  source` check refuses any other head) and only as a merge commit, so
-  `develop`'s commits become part of `main`. Once it merges,
-  `.github/workflows/sync-develop.yml` fast-forwards `develop` to `main`, or
-  merges `main` into it if `develop` moved meanwhile; `main` is then behind
-  `develop` by exactly what is unreleased. There are no other long-lived
-  branches. `scripts/release-pr.sh` and `scripts/sync-develop.sh` have the
-  details. Both `develop` and `main` require signed commits. `develop` was
-  rebuilt on `main` on 2026-10-04 to get there: its history until then
-  carried 39 unsigned handoff refreshes, which `main` cannot take, and was
-  not kept.
+- **Branch model.** `main` is the trunk and the default branch. Branch from
+  `origin/main`, open pull requests against `main`, and never push directly
+  to it. Push with `git push -u origin <branch-name>`. There are no other
+  long-lived branches. A release is a `vX.Y.Z` tag on `main`; there is no
+  release pull request and nothing to merge back. `docs/branching.md` has the
+  details, including the protection rules and why the merge method is what it
+  is.
 - **Every commit needs a DCO `Signed-off-by` trailer** (`git commit -s`). CI
   enforces it on every non-merge commit in a pull request, and a missing
   trailer has already turned one pull request red. `CONTRIBUTING.md` also carries a CLA; sign-off is not the CLA.
@@ -79,7 +69,7 @@ Packages (each usable on its own):
 ## 3. State of the tree
 
 The live figures — the default branch's tip, the open pull requests and their CI verdict —
-are regenerated on every push to the default branch (`develop`) by `.github/workflows/handoff.yml`, and
+are regenerated on every push to the default branch (`main`) by `.github/workflows/handoff.yml`, and
 sit in the generated block in §4. Read that block for current state; the prose
 around it is the durable part.
 
@@ -92,9 +82,9 @@ and NOTICE enforcement; `pion/transport/v5` with the browser tests restored;
 the browser decode test now *runs* rather than skipping, and the README says
 so; the signalling proposal (`docs/decentralised-signalling.md`) and its
 engineering breakdown (`docs/implementation-phases.md`); this brief with its
-generated status block; the `develop`/`main` branch model with the
-release-PR and sync workflows; and CI extended to `develop` and to the commits
-those workflows push; Phase 0a plus the Phase 0 signing primitive
+generated status block; the trunk-based branch model on `main`, which replaced
+the earlier `develop`/`main` split with its release-PR and sync workflows; and
+CI extended to the commits workflows push; Phase 0a plus the Phase 0 signing primitive
 (barahn/remotekit#17), described in §5; Aikido Security integration
 via the GitHub App with repository configuration in `.aikido`; and
 automated stale branch cleanup via `.github/workflows/cleanup-branches.yml`,
@@ -112,16 +102,13 @@ windows/amd64 and darwin/amd64 → golangci-lint v2.13.2 → install Xvfb,
 spec bounds by construction) → govulncheck v1.7.0.
 
 **Which commits CI covers.** `ci.yml` runs on pushes and pull requests for
-both `main` and `develop`, and on `v*.*.*` tags. Commits that a workflow pushes
-need extra care: a push made with `GITHUB_TOKEN` starts no workflow, and a
-pull request run it causes waits in *action_required* for a human to approve.
-The handoff refresh and the `sync-develop` merge both push that way, so each
-dispatches `ci.yml` on the branch afterwards (`workflow_dispatch` is exempt from
-that rule), and the result attaches to the new tip. The release pull request
-is opened the same way, so its `pull_request` runs -- `Release source`, DCO,
-CodeQL, secret scanning and dependency review -- wait in *action_required*
-until a maintainer approves them. If you add a workflow that pushes, give it the same
-dispatch step, or its commits will go unchecked. Whatever the cause, an absent
+`main`, and on `v*.*.*` tags. Commits that a workflow pushes need extra care:
+a push made with `GITHUB_TOKEN` starts no workflow, and a pull request run it
+causes waits in *action_required* for a human to approve. The handoff refresh
+pushes that way, so it dispatches `ci.yml` on the branch afterwards
+(`workflow_dispatch` is exempt from that rule), and the result attaches to the
+new tip. If you add a workflow that pushes, give it the same dispatch step, or
+its commits will go unchecked. Whatever the cause, an absent
 check is never a pass.
 
 Two environment variables exist specifically to turn *skips* into *failures*:
@@ -133,7 +120,7 @@ never skip, disable or quarantine a test to get green.
 
 Everything between the two markers below is written by
 `scripts/gen-handoff-status.sh`, run by `.github/workflows/handoff.yml` on every
-push to the default branch (`develop`). Edit the script, not the block.
+push to the default branch (`main`). Edit the script, not the block.
 
 Reading it: an open pull request with a red check is work before anything else.
 Two failures recur in this repository and are worth ruling out first — a commit
