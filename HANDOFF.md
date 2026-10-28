@@ -133,11 +133,14 @@ a branch someone else owns.
 
 <!-- BEGIN GENERATED: handoff status -->
 
-_Generated from `barahn/remotekit` by `scripts/gen-handoff-status.sh`._
+_This block is **not** kept current in the tree._ `main` requires a pull
+request, so no workflow can commit to it, and a committed copy of this would be
+wrong the moment anything landed without touching it — which is every merge.
 
-**`develop` is at `bc4bf20`** — chore(deps): mark pion/turn and pion/logging as direct (#161)
-
-No open pull requests.
+The live answer is the summary of the latest **Handoff** workflow run:
+<https://github.com/barahn/remotekit/actions/workflows/handoff.yml>. To fill
+this block in locally instead, run `scripts/gen-handoff-status.sh --in-place`;
+without the flag the script prints the block to stdout.
 
 <!-- END GENERATED: handoff status -->
 
