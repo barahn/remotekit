@@ -2,6 +2,7 @@
 
 **Status:** Proposal for Phase 3 of [implementation-phases.md](implementation-phases.md). Two parts of it conflict with how `webrtc` and `rendezvous` are built today; §7 names the conflict rather than deciding around it.  
 **Companion documents:** [decentralised-signalling.md](decentralised-signalling.md) §6 (Phase 3 fallback), [pluggable-transports.md](pluggable-transports.md)  
+**Consumer context:** this is the mechanism Chirp's `docs/status-page-proposal.md` is waiting on — see §6.  
 **Scope:** `webrtc`, `stream`, `rendezvous`. Everything marked *policy* is a consumer's and is listed in §8; none of it is decided here.
 
 ---
@@ -51,6 +52,22 @@ longer than a session needs it.**
    binding request; the measure is the median of three round trips, with jitter
    kept as a tie-breaker. Budget: 250 ms, and whatever has answered by then is
    the set.
+   **A measurement is only usable if the thing measured is the thing the list
+   names.** Alongside the probe, the peer asks the candidate to prove it holds
+   the key the list carries for that id: it sends 16 to 64 random bytes as a
+   nonce and requires a signature over a domain-separated string that binds the
+   nonce to the host it asked at. A candidate whose signature does not verify
+   against the list's key for that id is discarded, however fast it was. Without
+   this step a CDN, a DNS substitution or a transparent proxy in front of a
+   listed relay inherits that relay's measured reputation, and the probe cannot
+   tell the difference. Two consequences for `remotekit`: the proof is not a
+   STUN attribute — the candidate list the caller supplies must carry, per
+   candidate, a public key and a way to obtain the signature, which the caller
+   provides as a verifier rather than as a URL shape this repository knows about
+   — and verification runs concurrently with the probe so it stays inside the
+   250 ms budget. Chirp's node identity is exactly this: a relay in public mode
+   keeps an ed25519 key and answers `/.well-known/chirp-node?nonce=`, signing
+   `chirp-node/v1 ∥ host ∥ nonce` with the host lowercased and without its port.
 2. **Candidate exchange.** Each peer sends the other, over the existing
    signalling path (`stream.SignalConn`, carrying a signed
    `webrtc.SignalMessage`), its two or three best relay **ids** with the
@@ -160,7 +177,11 @@ what is bought is:
 can only drop, delay or watch. All three are observable from outside, which is
 what an external monitor already does — so a relay earns traffic by measured
 uptime, and a client may require a minimum observation period before using one
-as a fallback. Nothing a server says about itself counts.
+as a fallback. Nothing a server says about itself counts — which is why the
+identity proof in §2.1 is the only self-assertion this design accepts, and it
+asserts nothing but control of a key and a host. Chirp's proposal moves part way
+in the other direction, and §9 records the tension rather than resolving it
+here.
 
 ## 5. What this changes in this repository
 
@@ -183,6 +204,11 @@ as a fallback. Nothing a server says about itself counts.
 - `PeerConfig.ICEServers` is a flat list of URLs with one credential pair for
   all of them. Per-relay credentials and relay ids need either a richer config
   type or selection finishing before the `PeerSession` is built.
+- A candidate is now a URL, a public key and a way to get a signature over a
+  nonce, not a URL. Whatever type carries the candidate list has to hold all
+  three, and the obtaining of the signature has to be the caller's -- a
+  `/.well-known/` path is a consumer's convention and must not appear in this
+  repository.
 - The claim "we cannot see who talks to whom" becomes false for the relay
   operator, and the documentation must stop short of it.
 
@@ -198,6 +224,15 @@ open.
   Chirp first and `remotekit`'s job is to make the path swappable and decline to
   choose for either product — governs §8 below, and is why the candidate list is
   the caller's.
+- Chirp's `docs/status-page-proposal.md` lists *"How a code finds its node"* as
+  its first open question, and its phase 6 — the signed server list and
+  `-network public` in Chirp, the point at which a Chirp uses the public network
+  on its own — is explicitly blocked on it. This document is the mechanism that
+  question needs: a peer finds the node by measuring the listed candidates and
+  verifying their identity, with no directory lookup and nothing told where to
+  go. Relay path selection is not a free-standing design; it is the missing
+  piece that proposal names. What makes a node eligible to be in the list at all
+  remains that proposal's (§8).
 - [pluggable-transports.md](pluggable-transports.md) separates *what to send*
   from *how to send it*, and places ICE negotiation deliberately outside
   `DataTransport`. Relay selection stays outside it too: it produces the
@@ -272,6 +307,17 @@ decisions for its own documentation:
   where a peer names the other's address.
 - Whether per-relay credentials belong in `PeerConfig` or in a selection result
   that precedes it.
+- How far the node key may be trusted to carry claims beyond its own identity.
+  Chirp's proposal builds admission on that key (its phase 5) and has the node
+  seal a *version attestation* under it (its phase 4), and its own text concedes
+  the limit: a modified node can claim any version. This document's position is
+  unchanged — a relay earns traffic by behaviour measured from outside, and
+  nothing it says about itself counts — and the two do not reconcile by
+  softening that. The distinction worth keeping is between what a key proves and
+  who signs: a signature from the running relay proves only that the relay holds
+  its key, while a version claim signed by the release pipeline is evidence
+  about an artefact, made by a party with nothing to gain from lying about it.
+  A selection rule here will use neither until that is settled.
 
 ## 10. Next steps
 
