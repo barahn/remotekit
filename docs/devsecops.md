@@ -110,16 +110,16 @@ in `ci.yml` — the Firefox, geckodriver and libvpx downloads the tests need.
 Workflows cannot grant themselves these; they are repository settings, the
 half of DevSecOps a pull request cannot deliver:
 
-1. **Branch protection on `main`** — require pull requests, passing checks,
-   and block force pushes and deletion. `docs/branching.md` records the rules
-   and the approval policy behind them.
+1. **Branch protection on `main`** — applied: pull requests only, passing
+   checks, no force push and no deletion. `docs/branching.md` records the
+   rules and the approval policy behind them.
 
-   > **One workflow here pushes directly, and branch protection would refuse
-   > it.** `handoff.yml` commits the regenerated status block straight to the
-   > default branch. Under a pull-request-only rule it fails on every run.
-   > Resolve that before protecting the branch — Chirp faced the same choice
-   > and replaced its bot commit with a CI check that the generated block is
-   > current.
+   > **Nothing here pushes to a protected branch any more, and no ruleset
+   > grants a bypass.** `handoff.yml` was the one workflow that did; it now
+   > publishes the brief as a job summary instead of committing it, on a
+   > read-only token (see below). The `develop` ruleset that carried the only
+   > bypass was deleted with the branch, so `bypass_actors` is empty on every
+   > ruleset in this repository — the rules bind administrators too.
 
 2. **Code security** — secret scanning with push protection (gitleaks in CI
    catches a secret before merge; push protection catches it before it reaches
