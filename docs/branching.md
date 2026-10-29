@@ -89,30 +89,43 @@ fixed in the ruleset and in `tags-protected.json`.
 `main` requires signed commits today, and the only allowed merge method is a
 merge commit, which GitHub creates and signs.
 
-The agreed direction is **rebase with linear history, and
-`required_signatures` off**. Rebase keeps `git log` readable and bisectable and
-lands each commit with its verified DCO `Signed-off-by` trailer intact; squash
-is rejected because GitHub's squash commit drops the individual DCO
-attestations. The two cannot be combined with required signatures: GitHub
-cannot sign the commits of a rebase merge — it rewrites each one and has no key
-of the author's — so with rebase as the only merge method every commit would
-land unsigned, which is exactly what `required_signatures` refuses. A DCO
-trailer is an attestation, not a cryptographic signature, and the trailer is
-what the four repositories check.
+This is the agreed direction as of 2026-10-29, for all four repositories, and
+what this one already enforced. Squash is rejected because GitHub's squash
+commit drops the individual DCO attestations. Rebase is rejected because it
+cannot carry signatures: GitHub rewrites each commit of a rebase merge and has
+no key of the author's, so with rebase as the only merge method every commit
+would land unsigned, which is exactly what `required_signatures` refuses.
 
-That ruleset change is the maintainer's to apply; until he does, the table
-above is the live state.
+The direction recorded here until 2026-10-29 was the opposite — rebase with
+linear history, signatures off — and the gap in it is worth keeping. Rebase was
+argued against *squash*, on the DCO attestations. Against a merge commit it had
+no argument beyond the shape of `git log`: a merge preserves the commits
+underneath, with their signatures and their trailers intact, and the DCO check
+already skips merges (`git log --no-merges`). A DCO trailer is an attestation of
+origin, not a cryptographic signature; anyone can type the line. Measured on
+2026-10-29, the trunks that merged by rebase had 2 of 100 and 1 of 31 commits
+verified, against 100 of 100 here — bots included, because GitHub signs what it
+creates through the API.
+
+The price is merge bubbles: 28 of the last 100 commits here are merges.
+`git log --first-parent` reads the trunk without them.
 
 One consequence is worth knowing before it bites, because it already has.
-While `required_signatures` is on, **GitHub's own "Update branch" button breaks
-the pull request it is meant to help** — and so does
-`gh pr update-branch --rebase`. Both rewrite the branch's commits server-side,
-GitHub has no key to sign them with, and the rebased commits land `unsigned`;
-the ruleset then refuses the merge with every check green, which reads as an
-unexplained block. It happened to #163 on 2026-10-28: its commits were verified
-before the update and unsigned after. Until the rule comes off, bring a branch
-up to date locally instead, with `git rebase -f --gpg-sign <base>`, and
-force-push it.
+While `required_signatures` is on, **`gh pr update-branch --rebase` and
+"Update with rebase" break the pull request they are meant to help**. They
+rewrite the branch's commits server-side, GitHub has no key to sign them with,
+and the rebased commits land `unsigned`; the ruleset then refuses the merge with
+every check green, which reads as an unexplained block. It happened to #163 on
+2026-10-28: its commits were verified before the update and unsigned after.
+Bring such a branch up to date locally instead, with
+`git rebase -f --gpg-sign <base>`, and force-push it.
+
+The plain `gh pr update-branch`, and the "Update branch" button in its default
+mode, are safe: they merge the base into the branch, and GitHub signs the merge
+commit it creates. Verified on 2026-10-29 against a dependabot pull request in
+chirp-status — both existing commits stayed `verified` and the new merge commit
+was `verified` too. An earlier revision of this file said the button itself was
+unsafe; that was wrong, and only the rebase variants are.
 
 ## The approval policy, as decided
 
