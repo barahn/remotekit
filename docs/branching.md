@@ -60,8 +60,8 @@ a change the other way: `gh api -X PUT repos/barahn/remotekit/rulesets/<id>
 | Signed commits | required — see below |
 | Review threads resolved before merge | not required |
 
-Required checks: `Build, Test & SAST`, `DCO Sign-off`, `signal/nostr module`,
-`gitleaks` and `Analyze (Go)` (CodeQL). CodeQL and dependency review run only
+Required checks: `Design hold`, `Build, Test & SAST`, `DCO Sign-off`,
+`signal/nostr module`, `gitleaks` and `Analyze (Go)` (CodeQL). CodeQL and dependency review run only
 while the `CODE_SCANNING` variable is set — see [devsecops.md](devsecops.md).
 Where it is not set they are skipped, and a skipped required check counts as
 passing, so they enforce nothing there.
@@ -122,6 +122,16 @@ The maintainer's decision:
 
 Nothing about this weakens the standing rule that nothing reaches a release
 before it is designed, demonstrated, tested and approved.
+
+That rule now has a mechanism. The `hold: design` label fails the required
+`Design hold` check, so a pull request carrying it cannot be merged however
+green the rest is. It is for a change waiting on a decision rather than on
+review — the relay network's operating architecture is the standing example.
+The maintainer puts the label on and takes it off; the check re-runs by itself
+when the label changes, so lifting a hold needs no push. A draft would not do:
+it is one click from being undone, and it tells an agent that has not read the
+discussion nothing at all. The design and documentation pull requests a hold
+waits on are never held themselves — they are the condition for lifting it.
 
 ### Before trunk-based development
 
