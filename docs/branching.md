@@ -25,9 +25,27 @@ There is no `hotfix/*` branch. A released version gets no backports
 
 ## What the protection guarantees
 
-`main` accepts neither a direct push, a force-push nor deletion. The rules
-live in a ruleset on GitHub, applied by the maintainer; this table is what it
-currently enforces.
+`main` accepts neither a direct push, a force-push nor deletion. The rules live
+in a ruleset on GitHub, applied by the maintainer, and are versioned here as
+`.github/rulesets/main-protected.json` and `tags-protected.json`. Those files
+are the reference: **anything configured on GitHub and not in them is drift**,
+and the table below is a readable summary of the same thing.
+
+They were generated from the live rulesets rather than written as a wish, so
+they record what is enforced today — including the two rules the agreed
+direction would remove, `required_signatures` and the merge-commit-only method.
+A file that recorded the intention instead would read as if the decision had
+been applied. Re-generate rather than edit by hand:
+
+```
+gh api repos/barahn/remotekit/rulesets/23966128 > /tmp/live.json   # main
+gh api repos/barahn/remotekit/rulesets/25610386 > /tmp/live.json   # tags
+```
+
+keeping `name`, `target`, `enforcement`, `conditions`, `bypass_actors` and
+`rules`, and dropping the server's own `id`, `source` and timestamps. To apply
+a change the other way: `gh api -X PUT repos/barahn/remotekit/rulesets/<id>
+--input <file>`.
 
 | Rule | `main` |
 | --- | --- |
@@ -40,12 +58,13 @@ currently enforces.
 | Branch up to date with base before merge | yes |
 | Merge method | merge commit — see below |
 | Signed commits | required — see below |
+| Review threads resolved before merge | not required |
 
 Required checks: `Design hold`, `Build, Test & SAST`, `DCO Sign-off`,
-`signal/nostr module`, `gitleaks` and `Analyze (Go)` (CodeQL). CodeQL and dependency review run only
-while the `CODE_SCANNING` variable is set — see [devsecops.md](devsecops.md).
-Where it is not set they are skipped, and a skipped required check counts as
-passing, so they enforce nothing there.
+`signal/nostr module`, `gitleaks` and `Analyze (Go)` (CodeQL). CodeQL and
+dependency review run only while the `CODE_SCANNING` variable is set — see
+[devsecops.md](devsecops.md). Where it is not set they are skipped, and a
+skipped required check counts as passing, so they enforce nothing there.
 
 `bypass_actors` is empty on every ruleset, on purpose: the rules bind
 administrators too. A workflow that needs to write to `main` — only
@@ -75,6 +94,17 @@ what the four repositories check.
 
 That ruleset change is the maintainer's to apply; until he does, the table
 above is the live state.
+
+One consequence is worth knowing before it bites, because it already has.
+While `required_signatures` is on, **GitHub's own "Update branch" button breaks
+the pull request it is meant to help** — and so does
+`gh pr update-branch --rebase`. Both rewrite the branch's commits server-side,
+GitHub has no key to sign them with, and the rebased commits land `unsigned`;
+the ruleset then refuses the merge with every check green, which reads as an
+unexplained block. It happened to #163 on 2026-10-28: its commits were verified
+before the update and unsigned after. Until the rule comes off, bring a branch
+up to date locally instead, with `git rebase -f --gpg-sign <base>`, and
+force-push it.
 
 ## The approval policy, as decided
 
