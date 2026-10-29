@@ -61,8 +61,8 @@ a change the other way: `gh api -X PUT repos/barahn/remotekit/rulesets/<id>
 | Review threads resolved before merge | not required |
 
 Required checks: `Design hold`, `Build, Test & SAST`, `DCO Sign-off`,
-`signal/nostr module`, `gitleaks` and `Analyze (Go)` (CodeQL). CodeQL and dependency review run only
-while the `CODE_SCANNING` variable is set — see [devsecops.md](devsecops.md).
+`signal/nostr module`, `gitleaks` and `Analyze (Go)` (CodeQL). CodeQL and
+dependency review run only while the `CODE_SCANNING` variable is set — see [devsecops.md](devsecops.md).
 Where it is not set they are skipped, and a skipped required check counts as
 passing, so they enforce nothing there.
 
