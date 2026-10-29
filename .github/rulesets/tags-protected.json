@@ -6,7 +6,8 @@
     "ref_name": {
       "exclude": [],
       "include": [
-        "refs/tags/v*.*.*"
+        "refs/tags/v*.*.*",
+        "refs/tags/signal/nostr/v*.*.*"
       ]
     }
   },
@@ -14,6 +15,9 @@
   "rules": [
     {
       "type": "deletion"
+    },
+    {
+      "type": "update"
     },
     {
       "type": "non_fast_forward"
