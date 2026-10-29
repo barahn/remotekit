@@ -17,10 +17,10 @@
       "type": "deletion"
     },
     {
-      "type": "update"
+      "type": "non_fast_forward"
     },
     {
-      "type": "non_fast_forward"
+      "type": "update"
     }
   ]
 }
