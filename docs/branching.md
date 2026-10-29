@@ -71,10 +71,18 @@ administrators too. A workflow that needs to write to `main` — only
 `handoff.yml` does — commits through the GitHub API, which signs what it
 creates, rather than asking for a bypass.
 
-Release tags are protected separately: `refs/tags/v*.*.*` cannot be deleted or
-moved once it exists, by anyone. A published version is in the Go module proxy
-and checksum database for good, so a tag that could move would break every
-build that fetched the old one.
+Release tags are protected separately: `refs/tags/v*.*.*` and
+`refs/tags/signal/nostr/v*.*.*` cannot be created over, moved or deleted once
+they exist, by anyone. A published version is in the Go module proxy and
+checksum database for good, so a tag that could move would break every build
+that fetched the old one.
+
+Both halves of that sentence were weaker than it read until 2026-10-29. The
+ruleset carried `deletion` and `non_fast_forward` but not `update`, and a tag
+moved forward along the same line is a fast-forward, so a release tag could in
+fact be moved; and the pattern matched only the root module, leaving the
+already-published `signal/nostr/v0.1.0` with no protection at all. Both are
+fixed in the ruleset and in `tags-protected.json`.
 
 ### The merge method, and signed commits
 
