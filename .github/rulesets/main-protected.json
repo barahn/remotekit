@@ -47,6 +47,9 @@
         "do_not_enforce_on_create": false,
         "required_status_checks": [
           {
+            "context": "Design hold"
+          },
+          {
             "context": "Build, Test & SAST"
           },
           {
