@@ -1,0 +1,63 @@
+name: Design Hold
+
+# A deliberate, visible block on merging.
+#
+# This repository is trunk-based and requires no approving review, so there is
+# no decision point between a merge and the next release tag: whatever lands on
+# `main` is a candidate for `vX.Y.Z` by default. When a decision has to be made
+# before a line of it reaches a release -- the public relay network's operating
+# architecture, for instance, which must be designed, demonstrated and approved
+# first -- the gate has to bind at the merge rather than rest on someone
+# remembering it. A draft is one click from being undone, and an agent that has
+# not read the discussion does not know the hold exists.
+#
+# This is the mechanism behind the standing rule already written down in
+# docs/branching.md, under the approval policy: nothing reaches a release
+# before it is designed, demonstrated, tested and approved. Until now that
+# sentence was enforced by memory alone.
+#
+# The hold is opt-in per pull request: it applies only while the
+# `hold: design` label is present, applied and removed by the maintainer. The
+# design and documentation pull requests a hold is waiting on are never its
+# target -- they are the condition for lifting it.
+#
+# `labeled` and `unlabeled` are in the trigger list on purpose. The check has to
+# re-run on the same head commit when the label goes on or comes off, otherwise
+# lifting a hold would need a dummy push to turn the context green again.
+#
+# It reports on every pull request, labelled or not. `main`'s ruleset sets
+# `strict_required_status_checks_policy`, so a required context that never
+# reports would leave every pull request unmergeable. For the same reason the
+# job carries no `if:` condition: a skipped required check counts as passing,
+# which is the opposite of a hold -- the same trap docs/branching.md records
+# for CodeQL where `CODE_SCANNING` is unset.
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened, labeled, unlabeled ]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hold:
+    name: Design hold
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check for the hold label
+        env:
+          HELD: "${{ contains(github.event.pull_request.labels.*.name, 'hold: design') }}"
+        run: |
+          if [ "$HELD" = "true" ]; then
+            echo "::error::This pull request carries the 'hold: design' label." \
+              "It is held until the design it depends on is approved; see" \
+              "docs/branching.md. Remove the label to lift the hold -- the" \
+              "check re-runs on its own."
+            exit 1
+          fi
+          echo "No hold label: nothing holds this pull request."
