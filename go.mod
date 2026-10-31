@@ -1,6 +1,6 @@
 module github.com/barahn/remotekit
 
-go 1.26.5
+go 1.26.10
 
 require (
 	github.com/ebitengine/purego v0.11.2
