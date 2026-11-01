@@ -181,3 +181,104 @@ func TestWatcherFilesSuppressionWindow(t *testing.T) {
 		t.Fatalf("expected 1 callback for localFiles, got %v", fileChanges)
 	}
 }
+
+// fileCopyClipboard is a clipboard where a copy of files also offers their
+// text form, all at once, as file managers and X11's text/uri-list do.
+type fileCopyClipboard struct {
+	mu    sync.Mutex
+	text  string
+	files FileList
+}
+
+func (c *fileCopyClipboard) GetText(context.Context) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.text, nil
+}
+
+func (c *fileCopyClipboard) SetText(_ context.Context, text string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.text, c.files = text, FileList{}
+	return nil
+}
+
+func (c *fileCopyClipboard) GetFiles(context.Context) (FileList, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.files, nil
+}
+
+func (c *fileCopyClipboard) SetFiles(_ context.Context, list FileList) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.files, c.text = list, EncodeURIList(list.Files)
+	return nil
+}
+
+// A copy of files is reported once, as files: its text form is not also
+// sent, where it would land after the files and replace them.
+func TestAFileCopyIsNotAlsoSentAsText(t *testing.T) {
+	cb := &fileCopyClipboard{}
+	watcher := NewWatcher(cb, 10*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var mu sync.Mutex
+	var texts []string
+	var files []FileList
+	watcher.OnFiles(func(l FileList) {
+		mu.Lock()
+		files = append(files, l)
+		mu.Unlock()
+	})
+	go watcher.Start(ctx, func(text string) {
+		mu.Lock()
+		texts = append(texts, text)
+		mu.Unlock()
+	})
+	time.Sleep(40 * time.Millisecond)
+
+	_ = cb.SetFiles(ctx, FileList{Files: []string{"/home/kali/report.pdf"}})
+	time.Sleep(60 * time.Millisecond)
+	_ = cb.SetText(ctx, "plain text after")
+	time.Sleep(60 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(files) != 1 {
+		t.Fatalf("files reported %d times, want once: %v", len(files), files)
+	}
+	if len(texts) != 1 || texts[0] != "plain text after" {
+		t.Fatalf("texts reported %q, want only the later text copy", texts)
+	}
+}
+
+// Files put on the clipboard from the other side are not sent back as text
+// either.
+func TestReceivedFilesAreNotEchoedAsText(t *testing.T) {
+	cb := &fileCopyClipboard{}
+	watcher := NewWatcher(cb, 10*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var mu sync.Mutex
+	var texts []string
+	go watcher.Start(ctx, func(text string) {
+		mu.Lock()
+		texts = append(texts, text)
+		mu.Unlock()
+	})
+	time.Sleep(40 * time.Millisecond)
+
+	theirs := FileList{Files: []string{"/tmp/staging/report.pdf"}}
+	watcher.UpdateLastFiles(theirs)
+	_ = cb.SetFiles(ctx, theirs)
+	time.Sleep(60 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(texts) != 0 {
+		t.Fatalf("echoed %q as text", texts)
+	}
+}
