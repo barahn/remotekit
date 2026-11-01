@@ -120,6 +120,10 @@ func (w *Watcher) Start(ctx context.Context, onChange func(text string)) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			// A copy of files usually offers their text form too; it is
+			// not reported, so the text cannot replace the files on the
+			// other side.
+			filesCopied := false
 			// Poll files if manager supports it
 			if hasFiles {
 				currentFiles, err := fileMgr.GetFiles(ctx)
@@ -138,6 +142,7 @@ func (w *Watcher) Start(ctx context.Context, onChange func(text string)) {
 						if !isSuppressed && !isSame {
 							w.lastFiles = currentFiles
 						}
+						filesCopied = isSuppressed || !isSame
 						onFilesFn := w.onFiles
 						w.mu.Unlock()
 
@@ -175,6 +180,12 @@ func (w *Watcher) Start(ctx context.Context, onChange func(text string)) {
 				continue
 			}
 			if current == "" {
+				continue
+			}
+			if filesCopied {
+				w.mu.Lock()
+				w.lastText = current
+				w.mu.Unlock()
 				continue
 			}
 
