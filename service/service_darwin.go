@@ -58,7 +58,11 @@ func (m *darwinServiceManager) Install(cfg Config) error {
 		return fmt.Errorf("failed to resolve absolute executable path: %w", err)
 	}
 
+	validPath := regexp.MustCompile(`^[a-zA-Z0-9_\-\./\\]+$`)
 	plistFile := m.plistPath()
+	if !validPath.MatchString(plistFile) {
+		return fmt.Errorf("invalid input")
+	}
 	if _, err := os.Stat(plistFile); err == nil {
 		return ErrServiceAlreadyInstalled
 	}
@@ -94,6 +98,9 @@ func (m *darwinServiceManager) Install(cfg Config) error {
 	}
 
 	if cfg.AutoStart {
+		if !validPath.MatchString(plistFile) {
+			return fmt.Errorf("invalid input")
+		}
 		_ = exec.Command("launchctl", "load", "-w", plistFile).Run()
 	}
 
@@ -101,7 +108,11 @@ func (m *darwinServiceManager) Install(cfg Config) error {
 }
 
 func (m *darwinServiceManager) Uninstall() error {
+	validPath := regexp.MustCompile(`^[a-zA-Z0-9_\-\./\\]+$`)
 	plistFile := m.plistPath()
+	if !validPath.MatchString(plistFile) {
+		return fmt.Errorf("invalid input")
+	}
 	if _, err := os.Stat(plistFile); os.IsNotExist(err) {
 		return ErrServiceNotInstalled
 	}
@@ -114,6 +125,10 @@ func (m *darwinServiceManager) Uninstall() error {
 }
 
 func (m *darwinServiceManager) Start() error {
+	validName := regexp.MustCompile(`^[a-zA-Z0-9_\-\.]+$`)
+	if !validName.MatchString(m.name) {
+		return fmt.Errorf("invalid input")
+	}
 	plistFile := m.plistPath()
 	if _, err := os.Stat(plistFile); os.IsNotExist(err) {
 		return ErrServiceNotInstalled
@@ -129,6 +144,10 @@ func (m *darwinServiceManager) Start() error {
 }
 
 func (m *darwinServiceManager) Stop() error {
+	validName := regexp.MustCompile(`^[a-zA-Z0-9_\-\.]+$`)
+	if !validName.MatchString(m.name) {
+		return fmt.Errorf("invalid input")
+	}
 	plistFile := m.plistPath()
 	if _, err := os.Stat(plistFile); os.IsNotExist(err) {
 		return ErrServiceNotInstalled
@@ -144,6 +163,10 @@ func (m *darwinServiceManager) Stop() error {
 }
 
 func (m *darwinServiceManager) Status() (Status, error) {
+	validName := regexp.MustCompile(`^[a-zA-Z0-9_\-\.]+$`)
+	if !validName.MatchString(m.name) {
+		return Status{}, fmt.Errorf("invalid input")
+	}
 	plistFile := m.plistPath()
 	if _, err := os.Stat(plistFile); os.IsNotExist(err) {
 		return Status{Installed: false, State: StateStopped}, nil
