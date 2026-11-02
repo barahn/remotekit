@@ -1,6 +1,6 @@
 module github.com/barahn/remotekit/signal/nostr
 
-go 1.26.5
+go 1.26.10
 
 require (
 	github.com/barahn/remotekit v0.6.0
