@@ -6,12 +6,14 @@ package stream
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"image"
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/barahn/remotekit/bark"
@@ -49,6 +51,8 @@ type Viewer struct {
 	onClipboard func(text string)
 	onDisplays  func(bark.DisplaysPayload)
 	onGranted   func(granted []string)
+	// clockNoticed is set once NoticeClockOff has gone out.
+	clockNoticed atomic.Bool
 
 	// clip replaces the system clipboard when set; tests use it so they do
 	// not touch the clipboard of whoever runs them.
@@ -117,19 +121,31 @@ type ViewerConfig struct {
 	// OmitFilePathInReply, when set, returns only the bare filename in file_saved
 	// replies to prevent exposing the local filesystem directory structure.
 	OmitFilePathInReply bool
+
+	// Clock is the time signed signals are issued at and checked against,
+	// as in Config; nil means time.Now.
+	Clock func() time.Time
 }
 
 // Notice is something the agent told the viewer instead of streaming: that
 // the person at the machine has not consented, that the machine cannot
 // capture its screen, that input must go over a data channel, or that the
-// agent ended this viewer's connection.
+// agent ended this viewer's connection. NoticeClockOff is the viewer's own.
 type Notice struct {
 	// Type is the agent's message type: "consent_required",
-	// "capture_unavailable", "data_channel_required" or "disconnected".
+	// "capture_unavailable", "data_channel_required" or "disconnected";
+	// or NoticeClockOff.
 	Type string
-	// Detail is the permission, the reason or the message type concerned.
+	// Detail is the permission, the reason or the message type concerned;
+	// for NoticeClockOff, how far the agent's clock is from the viewer's,
+	// as time.Duration prints it, positive when the agent's is ahead.
 	Detail string
 }
+
+// NoticeClockOff says the agent's signed signals are being dropped because
+// its clock and the viewer's disagree by more than they allow. It comes once
+// per Viewer.
+const NoticeClockOff = "clock_off"
 
 // ErrNotConnected is what SendInput, SendClipboard and SendFile return while
 // the data channel they need is not open.
@@ -323,8 +339,12 @@ func (v *Viewer) accept(data []byte) (*webrtc.SignalMessage, bool) {
 	if v.cfg.AgentKey == nil {
 		return m, true
 	}
-	now := time.Now()
-	if m.VerifyFrom(v.cfg.AgentKey, now) != nil || m.TargetID != v.cfg.ID || m.SessionID != v.cfg.AgentID {
+	now := v.now()
+	if err := m.VerifyFrom(v.cfg.AgentKey, now); err != nil {
+		v.clockOff(m, err, now)
+		return nil, false
+	}
+	if m.TargetID != v.cfg.ID || m.SessionID != v.cfg.AgentID {
 		return nil, false
 	}
 	return m, v.nonces.CheckAndRecord(m, now)
@@ -519,7 +539,7 @@ func (v *Viewer) sendSignal(m webrtc.SignalMessage, offerID string) error {
 	m.SessionID = v.cfg.AgentID
 	if v.cfg.SigningKey != nil {
 		m.TargetID = v.cfg.AgentID
-		if err := m.Sign(v.cfg.SigningKey, time.Now(), signalTTL); err != nil {
+		if err := m.Sign(v.cfg.SigningKey, v.now(), signalTTL); err != nil {
 			return err
 		}
 	}
@@ -560,4 +580,29 @@ func (v *Viewer) closePeer() {
 	if peer != nil {
 		_ = peer.Close()
 	}
+}
+
+// now is the time signed signals are issued at and checked against.
+func (v *Viewer) now() time.Time {
+	if v.cfg.Clock != nil {
+		return v.cfg.Clock()
+	}
+	return time.Now()
+}
+
+// clockOff tells of a signal the agent signed that verify refused only for
+// its time, once: the two clocks disagree by more than signals allow. One
+// signed by any other key says nothing, so the transport cannot raise it.
+func (v *Viewer) clockOff(m *webrtc.SignalMessage, err error, now time.Time) {
+	if !errors.Is(err, webrtc.ErrSignalNotYetValid) && !errors.Is(err, webrtc.ErrSignalExpired) {
+		return
+	}
+	if key, kerr := base64.StdEncoding.DecodeString(m.PubKey); kerr != nil || !v.cfg.AgentKey.Equal(ed25519.PublicKey(key)) {
+		return
+	}
+	if v.clockNoticed.Swap(true) {
+		return
+	}
+	off := time.Unix(m.IssuedAt, 0).Sub(now).Round(time.Second)
+	v.notify(Notice{Type: NoticeClockOff, Detail: off.String()})
 }
