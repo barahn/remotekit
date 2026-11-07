@@ -144,16 +144,14 @@ without the flag the script prints the block to stdout.
 
 <!-- END GENERATED: handoff status -->
 
-## 5. The roadmap, and the security findings inside it
+## 5. The roadmap: Zero-Trust Signalling Architecture
 
-The argument in `docs/decentralised-signalling.md` (detailed in the companion
-implementation roadmap `docs/implementation-phases.md`): decentralisation and security are separate axes, and
-today the control plane is a man-in-the-middle with unlimited power — it mints
-agent credentials (so it can impersonate any agent), the JPEG fallback
-base64s full frames over the server's WebSocket whenever a viewer has not yet
-reported `video_ok`, and input, clipboard and file content all ride the
-signalling WebSocket because **there is no DataChannel anywhere in the
-module**. Swapping the server for relays fixes none of that.
+The architecture defined in `docs/decentralised-signalling.md` (detailed in the companion
+implementation roadmap `docs/implementation-phases.md`) establishes a zero-trust model where
+the control plane operates as an untrusted carrier: cryptographic device identities (Ed25519)
+authenticate signaling messages directly between endpoints, while screen, input, clipboard,
+and file transfer are delivered peer-to-peer over encrypted WebRTC `DataChannel`s rather than
+transiting signaling intermediaries.
 
 Ordered work, as proposed:
 
