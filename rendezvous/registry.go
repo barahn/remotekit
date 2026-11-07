@@ -14,10 +14,8 @@
 // Three rules shape it, each learnt the hard way in a consumer:
 //
 //   - Every entry point that takes a code or a token from the network is
-//     metered. An unmetered lookup is an oracle, and with one the 900,000-code
-//     keyspace can be swept however tight the limit elsewhere is. Redeem and
-//     MintFromLink share one per-origin budget, so alternating between them
-//     buys nothing.
+//     strictly metered. Redeem and MintFromLink share one per-origin budget,
+//     preventing key enumeration attempts.
 //   - Codes are single-use. A code that has done its job opens nothing, so one
 //     that leaks afterwards is harmless. A link is the durable capability; each
 //     use of it mints a fresh single-use code.

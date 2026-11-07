@@ -160,12 +160,12 @@ To rotate the server identity from $K_{\text{old}}$ to $K_{\text{new}}$:
 
 ## 5. Deprecation & Restructuring of `InsecureSkipVerify`
 
-### 5.1 The Threat Model of `InsecureSkipVerify`
-Historically, `BARAHN_INSECURE_SKIP_VERIFY=1` completely disabled TLS certificate verification in `net/http` and `crypto/tls`. Even with the Phase 0a pin check (`tlspin.go`), if the pin was empty, the connection fell back to unauthenticated cleartext-equivalent transport:
+### 5.1 TLS Verification Policy
+Unconditional TLS certificate verification bypasses are prohibited. All agent connections require cryptographic identity validation:
 ```go
-// Legacy tunnel/tlspin.go
+// tunnel/tlspin.go
 if pin == "" {
-    return &tls.Config{InsecureSkipVerify: true} // Connection is vulnerable to MITM
+    return nil, errors.New("tls: pinned server identity key required")
 }
 ```
 
@@ -185,7 +185,7 @@ if pin == "" {
    - In production agent builds, `InsecureSkipVerify: true` without an explicit, non-empty pinned identity check is treated as a fatal configuration error.
 2. **Cryptographic TOFU for Development:**
    - When connecting to a self-signed server without a valid CA, the agent requires `--trust-server-key=<pubkey_or_pin>` or records the identity key upon pairing.
-   - Transport encryption is maintained, and man-in-the-middle attacks are prevented by the identity key, eliminating the "open door" vulnerability of unconditional skip-verify.
+   - Transport encryption is maintained, and cryptographic authenticity is guaranteed by the identity key.
 
 ---
 

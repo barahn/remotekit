@@ -179,8 +179,7 @@ func TestSuccessDoesNotResetTheBudget(t *testing.T) {
 	}
 }
 
-// A malformed code is a guess too; leaving it uncounted would be an
-// unmetered probe.
+// A malformed code counts toward the budget to enforce rate limiting on invalid input.
 func TestMalformedInputCounts(t *testing.T) {
 	r, _ := newRegistry(t, 2, time.Minute)
 	for i := 0; i < 2; i++ {

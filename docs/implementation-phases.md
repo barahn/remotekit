@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-The objective of this roadmap is to transition `remotekit` from an architecture where the control plane acts as a trusted man-in-the-middle (capable of intercepting credentials, screen frames, input, and arbitrary localhost ports) to a **zero-trust signalling model**. Under this model:
+The objective of this roadmap is to establish a **zero-trust signalling model** for `remotekit` with end-to-end cryptographic boundaries. Under this model:
 
 1. Endpoints authenticate cryptographically directly to each other (Ed25519 signatures over signalling messages).
 2. Content (screen, input, clipboard, file transfer) is transferred peer-to-peer over WebRTC `DataChannel`s rather than transiting the central signalling server.
