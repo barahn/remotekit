@@ -16,6 +16,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -53,6 +54,9 @@ type Runner struct {
 	clip clipboard.Manager
 	// newCapturer replaces screen.NewCapturer when set, for the same reason.
 	newCapturer func(screen.CaptureConfig) (screen.Capturer, error)
+	// addCandidate replaces PeerSession.AddICECandidate when set, so a test
+	// can see which of a viewer's candidates reach its peer.
+	addCandidate func(*webrtc.PeerSession, string) error
 	// handlers holds message types layered on top of the core session by a
 	// consumer; see Handle.
 	handlers map[string]MessageHandler
@@ -551,6 +555,8 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 	// peerOffers is the offer_id each viewer's current peer answered, so a
 	// disconnected notice names the peer it ended.
 	peerOffers := make(map[string]string)
+	// held keeps candidates that arrived before their offer.
+	held := heldCandidates{}
 	// events delivers ViewerEvents in the order the state changed: they are
 	// queued under stateMu and delivered outside it. See viewers.go.
 	events := newEventQueue(r.emitViewer)
@@ -570,6 +576,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 		delete(peerOffers, id)
 		delete(present, id)
 		delete(streamingSent, id)
+		delete(held, id)
 		return true
 	}
 	// dropAll forgets every viewer, under stateMu, closing their peers.
@@ -675,6 +682,16 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 			offerID, _ := signal["offer_id"].(string)
 			relay.viewerJoined()
 
+			stateMu.RLock()
+			_, negotiated := peers[viewerID]
+			stale := negotiated && olderOffer(offerID, peerOffers[viewerID])
+			stateMu.RUnlock()
+			if stale {
+				// Overtaken by the viewer's newer offer, which its peer
+				// already answered: the viewer has abandoned this one.
+				continue
+			}
+
 			// WebRTC negotiation (if SDP offer is provided)
 			if sdp != "" {
 				stateMu.Lock()
@@ -761,6 +778,9 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 					// a negotiation that fails leaves no peer behind, and
 					// ends the visit of a viewer whose re-offer failed.
 					if answered {
+						for _, c := range held.release(viewerID, offerID) {
+							_ = r.applyCandidate(peer, c)
+						}
 						if !present[viewerID] {
 							present[viewerID] = true
 							events.push(ViewerEvent{ViewerID: viewerID, Kind: ViewerJoined, At: time.Now(), Key: msgKey})
@@ -990,16 +1010,22 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 			cand, _ := signal["candidate"].(string)
 			viewerID, _ := signal["viewer_id"].(string)
 			offerID, _ := signal["offer_id"].(string)
-			stateMu.RLock()
+			stateMu.Lock()
 			peer := peers[viewerID]
 			answered := peerOffers[viewerID]
-			stateMu.RUnlock()
-			// A candidate for an offer other than the one this viewer's
-			// peer answered belongs to a peer that offer replaced: pion
-			// would refuse it, its ICE credentials being the old ones. One
-			// without an offer_id is from a viewer that predates them.
-			if cand != "" && peer != nil && (offerID == "" || offerID == answered) {
-				_ = peer.AddICECandidate(cand)
+			// A candidate for the offer this viewer's peer answered, or
+			// without an offer_id, from a viewer that predates them, goes
+			// to the peer. One for another offer is held: the offer may not
+			// have arrived yet. If that offer was one the current peer
+			// replaced, it is never answered and its candidates go with the
+			// next answer.
+			current := peer != nil && (offerID == "" || offerID == answered)
+			if cand != "" && !current {
+				held.hold(viewerID, offerID, cand)
+			}
+			stateMu.Unlock()
+			if cand != "" && current {
+				_ = r.applyCandidate(peer, cand)
 			}
 
 		case "input", "clipboard", "file_start", "file_chunk", "file_complete":
@@ -1138,4 +1164,21 @@ func (r *Runner) handleInputPayload(payload map[string]interface{}) {
 			})
 		}
 	}
+}
+
+// applyCandidate adds a viewer's candidate to its peer.
+func (r *Runner) applyCandidate(peer *webrtc.PeerSession, cand string) error {
+	if r.addCandidate != nil {
+		return r.addCandidate(peer, cand)
+	}
+	return peer.AddICECandidate(cand)
+}
+
+// olderOffer reports whether offer a came before offer b. A viewer numbers
+// its offers 1, 2, 3...; IDs that are not numbers, or missing, say nothing
+// about order.
+func olderOffer(a, b string) bool {
+	x, errA := strconv.Atoi(a)
+	y, errB := strconv.Atoi(b)
+	return errA == nil && errB == nil && x < y
 }
