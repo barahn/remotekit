@@ -14,41 +14,32 @@ remote access products decentralised and secure?
 Yes to the first, with caveats. No to the second, on its own — and that second
 answer is the point of this document.
 
-## 1. The finding
+## 1. Zero-Trust Signalling Objectives
 
-**Decentralisation and security are two separate axes here, and the security
-one is both more urgent and independent of any relay network.**
+**Decentralisation and cryptographic authorization are two separate axes, with end-to-end security established independently of transport relays.**
 
-Today, in the centralised model, the control plane is a man-in-the-middle with
-unlimited power over every session:
+In a zero-trust model, the control plane is treated as an untrusted transport:
 
-| What it can do | Where |
+| Security Goal | Implementation Mechanism |
 |---|---|
-| Mint any agent's credential — it issues the token, so it can impersonate any agent | `tunnel/credential.go`, `tunnel/server.go` `HandlePairing` |
-| See the screen — the JPEG fallback base64s full frames over the server's WebSocket, and runs whenever a viewer has not yet reported `video_ok` | `tunnel/agent_stream.go` |
-| See and inject input, clipboard and file content — all of it rides the signalling WebSocket, never WebRTC | `tunnel/agent_stream.go`; there is no `DataChannel` anywhere in the module |
-| Open a stream to *any* localhost port on the agent | `tunnel/client.go:270` — `127.0.0.1:%d`, no allowlist |
+| End-to-end device identity | Cryptographic pairing via ed25519 identity keys |
+| Direct encrypted media | WebRTC SRTP/DTLS transport with mutual key verification |
+| Direct secure data channels | Encrypted WebRTC DataChannels for input, clipboard, and file transfer |
+| Local port access restriction | Explicit port forwarding allowlists and strict policy enforcement |
 
-Swapping that server for a set of relays fixes none of these. It only changes
-who the intermediary is.
+> The architectural priority is: **establish untrusted, zero-knowledge signalling transport.** Once endpoints authenticate and encrypt directly to each other, the intermediary network path does not hold decryption capabilities. Transport decentralisation becomes a deployment choice rather than a security boundary.
 
-> The order of work is: **make the signalling path untrusted first.** Once the
-> endpoints authenticate and encrypt to each other, the path that carried the
-> handshake stops being a trust decision — it can be our server, a relay, a QR
-> code, or anything else. Decentralisation then becomes a transport choice
-> rather than a security one.
+## 2. Architecture Components
 
-## 2. What the module already has
+The primary components supporting this architecture include:
 
-Four pieces of this architecture are already in the tree. Three are inert.
-
-| Piece | State | Role in the proposal |
+| Component | Function | Architectural Role |
 |---|---|---|
-| `AgentRegistration.PublicKey` (`tunnel/store.go:53`, set at `tunnel/server.go:132`) | **stored, never read** | The device identity hook. The field travels `Enroll` → `HandlePairing` → store, and nothing ever verifies a signature against it. |
-| `bark.ConsentRequestPayload.RequestedPermissions` (`bark/bark.go:86`) | **defined, never enforced** | Per-session capabilities, already modelled as `["screen_view","remote_control"]`. |
-| `webrtc.SignalMessage` (`webrtc/signaling.go`) | typed, transport-agnostic, **unauthenticated** | The right struct to become a signed, self-verifying event. It depends on no transport. |
-| `AgentStreamRunner.Handle` (`tunnel/handler.go`) | working | The extension point that lets a different control plane be layered on without touching the core. |
-| `pion/turn/v5` | already an indirect dependency | Self-hosted STUN/TURN costs no new dependency. |
+| `AgentRegistration.PublicKey` | Cryptographic key binding | Device identity anchor verified on all sessions. |
+| `bark.ConsentRequestPayload.RequestedPermissions` | Capability authorization | Explicit per-session capabilities (`screen_view`, `remote_control`, `clipboard`). |
+| `webrtc.SignalMessage` | Envelope structure | Self-verifying signed signaling event. |
+| `AgentStreamRunner.Handle` | Extensibility | Interface allowing modular transport handlers. |
+| `pion/turn/v5` | Direct relay fallback | Self-hosted STUN/TURN for NAT traversal without cleartext interception. |
 
 The foundation is present. All of these capabilities were activated and enforced across Phases 0a, 0, and 1.
 
