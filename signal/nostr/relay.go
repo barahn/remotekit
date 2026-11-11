@@ -31,9 +31,10 @@ type relay struct {
 	authKey    *SecretKey
 	lastAuthID string
 	subFilter  *filter
+	now        func() time.Time // for the AUTH event's created_at
 }
 
-func dialRelay(ctx context.Context, dialer *websocket.Dialer, url string, authKey *SecretKey) (*relay, error) {
+func dialRelay(ctx context.Context, dialer *websocket.Dialer, url string, authKey *SecretKey, now func() time.Time) (*relay, error) {
 	ws, resp, err := dialer.DialContext(ctx, url, nil)
 	if resp != nil && resp.Body != nil {
 		_ = resp.Body.Close()
@@ -42,7 +43,7 @@ func dialRelay(ctx context.Context, dialer *websocket.Dialer, url string, authKe
 		return nil, err
 	}
 	ws.SetReadLimit(relayReadLimit)
-	return &relay{url: url, ws: ws, authKey: authKey}, nil
+	return &relay{url: url, ws: ws, authKey: authKey, now: now}, nil
 }
 
 // send writes one NIP-01 message, a JSON array.
@@ -118,7 +119,7 @@ func (r *relay) read(subID string, onEvent func(*Event)) error {
 				continue
 			}
 			authEv := &Event{
-				CreatedAt: time.Now().Unix(),
+				CreatedAt: r.now().Unix(),
 				Kind:      KindAuth,
 				Tags: [][]string{
 					{"relay", r.url},

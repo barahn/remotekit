@@ -54,6 +54,8 @@ type Runner struct {
 	clip clipboard.Manager
 	// newCapturer replaces screen.NewCapturer when set, for the same reason.
 	newCapturer func(screen.CaptureConfig) (screen.Capturer, error)
+	// clock is Config.Clock; see now.
+	clock func() time.Time
 	// addCandidate replaces PeerSession.AddICECandidate when set, so a test
 	// can see which of a viewer's candidates reach its peer.
 	addCandidate func(*webrtc.PeerSession, string) error
@@ -168,6 +170,12 @@ type Config struct {
 	// in the user's applications directory when necessary so portals can read its
 	// metadata.
 	DesktopFile string
+
+	// Clock is the time signed signals are issued at and checked against;
+	// nil means time.Now. Signals allow webrtc.SignalClockSkew between the
+	// two ends' clocks, so a caller that can learn a time both ends trust,
+	// such as their server's, gives it here.
+	Clock func() time.Time
 }
 
 // New returns a Runner for cfg, with input injection for this platform when
@@ -192,6 +200,7 @@ func (r *Runner) Init(cfg Config) {
 	r.omitFilePathInReply = cfg.OmitFilePathInReply
 	r.appID = cfg.AppID
 	r.desktopFile = cfg.DesktopFile
+	r.clock = cfg.Clock
 	r.peerConfig = webrtc.DefaultPeerConfig()
 	if cfg.PeerConfig != nil {
 		r.peerConfig = *cfg.PeerConfig
@@ -653,7 +662,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 		if r.viewerAuth != nil {
 			switch msgType {
 			case "offer", "session_start", "candidate":
-				key, err := r.viewerAuth.check(msgBytes, r.id, time.Now())
+				key, err := r.viewerAuth.check(msgBytes, r.id, r.now())
 				if err != nil {
 					viewerID, _ := signal["viewer_id"].(string)
 					// The error can carry peer-supplied text, such as the
@@ -750,7 +759,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 							Type:      webrtc.SignalCandidate,
 							SessionID: r.id,
 							Candidate: candJSON,
-						}, viewerID, offerID, signKey, time.Now())
+						}, viewerID, offerID, signKey, r.now())
 						if err != nil {
 							log.Printf("[AgentStream] not sending ICE candidate to viewer %s: %v\n", logSafe(viewerID), err)
 							return
@@ -765,7 +774,7 @@ func (r *Runner) runSignalingLoop(ctx context.Context, conn SignalConn) {
 							Type:      webrtc.SignalAnswer,
 							SessionID: r.id,
 							SDP:       answerSDP,
-						}, viewerID, offerID, signKey, time.Now())
+						}, viewerID, offerID, signKey, r.now())
 						if sErr != nil {
 							log.Printf("[AgentStream] not sending answer to viewer %s: %v\n", logSafe(viewerID), sErr)
 						} else {
@@ -1164,6 +1173,14 @@ func (r *Runner) handleInputPayload(payload map[string]interface{}) {
 			})
 		}
 	}
+}
+
+// now is the time signed signals are issued at and checked against.
+func (r *Runner) now() time.Time {
+	if r.clock != nil {
+		return r.clock()
+	}
+	return time.Now()
 }
 
 // applyCandidate adds a viewer's candidate to its peer.
