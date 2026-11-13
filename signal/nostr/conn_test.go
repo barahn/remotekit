@@ -435,3 +435,38 @@ func TestConnRefusedAuthEndsConn(t *testing.T) {
 		t.Fatalf("want ErrAuthRefused from ReadMessage, got %v", readErr)
 	}
 }
+
+// Two ends whose own clocks disagree by hours still talk when both use one
+// clock, as a time both take from their server gives them. On their own
+// clocks the message is dropped as stale, and the receiver is told how far
+// off it was (barahn/remotekit#179).
+func TestASharedClockOutweighsTheMachinesOwn(t *testing.T) {
+	r := newFakeRelay(t)
+	relays := []string{r.url()}
+	ahead := func() time.Time { return time.Now().Add(4 * time.Hour) }
+
+	offs := make(chan time.Duration, 4)
+	agent := listen(t, Config{Relays: relays, OnStale: func(off time.Duration) { offs <- off }})
+	viewer := dial(t, Config{Relays: relays, Clock: ahead}, agent.PublicKey())
+	if err := viewer.WriteMessage([]byte(`{"type":"session_start"}`)); err != nil {
+		t.Fatal(err)
+	}
+	nothingWithin(t, agent, 300*time.Millisecond)
+	select {
+	case off := <-offs:
+		if off < 4*time.Hour-time.Minute || off > 4*time.Hour+time.Minute {
+			t.Fatalf("told the message was %v off, want about 4h ahead", off)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("the stale message was dropped without a word")
+	}
+
+	agent = listen(t, Config{Relays: relays, Clock: ahead})
+	viewer = dial(t, Config{Relays: relays, Clock: ahead}, agent.PublicKey())
+	if err := viewer.WriteMessage([]byte(`{"type":"session_start"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if got := fields(t, readWithin(t, agent, 2*time.Second)); got["type"] != "session_start" {
+		t.Fatalf("on a shared clock the agent got %v", got)
+	}
+}
