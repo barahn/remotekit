@@ -25,6 +25,13 @@ var (
 	errStaleMessage = errors.New("nostr: message outside the freshness window")
 )
 
+// staleMessage is errStaleMessage with how far the rumor's time was from
+// now: positive when its writer's clock was ahead.
+type staleMessage struct{ off time.Duration }
+
+func (e staleMessage) Error() string        { return errStaleMessage.Error() }
+func (e staleMessage) Is(target error) bool { return target == errStaleMessage }
+
 // backdate returns now moved a random amount, up to wrapJitter, into the past.
 func backdate(now time.Time) (int64, error) {
 	n, err := rand.Int(rand.Reader, big.NewInt(int64(wrapJitter/time.Second)))
@@ -151,7 +158,7 @@ func unwrap(gift *Event, key *SecretKey, now time.Time, maxAge time.Duration) (s
 	}
 	written := time.Unix(rumor.CreatedAt, 0)
 	if written.Before(now.Add(-maxAge)) || written.After(now.Add(maxAge)) {
-		return "", "", errStaleMessage
+		return "", "", staleMessage{off: written.Sub(now)}
 	}
 	return seal.PubKey, rumor.Content, nil
 }

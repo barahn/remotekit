@@ -69,6 +69,16 @@ type Config struct {
 	// are unreachable. If at least one relay reconnects within this period,
 	// the session continues. Zero means DefaultRelayGracePeriod.
 	RelayGracePeriod time.Duration
+	// Clock is the time this end writes into its messages and checks
+	// others' against; nil means time.Now. Two ends whose machines' clocks
+	// disagree by more than MessageTTL drop each other's messages, so a
+	// caller that can learn a time both ends trust, such as their server's,
+	// gives it here.
+	Clock func() time.Time
+	// OnStale, when set, is told of each message dropped for its time, with
+	// how far that time was from this end's: positive when the sender's
+	// clock was ahead.
+	OnStale func(off time.Duration)
 }
 
 // Conn is a signalling connection over Nostr relays. It satisfies
@@ -82,6 +92,8 @@ type Conn struct {
 	subID         string
 	gracePeriod   time.Duration
 	relayAuthKeys map[string]*SecretKey
+	now           func() time.Time
+	onStale       func(time.Duration)
 
 	mu           sync.Mutex
 	relayCond    *sync.Cond
@@ -145,7 +157,12 @@ func open(ctx context.Context, cfg Config, peer string) (*Conn, error) {
 		seen:          map[string]time.Time{},
 		viewers:       map[string]struct{}{},
 		relayAuthKeys: cfg.RelayAuthKeys,
+		now:           cfg.Clock,
+		onStale:       cfg.OnStale,
 		done:          make(chan struct{}),
+	}
+	if c.now == nil {
+		c.now = time.Now
 	}
 	c.relayCond = sync.NewCond(&c.mu)
 	if c.ttl <= 0 {
@@ -167,7 +184,7 @@ func open(ctx context.Context, cfg Config, peer string) (*Conn, error) {
 	// Seals and wraps are backdated by up to wrapJitter, and a filter
 	// matches on the wrap's created_at, so the window reaches that far back.
 	// Older traffic still delivered is dropped by the rumor's own timestamp.
-	initialSince := time.Now().Add(-wrapJitter - time.Minute).Unix()
+	initialSince := c.now().Add(-wrapJitter - time.Minute).Unix()
 	f := filter{
 		Kinds: []int{KindGiftWrap},
 		P:     []string{key.PublicKey()},
@@ -180,7 +197,7 @@ func open(ctx context.Context, cfg Config, peer string) (*Conn, error) {
 	}
 	var dialed []initialDial
 	for _, url := range cfg.Relays {
-		r, err := dialRelay(ctx, dialer, url, c.authKeyFor(url))
+		r, err := dialRelay(ctx, dialer, url, c.authKeyFor(url), c.now)
 		if err != nil {
 			continue
 		}
@@ -228,7 +245,7 @@ func randomID() (string, error) {
 func (c *Conn) PublicKey() string { return c.key.PublicKey() }
 
 func (c *Conn) relayWorker(url string, initialR *relay, initialSince int64) {
-	lastActive := time.Now()
+	lastActive := c.now()
 	r := initialR
 	backoff := 50 * time.Millisecond
 	const maxBackoff = 3 * time.Second
@@ -249,7 +266,7 @@ func (c *Conn) relayWorker(url string, initialR *relay, initialSince int64) {
 			}
 
 			dialCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			newR, err := dialRelay(dialCtx, c.dialer, url, c.authKeyFor(url))
+			newR, err := dialRelay(dialCtx, c.dialer, url, c.authKeyFor(url), c.now)
 			cancel()
 			if err != nil {
 				if errors.Is(err, ErrAuthRefused) {
@@ -281,7 +298,7 @@ func (c *Conn) relayWorker(url string, initialR *relay, initialSince int64) {
 		}
 
 		readErr := r.read(c.subID, func(ev *Event) {
-			lastActive = time.Now()
+			lastActive = c.now()
 			c.receive(ev)
 		})
 		if errors.Is(readErr, ErrAuthRefused) {
@@ -297,7 +314,7 @@ func (c *Conn) relayWorker(url string, initialR *relay, initialSince int64) {
 		}
 
 		_ = r.close()
-		lastActive = time.Now()
+		lastActive = c.now()
 		c.setRelayInactive(url, r)
 		r = nil
 
@@ -370,11 +387,15 @@ func (c *Conn) firstSight(id string, now time.Time) bool {
 // receive handles one event from any relay. The same wrap arrives once per
 // relay, and only the first is delivered.
 func (c *Conn) receive(ev *Event) {
-	now := time.Now()
+	now := c.now()
 	if !c.firstSight("w:"+ev.ID, now) {
 		return
 	}
 	sender, content, err := unwrap(ev, c.key, now, c.ttl)
+	var stale staleMessage
+	if errors.As(err, &stale) && c.onStale != nil {
+		c.onStale(stale.off)
+	}
 	if err != nil {
 		return
 	}
@@ -467,7 +488,7 @@ func (c *Conn) WriteMessage(data []byte) error {
 	if err != nil {
 		return err
 	}
-	now := time.Now()
+	now := c.now()
 	for _, to := range recipients {
 		gift, err := wrap(string(data), c.key, to, now, c.ttl)
 		if err != nil {

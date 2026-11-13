@@ -19,6 +19,9 @@
 // wrap's "p" tag, and the size and timing of the traffic. It does not learn
 // the sender or the content. Every wrap carries a NIP-40 expiration, so a
 // relay that honours it deletes the event once the session no longer needs it.
+// A message written longer ago than its TTL, or as far ahead, is dropped on
+// receipt, which makes the two ends' clocks matter: [Config.Clock] lets them
+// share one, and [Config.OnStale] tells of each message dropped for its time.
 //
 // The rumor is of kind [KindSignal], a kind of our own: NIP-AC is a proposal,
 // not a standard, and the kind is only ever seen by the two ends.
