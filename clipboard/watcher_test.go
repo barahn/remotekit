@@ -282,3 +282,77 @@ func TestReceivedFilesAreNotEchoedAsText(t *testing.T) {
 		t.Fatalf("echoed %q as text", texts)
 	}
 }
+
+// betweenReadsClipboard lands files on the clipboard right after the watcher
+// has read the files and before it reads the text: the window in which one
+// poll sees no files and then their text form (barahn/remotekit#192).
+type betweenReadsClipboard struct {
+	fileCopyClipboard
+	landing chan FileList
+}
+
+func (c *betweenReadsClipboard) GetFiles(ctx context.Context) (FileList, error) {
+	seen, err := c.fileCopyClipboard.GetFiles(ctx)
+	select {
+	case files := <-c.landing:
+		_ = c.SetFiles(ctx, files)
+	default:
+	}
+	return seen, err
+}
+
+func watchBetweenReads(t *testing.T) (*Watcher, *betweenReadsClipboard, func() ([]string, []FileList)) {
+	t.Helper()
+	cb := &betweenReadsClipboard{landing: make(chan FileList, 1)}
+	watcher := NewWatcher(cb, 5*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	var mu sync.Mutex
+	var texts []string
+	var files []FileList
+	watcher.OnFiles(func(l FileList) {
+		mu.Lock()
+		files = append(files, l)
+		mu.Unlock()
+	})
+	go watcher.Start(ctx, func(text string) {
+		mu.Lock()
+		texts = append(texts, text)
+		mu.Unlock()
+	})
+	time.Sleep(30 * time.Millisecond)
+	return watcher, cb, func() ([]string, []FileList) {
+		time.Sleep(50 * time.Millisecond)
+		mu.Lock()
+		defer mu.Unlock()
+		return append([]string(nil), texts...), append([]FileList(nil), files...)
+	}
+}
+
+func TestReceivedFilesLandingBetweenReadsAreNotEchoedAsText(t *testing.T) {
+	watcher, cb, reported := watchBetweenReads(t)
+
+	theirs := FileList{Files: []string{"/tmp/staging/report.pdf"}}
+	watcher.UpdateLastFiles(theirs)
+	cb.landing <- theirs
+
+	if texts, files := reported(); len(texts) != 0 || len(files) != 0 {
+		t.Fatalf("received files echoed back: texts %q, files %v", texts, files)
+	}
+}
+
+func TestALocalFileCopyLandingBetweenReadsIsSentAsFilesOnly(t *testing.T) {
+	_, cb, reported := watchBetweenReads(t)
+
+	mine := FileList{Files: []string{"/home/kali/report.pdf"}}
+	cb.landing <- mine
+
+	texts, files := reported()
+	if len(texts) != 0 {
+		t.Fatalf("a file copy was sent as text %q", texts)
+	}
+	if len(files) != 1 || !files[0].Equal(mine) {
+		t.Fatalf("files reported %v, want %v once", files, mine)
+	}
+}
