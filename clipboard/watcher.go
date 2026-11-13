@@ -124,10 +124,12 @@ func (w *Watcher) Start(ctx context.Context, onChange func(text string)) {
 			// not reported, so the text cannot replace the files on the
 			// other side.
 			filesCopied := false
+			var seenFiles FileList
 			// Poll files if manager supports it
 			if hasFiles {
 				currentFiles, err := fileMgr.GetFiles(ctx)
 				if err == nil {
+					seenFiles = currentFiles
 					if !seededFiles {
 						w.mu.Lock()
 						w.lastFiles = currentFiles
@@ -188,6 +190,9 @@ func (w *Watcher) Start(ctx context.Context, onChange func(text string)) {
 				w.mu.Unlock()
 				continue
 			}
+			if hasFiles && current != w.GetLastText() && filesLandedSince(ctx, fileMgr, seenFiles) {
+				continue
+			}
 
 			w.mu.Lock()
 			// Check suppression window
@@ -216,4 +221,13 @@ func (w *Watcher) Start(ctx context.Context, onChange func(text string)) {
 			}
 		}
 	}
+}
+
+// filesLandedSince reports whether files the poll did not see are on the
+// clipboard now: a copy of files that landed between reading the files and
+// reading the text, whose text form must not be taken for a text copy
+// (barahn/remotekit#192). The next poll sees them as files.
+func filesLandedSince(ctx context.Context, fileMgr FileManager, seen FileList) bool {
+	now, err := fileMgr.GetFiles(ctx)
+	return err == nil && len(now.Files) > 0 && !now.Equal(seen)
 }
