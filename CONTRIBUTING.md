@@ -119,6 +119,24 @@ tagging `main`. [docs/branching.md](docs/branching.md) has the rules.
 ./scripts/cleanup-branches.sh --remote
 ```
 
+## What is published
+
+remotekit's source, its documentation, its releases and their notes are public,
+and so is the design discussed in issues and pull requests.
+
+How it is tested inside a product is not public. End-to-end runs, measurements
+of real networks, and the machines, addresses, providers and logs a test used
+stay private. They describe someone's network more than they describe
+remotekit. The licence does not ask for them either: Apache-2.0 is about the
+code.
+
+So a public issue carries what someone else needs to reproduce the problem: the
+version or commit, the operating system and display server, the steps, and what
+happened and what was expected. Leave out IP addresses, the names of internet
+providers, hostnames and network captures. If a problem only shows on a
+particular network, say what kind of network it is ("a symmetric NAT", "a
+mobile network behind CGNAT"), not whose.
+
 ## Reporting security vulnerabilities
 
 Do **not** open a public issue for a security-sensitive bug. Email
