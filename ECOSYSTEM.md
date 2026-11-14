@@ -1,11 +1,11 @@
-# The four repositories
+# The five repositories
 
-Fabrintek's remote-access work is split across four repositories with three
+Fabrintek's remote-access work is split across five repositories with three
 different licences. The split is not organisational tidiness: it is what lets
 an AGPL product and a proprietary product share one implementation of the hard
 parts without either one's licence reaching the other.
 
-This page is the same in all four repositories, so that each one states its own
+This page is the same in all five repositories, so that each one states its own
 role and acknowledges the others. If you are reading it in one repository and
 acting on another, read that one's copy too — the roles are reciprocal, and a
 change that looks right from one side is often the arrow pointing the wrong way.
@@ -17,6 +17,7 @@ change that looks right from one side is often the arrow pointing the wrong way.
 | [remotekit](https://github.com/barahn/remotekit) | Apache-2.0 | The mechanism. Screen capture and VP8 encoding, input injection, clipboard, chunked file transfer, a WebRTC wrapper, a reverse tunnel, tray and OS-service installation. |
 | [chirp](https://github.com/barahn/chirp) | AGPL-3.0-only | On-demand remote support. One binary, the same on both sides, with nothing to install and no account: it shows its own code and share link; whoever types someone's code controls that machine once its owner consents there. |
 | [chirp-status](https://github.com/barahn/chirp-status) | AGPL-3.0-only | A hosted monitor of Chirp's public network: a Cloudflare Worker that probes the servers Chirp lists and serves the figures `status.usechirp.app` shows. Chirp keeps its own monitor, `cmd/chirp-status`, which anyone can run. |
+| [chirp-site](https://github.com/chirp-remote/chirp-site) | AGPL-3.0-only | usechirp.app, Chirp's website: the pages, the link page a share link opens, the status page, and the Cloudflare rules in front of them. |
 | barahn (private) | Proprietary | Fabrintek's commercial platform: fleet management over standing agents, with tenancy, roles and persistence. |
 
 **This repository is remotekit** — the Apache-2.0 mechanism beneath the other two.
@@ -37,6 +38,9 @@ change that looks right from one side is often the arrow pointing the wrong way.
 - **chirp-status depends on no other repository's code.** It reads Chirp's list
   of servers (`network/servers.json`) as data, over HTTPS, and Chirp's status
   page reads its API at run time. Neither imports the other.
+- **chirp-site depends on no other repository's code.** It takes Chirp's fonts,
+  icon and link cases as files, each from a commit its locks pin and checked
+  by hash, and nothing depends on it.
 
 A change that needs one of those arrows reversed is a design problem, not a
 licensing exception. There is no approval that makes it acceptable, because the
@@ -87,6 +91,11 @@ of them. How a figure is made, who is in the network and the rules for joining
 it are Chirp's ([docs/status-page-proposal.md](https://github.com/barahn/chirp/blob/main/docs/status-page-proposal.md)):
 Chirp's own monitor and chirp-status make each figure the same way, so a change
 to how one is made goes into both.
+
+**It belongs in chirp-site** if it is what usechirp.app shows or how it is
+served: the pages, their scripts and styles, the Cloudflare rules, the deploy.
+What a share link contains is Chirp's; the link page is held to it by the cases
+in Chirp's `client/testdata/link-fragments.json`.
 
 **It belongs in the platform** if it presumes accounts, tenants, roles, fleets
 or standing agents. Chirp has none of those and is not the place to introduce
