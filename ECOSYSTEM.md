@@ -22,6 +22,19 @@ change that looks right from one side is often the arrow pointing the wrong way.
 
 **This repository is remotekit** — the Apache-2.0 mechanism beneath the other two.
 
+## Where the open repositories are going
+
+The open repositories are leaving the `barahn` organisation, which is named
+after the proprietary platform, for [chirp-remote](https://github.com/chirp-remote).
+chirp-site is already there. chirp, chirp-status and remotekit will follow, and
+the links on this page will change when they move. GitHub redirects the old
+addresses, so existing links and clones keep working.
+
+remotekit moves with Chirp even though it also serves the platform. Its
+licence still lets both build on it, and Chirp is its only public user. The
+Go module paths stay `github.com/barahn/...` until after Chirp v0.6.0.
+
+
 ## Dependencies point inwards only
 
 ```
