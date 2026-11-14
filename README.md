@@ -15,6 +15,7 @@ usable on its own.
 [![Checked with govulncheck](https://img.shields.io/badge/vulns-govulncheck-blue?style=flat-square)](https://go.dev/doc/security/vuln/)
 [![Lint: golangci-lint](https://img.shields.io/badge/lint-golangci--lint-brightgreen?style=flat-square)](.golangci.yml)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green.svg?style=flat-square)](LICENSE)
+[![CodeScene Average Code Health](https://codescene.io/projects/87777/status-badges/average-code-health)](https://codescene.io/projects/87777)
 
 ```
 go get github.com/barahn/remotekit
