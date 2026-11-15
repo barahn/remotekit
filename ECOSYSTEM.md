@@ -34,7 +34,6 @@ remotekit moves with Chirp even though it also serves the platform. Its
 licence still lets both build on it, and Chirp is its only public user. The
 Go module paths stay `github.com/barahn/...` until after Chirp v0.6.0.
 
-
 ## Dependencies point inwards only
 
 ```
