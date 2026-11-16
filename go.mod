@@ -15,8 +15,8 @@ require (
 	github.com/pion/rtp v1.10.6
 	github.com/pion/turn/v5 v5.1.3
 	github.com/pion/webrtc/v4 v4.2.26
-	golang.org/x/image v0.47.0
-	golang.org/x/sys v0.49.0
+	golang.org/x/image v0.48.0
+	golang.org/x/sys v0.50.0
 )
 
 require (
