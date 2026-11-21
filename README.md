@@ -5,10 +5,10 @@ input injection, clipboard sync, chunked file transfer, a WebRTC wrapper, a
 WSS/Yamux reverse tunnel, a system tray and OS service installation — each
 usable on its own.
 
-[![CI](https://github.com/barahn/remotekit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/barahn/remotekit/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/barahn/remotekit/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/barahn/remotekit/actions/workflows/codeql.yml)
-[![Secret Scan](https://github.com/barahn/remotekit/actions/workflows/secret-scan.yml/badge.svg?branch=main)](https://github.com/barahn/remotekit/actions/workflows/secret-scan.yml)
-[![Dependency Review](https://github.com/barahn/remotekit/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/barahn/remotekit/actions/workflows/dependency-review.yml)
+[![CI](https://github.com/chirp-remote/remotekit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/chirp-remote/remotekit/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/chirp-remote/remotekit/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/chirp-remote/remotekit/actions/workflows/codeql.yml)
+[![Secret Scan](https://github.com/chirp-remote/remotekit/actions/workflows/secret-scan.yml/badge.svg?branch=main)](https://github.com/chirp-remote/remotekit/actions/workflows/secret-scan.yml)
+[![Dependency Review](https://github.com/chirp-remote/remotekit/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/chirp-remote/remotekit/actions/workflows/dependency-review.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/barahn/remotekit.svg)](https://pkg.go.dev/github.com/barahn/remotekit)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/barahn/remotekit?style=flat-square)](go.mod)
 [![Checked with gosec](https://img.shields.io/badge/security-gosec-blue?style=flat-square)](https://github.com/securego/gosec)
@@ -24,7 +24,7 @@ go get github.com/barahn/remotekit
 ## Why this exists
 
 This is the shared core behind two products with incompatible licences —
-[Chirp](https://github.com/barahn/chirp) (AGPL-3.0, on-demand remote support)
+[Chirp](https://github.com/chirp-remote/chirp) (AGPL-3.0, on-demand remote support)
 and Barahn (proprietary fleet management). Neither could consume the other's
 code, so the mechanism both need lives here under a permissive licence.
 

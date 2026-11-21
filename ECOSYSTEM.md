@@ -14,23 +14,22 @@ change that looks right from one side is often the arrow pointing the wrong way.
 
 | Repository | Licence | Role |
 |---|---|---|
-| [remotekit](https://github.com/barahn/remotekit) | Apache-2.0 | The mechanism. Screen capture and VP8 encoding, input injection, clipboard, chunked file transfer, a WebRTC wrapper, a reverse tunnel, tray and OS-service installation. |
-| [chirp](https://github.com/barahn/chirp) | AGPL-3.0-only | On-demand remote support. One binary, the same on both sides, with nothing to install and no account: it shows its own code and share link; whoever types someone's code controls that machine once its owner consents there. |
-| [chirp-status](https://github.com/barahn/chirp-status) | AGPL-3.0-only | A hosted monitor of Chirp's public network: a Cloudflare Worker that probes the servers Chirp lists and serves the figures `status.usechirp.app` shows. Chirp keeps its own monitor, `cmd/chirp-status`, which anyone can run. |
+| [remotekit](https://github.com/chirp-remote/remotekit) | Apache-2.0 | The mechanism. Screen capture and VP8 encoding, input injection, clipboard, chunked file transfer, a WebRTC wrapper, a reverse tunnel, tray and OS-service installation. |
+| [chirp](https://github.com/chirp-remote/chirp) | AGPL-3.0-only | On-demand remote support. One binary, the same on both sides, with nothing to install and no account: it shows its own code and share link; whoever types someone's code controls that machine once its owner consents there. |
+| [chirp-status](https://github.com/chirp-remote/chirp-status) | AGPL-3.0-only | A hosted monitor of Chirp's public network: a Cloudflare Worker that probes the servers Chirp lists and serves the figures `status.usechirp.app` shows. Chirp keeps its own monitor, `cmd/chirp-status`, which anyone can run. |
 | [chirp-site](https://github.com/chirp-remote/chirp-site) | AGPL-3.0-only | usechirp.app, Chirp's website: the pages, the link page a share link opens, the status page, and the Cloudflare rules in front of them. |
 | barahn (private) | Proprietary | Fabrintek's commercial platform: fleet management over standing agents, with tenancy, roles and persistence. |
 
 **This repository is remotekit** — the Apache-2.0 mechanism beneath the other two.
 
-## Where the open repositories are going
+## Where the open repositories live
 
-The open repositories are leaving the `barahn` organisation, which is named
-after the proprietary platform, for [chirp-remote](https://github.com/chirp-remote).
-chirp-site is already there. chirp, chirp-status and remotekit will follow, and
-the links on this page will change when they move. GitHub redirects the old
-addresses, so existing links and clones keep working.
+The open repositories left the `barahn` organisation, which is named after the
+proprietary platform, for [chirp-remote](https://github.com/chirp-remote) in
+November 2026. GitHub redirects the old addresses, so existing links and clones
+keep working.
 
-remotekit moves with Chirp even though it also serves the platform. Its
+remotekit moved with Chirp even though it also serves the platform. Its
 licence still lets both build on it, and Chirp is its only public user. The
 Go module paths stay `github.com/barahn/...` until after Chirp v0.6.0.
 
@@ -58,7 +57,7 @@ A change that needs one of those arrows reversed is a design problem, not a
 licensing exception. There is no approval that makes it acceptable, because the
 constraint is not a policy — reversing an arrow either breaks a licence or
 breaks the dual-licensing arrangement described in Chirp's
-[LICENSING.md](https://github.com/barahn/chirp/blob/main/LICENSING.md).
+[LICENSING.md](https://github.com/chirp-remote/chirp/blob/main/LICENSING.md).
 
 ## Why each licence is the one it is
 
@@ -78,7 +77,7 @@ number is made, and run a monitor of their own to check it.
 **The platform is proprietary**, and Fabrintek's ability to keep it that way
 while using Chirp rests on Fabrintek owning all of Chirp — which is why Chirp
 requires a CLA and why its contributions are currently closed. See Chirp's
-[CONTRIBUTING.md](https://github.com/barahn/chirp/blob/main/CONTRIBUTING.md).
+[CONTRIBUTING.md](https://github.com/chirp-remote/chirp/blob/main/CONTRIBUTING.md).
 
 ## Where does this change belong?
 
@@ -100,7 +99,7 @@ self-hosting with no restrictions.
 **It belongs in chirp-status** if it is how the hosted monitor runs on
 Cloudflare: its Worker, its Durable Object, and what the platform's limits ask
 of them. How a figure is made, who is in the network and the rules for joining
-it are Chirp's ([docs/status-page-proposal.md](https://github.com/barahn/chirp/blob/main/docs/status-page-proposal.md)):
+it are Chirp's ([docs/status-page-proposal.md](https://github.com/chirp-remote/chirp/blob/main/docs/status-page-proposal.md)):
 Chirp's own monitor and chirp-status make each figure the same way, so a change
 to how one is made goes into both.
 
@@ -122,7 +121,7 @@ failed guesses and relaying the two peers' signalling would serve Barahn as well
 as Chirp — so that is remotekit's. That each Chirp shows its code at start, that
 the one who types it controls, how long a link lives, the limits, and the
 consent prompt's wording are Chirp's. The full split is proposed in
-Chirp's [docs/rendezvous-proposal.md](https://github.com/barahn/chirp/blob/main/docs/rendezvous-proposal.md).
+Chirp's [docs/rendezvous-proposal.md](https://github.com/chirp-remote/chirp/blob/main/docs/rendezvous-proposal.md).
 
 ## What this repository must not acquire
 

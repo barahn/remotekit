@@ -20,11 +20,11 @@ This document details the engineering work across **Phase 0a (Defect Remediation
 
 | Phase | Milestone | Scope | Status |
 |---|---|---|---|
-| **Phase 0a** | [Milestone 1 (Phase 0a)](https://github.com/barahn/remotekit/milestone/1) | Defect Remediation (agent token fallback, TLS pinning, port allowlist) | **Completed** |
-| **Phase 0** | [Milestone 2 (Phase 0)](https://github.com/barahn/remotekit/milestone/2) | Activate Cryptographic Identity & Consent (Ed25519 signing, anti-replay, consent enforcement) | **Completed** |
-| **Phase 1** | [Milestone 3 (Phase 1)](https://github.com/barahn/remotekit/milestone/3) | Peer-to-Peer Data Plane (`bark-control`, `bark-transfer` DataChannels, announced JPEG fallback) | **Completed** |
-| **Phase 2** | [Milestone 4 (Phase 2)](https://github.com/barahn/remotekit/milestone/4) | Pluggable Signalling Abstraction (`stream.SignalConn`, `stream.Runner`, standalone `signal/nostr` module) | **Completed** |
-| **Phase 3** | [Milestone 5 (Phase 3)](https://github.com/barahn/remotekit/milestone/5) | Fallback & Transport Hardening (Google STUN deprecation, ephemeral HMAC TURN credentials) | **In Progress** |
+| **Phase 0a** | [Milestone 1 (Phase 0a)](https://github.com/chirp-remote/remotekit/milestone/1) | Defect Remediation (agent token fallback, TLS pinning, port allowlist) | **Completed** |
+| **Phase 0** | [Milestone 2 (Phase 0)](https://github.com/chirp-remote/remotekit/milestone/2) | Activate Cryptographic Identity & Consent (Ed25519 signing, anti-replay, consent enforcement) | **Completed** |
+| **Phase 1** | [Milestone 3 (Phase 1)](https://github.com/chirp-remote/remotekit/milestone/3) | Peer-to-Peer Data Plane (`bark-control`, `bark-transfer` DataChannels, announced JPEG fallback) | **Completed** |
+| **Phase 2** | [Milestone 4 (Phase 2)](https://github.com/chirp-remote/remotekit/milestone/4) | Pluggable Signalling Abstraction (`stream.SignalConn`, `stream.Runner`, standalone `signal/nostr` module) | **Completed** |
+| **Phase 3** | [Milestone 5 (Phase 3)](https://github.com/chirp-remote/remotekit/milestone/5) | Fallback & Transport Hardening (Google STUN deprecation, ephemeral HMAC TURN credentials) | **In Progress** |
 
 ---
 

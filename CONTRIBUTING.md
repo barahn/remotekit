@@ -2,7 +2,7 @@
 
 remotekit is Apache-2.0 and open to contributions. Its licence is permissive
 in both directions, which is the point: it is the shared core beneath an
-AGPL-3.0 project ([Chirp](https://github.com/barahn/chirp)) and a proprietary
+AGPL-3.0 project ([Chirp](https://github.com/chirp-remote/chirp)) and a proprietary
 one (Barahn), and neither could build on it otherwise.
 
 ## Contributor License Agreement

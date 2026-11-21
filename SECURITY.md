@@ -67,7 +67,7 @@ report affects them, the advisory is coordinated across all three.
   the dependency licence gate.
 
 Out of scope: product policy built on top of remotekit — consent rules, codes,
-accounts, roles — which lives in [Chirp](https://github.com/barahn/chirp) and the
+accounts, roles — which lives in [Chirp](https://github.com/chirp-remote/chirp) and the
 Barahn platform. Report those to the product concerned. If you are unsure
 which, report here; it will be routed.
 
