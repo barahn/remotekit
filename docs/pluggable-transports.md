@@ -1,7 +1,7 @@
 # Pluggable transport seam for media and data (QUIC / WireGuard)
 
 **Status:** Design note for Phase 3, Task 3 of [implementation-phases.md](implementation-phases.md).  
-**Issue:** [#65](https://github.com/barahn/remotekit/issues/65)  
+**Issue:** [#65](https://github.com/chirp-remote/remotekit/issues/65)  
 **Scope:** `stream`, `webrtc`, `bark`, downstream transports (`transport/quic`, `transport/wireguard`).
 
 ---

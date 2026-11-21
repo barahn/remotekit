@@ -138,7 +138,7 @@ request, so no workflow can commit to it, and a committed copy of this would be
 wrong the moment anything landed without touching it — which is every merge.
 
 The live answer is the summary of the latest **Handoff** workflow run:
-<https://github.com/barahn/remotekit/actions/workflows/handoff.yml>. To fill
+<https://github.com/chirp-remote/remotekit/actions/workflows/handoff.yml>. To fill
 this block in locally instead, run `scripts/gen-handoff-status.sh --in-place`;
 without the flag the script prints the block to stdout.
 

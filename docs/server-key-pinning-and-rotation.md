@@ -1,7 +1,7 @@
 # Architectural Decision & Design: Server Key Pinning & Key Rotation
 
 **Status:** Accepted / Design Specified  
-**Related Issue:** [#69](https://github.com/barahn/remotekit/issues/69)  
+**Related Issue:** [#69](https://github.com/chirp-remote/remotekit/issues/69)  
 **Parent Roadmap:** [Implementation Phases](implementation-phases.md) (Phase 0a)  
 **Companion Documents:** [Decentralised Signalling & Untrusted Control Plane](decentralised-signalling.md), [HANDOFF.md](../HANDOFF.md)  
 **Target Packages:** `tunnel`, `stream`, `osinfo`
